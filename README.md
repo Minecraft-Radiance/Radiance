@@ -4,7 +4,7 @@ We are currently working on code clean up / documentation and solving compatibil
 
 # Radiance
 
-Radiance is a Minecraft mod that completely replace the vanilla OpenGL renderer with our Vulkan C++ renderer, which supports high performance rendering and hardware-accelerated ray tracing.
+[Radiance](https://www.minecraft-radiance.com/) is a Minecraft mod that completely replace the vanilla OpenGL renderer with our Vulkan C++ renderer, which supports high performance rendering and hardware-accelerated ray tracing.
 Due to the variety of C++ usage in the modern industrial rendering pipeline, a seamless integration of a modern industrial rendering module (such as DLSS and FSR) into our Vulkan C++ renderer is thus possible.
 
 <img width="2560" height="1440" alt="" src="https://github.com/user-attachments/assets/97f50f4a-3a6e-424d-9dff-d5e6b220f91f" />
