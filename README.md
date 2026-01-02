@@ -50,7 +50,7 @@ Download the files listed below from [here](https://github.com/NVIDIA/DLSS/tree/
 
 #### Linux
 
-Download the files listed below from [here](https://github.com/NVIDIA/DLSS/tree/main/lib/Windows_x86_64/rel) to the `.minecraft/radiance` folder (if the folder not exist, create one).
+Download the files listed below from [here](https://github.com/NVIDIA/DLSS/tree/main/lib/Linux_x86_64/rel) to the `.minecraft/radiance` folder (if the folder not exist, create one).
 
 * `libnvidia-ngx-dlss.so.310.3.0`
 * `libnvidia-ngx-dlssd.so.310.3.0`

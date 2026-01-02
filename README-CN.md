@@ -47,7 +47,7 @@ Radiance是一个Minecraft Mod，旨在将原版的OpenGL渲染器完全替换�
 
 #### Linux
 
-从[这个](https://github.com/NVIDIA/DLSS/tree/main/lib/Windows_x86_64/rel)路径中下载如下列表中的文件到`.minecraft/radiance`文件夹（如果文件夹不存在，请创建一个）。
+从[这个](https://github.com/NVIDIA/DLSS/tree/main/lib/Linux_x86_64/rel)路径中下载如下列表中的文件到`.minecraft/radiance`文件夹（如果文件夹不存在，请创建一个）。
 
 * `libnvidia-ngx-dlss.so.310.3.0`
 * `libnvidia-ngx-dlssd.so.310.3.0`
