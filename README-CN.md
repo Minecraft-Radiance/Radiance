@@ -7,6 +7,8 @@
 Radiance是一个Minecraft Mod，旨在将原版的OpenGL渲染器完全替换成我们的高性能Vulkan C++渲染器，并且支持硬件加速光线追踪。
 由于现代工业界广泛在渲染管线中使用C++，所以我们的Vulkan C++渲染器能够将一个现代工业级的渲染模块（例如DLSS和FSR）无缝集成进来。
 
+[预览版演示视频 (B站)](https://www.bilibili.com/video/BV1NevXBCEPg/)
+
 <img width="2560" height="1440" alt="" src="https://github.com/user-attachments/assets/97f50f4a-3a6e-424d-9dff-d5e6b220f91f" />
 
 # 安装指南
