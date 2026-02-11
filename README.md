@@ -49,9 +49,11 @@ If you want to enable the DLSS denoising / upscaling module in this mod, you mus
 By downloading, installing, or using the NVIDIA DLSS runtime library (e.g., nvngx_dlss.dll), you acknowledge that you have read and agree to comply with the NVIDIA DLSS SDK License Agreement. 
 If you do not agree to the License Agreement, do not download, install, or use the runtime libraries, and use alternative options provided by this mod instead (after the first alpha version).
 
-Currently, if the DLSS runtime libraries are not found, the mod will **cause a crash**. After the first alpha version, DLSS will be disabled and fall back to alternative implementations (we will possibly support FSR 3 or custom Denoising modules at that time).
+Currently, if the DLSS runtime libraries are not found, the mod will **cause a crash**. After the first alpha version, DLSS will be disabled and fall back to alternative implementations.
 
 ### Download Instructions
+
+Note for AMD Users: If the DLSS runtime is missing, download the DLSS runtime libraries or create a dummy empty file with the same filename to bypass the startup check. This will be fixed in the next update.
 
 #### Windows
 

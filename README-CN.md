@@ -50,6 +50,8 @@ Radiance是一个Minecraft Mod，旨在将原版的OpenGL渲染器完全替换�
 
 ### 下载步骤
 
+针对 AMD 用户的提示： 若遇到 “DLSS runtime libraries not found” 错误，可以选择下载 DLSS 运行库，或者直接在相应目录下创建对应的同名空白文件 来绕过启动检查。这一强制依赖将在下个版本中移除。
+
 #### Windows
 
 从[这个](https://github.com/NVIDIA/DLSS/tree/v310.5.3/lib/Windows_x86_64/rel)路径中下载如下列表中的文件到`.minecraft/radiance`文件夹（如果文件夹不存在，请创建一个）。
