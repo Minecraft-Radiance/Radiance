@@ -58,7 +58,7 @@ public class RadianceClient implements ClientModInitializer {
             Path dlssDTargetPath = radianceDir.resolve("nvngx_dlssd.dll");
 
             if (!Files.exists(dlssTargetPath) || !Files.exists(dlssDTargetPath)) {
-                throw new RuntimeException("DLSS runtime libraries not found!");
+                throw new RuntimeException("DLSS runtime libraries not found! Please make sure they are present in " + radianceDir);
             }
         } else if (osName.toLowerCase().contains("linux")) {
             Path soTargetPath = radianceDir.resolve("libcore.so");
@@ -71,7 +71,7 @@ public class RadianceClient implements ClientModInitializer {
             Path dlssDTargetPath = radianceDir.resolve("libnvidia-ngx-dlssd.so.310.5.3");
 
             if (!Files.exists(dlssTargetPath) || !Files.exists(dlssDTargetPath)) {
-                throw new RuntimeException("DLSS runtime libraries not found!");
+                throw new RuntimeException("DLSS runtime libraries not found! Please make sure they are present in " + radianceDir);
             }
         } else {
             throw new RuntimeException("The OS " + osName + " is not supported");
