@@ -52,6 +52,16 @@ public class RadianceClient implements ClientModInitializer {
             Path dllResourcePath = Path.of("core.dll");
             copyFileFromResource(dllTargetPath, dllResourcePath);
 
+            Path xesssrTargetPath = radianceDir.resolve("libxess.dll");
+            Path xesssrResrourcePath = Path.of("libxess.dll");
+            copyFileFromResource(xesssrTargetPath, xesssrResrourcePath);
+
+            try {
+                System.load(xesssrTargetPath.toAbsolutePath().toString());
+            } catch (UnsatisfiedLinkError e) {
+                LOGGER.warn("Failed to pre-load XeSS DLLs: " + e.getMessage());
+            }
+
             System.load(dllTargetPath.toAbsolutePath().toString());
 
             Path dlssTargetPath = radianceDir.resolve("nvngx_dlss.dll");

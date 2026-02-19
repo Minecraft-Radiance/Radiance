@@ -1,0 +1,26 @@
+name: "render_pipeline.module.xess_sr.name"
+inputImageConfigs:
+  - name: "color"
+    format: "R16G16B16A16_SFLOAT"
+  - name: "depth"
+    format: "R16_SFLOAT"
+  - name: "motion_vector"
+    format: "R16G16_SFLOAT"
+  - name: "first_hit_depth"
+    format: "R16_SFLOAT"
+outputImageConfigs:
+  - name: "upscaled_radiance"
+    format: "R16G16B16A16_SFLOAT"
+  - name: "upscaled_first_hit_depth"
+    format: "R16_SFLOAT"
+attributeConfigs:
+    - name: "render_pipeline.module.xess_sr.attribute.enable"
+      type: "boolean"
+      value: "true"
+    - name: "render_pipeline.module.xess_sr.attribute.quality_mode"
+      type: "enum:render_pipeline.module.xess_sr.attribute.quality_mode.native_aa-render_pipeline.module.xess_sr.attribute.quality_mode.ultra_quality_plus-render_pipeline.module.xess_sr.attribute.quality_mode.ultra_quality-render_pipeline.module.xess_sr.attribute.quality_mode.quality-render_pipeline.module.xess_sr.attribute.quality_mode.balanced-render_pipeline.module.xess_sr.attribute.quality_mode.performance-render_pipeline.module.xess_sr.attribute.quality_mode.ultra_performance"
+      value: "render_pipeline.module.xess_sr.attribute.quality_mode.native_aa"
+    - name: "render_pipeline.module.xess_sr.attribute.pre_exposure"
+      type: "float_range:0.1-8.0"
+      value: "1.0"
+

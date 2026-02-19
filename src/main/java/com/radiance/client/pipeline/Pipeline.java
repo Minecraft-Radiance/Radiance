@@ -328,6 +328,7 @@ public class Pipeline {
         // default: RT + DLSS + ToneMapping + Post
         // if DLSS available, otherwise NRD
         boolean dlssAvailable = isNativeModuleAvailable("render_pipeline.module.dlss.name");
+        boolean xessSrAvailable = isNativeModuleAvailable("render_pipeline.module.xess_sr.name");
 
         Module rayTracingModule = addModule("render_pipeline.module.ray_tracing.name");
 
@@ -369,7 +370,8 @@ public class Pipeline {
                 postRenderModule.getInputImageConfig("first_hit_depth"));
         } else {
             Module denoiserModule = addModule("render_pipeline.module.nrd.name");
-            Module upscalerModule = addModule("render_pipeline.module.fsr3_upscaler.name");
+            String upscalerModuleName = "render_pipeline.module.fsr3_upscaler.name";
+            Module upscalerModule = addModule(upscalerModuleName);
 
             connect(rayTracingModule.getOutputImageConfig("first_hit_diffuse_indirect_light"),
                 denoiserModule.getInputImageConfig("diffuse_radiance"));
