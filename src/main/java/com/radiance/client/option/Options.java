@@ -1,6 +1,7 @@
 package com.radiance.client.option;
 
 import com.radiance.client.RadianceClient;
+import com.radiance.client.proxy.vulkan.VRProxy;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -60,6 +61,10 @@ public class Options {
     public static int rayBounces = 4;
     public static int chunkBuildingBatchSize = 2;
     public static int chunkBuildingTotalBatches = 4;
+    public static boolean vrEnabled = false;
+    public static float vrRenderScale = 0.5f;
+    public static float vrIPD = 0.063f;
+    public static float vrWorldScale = 1.0f;
 
     public static void readOptions() {
         Path path = RadianceClient.radianceDir.resolve(OPTION_PROPERTIES);
@@ -85,6 +90,14 @@ public class Options {
             setChunkBuildingTotalBatches(
                 Integer.parseInt(props.getProperty("chunkBuildingTotalBatches",
                     String.valueOf(chunkBuildingTotalBatches))), false);
+            setVREnabled(Boolean.parseBoolean(
+                props.getProperty("vrEnabled", String.valueOf(vrEnabled))), false);
+            setVRRenderScale(Float.parseFloat(
+                props.getProperty("vrRenderScale", String.valueOf(vrRenderScale))), false);
+            setVRIPD(Float.parseFloat(
+                props.getProperty("vrIPD", String.valueOf(vrIPD))), false);
+            setVRWorldScale(Float.parseFloat(
+                props.getProperty("vrWorldScale", String.valueOf(vrWorldScale))), false);
 
             overwriteConfig();
 //            System.out.println("Successfully read options: " + path);
@@ -106,6 +119,10 @@ public class Options {
         props.setProperty("rayBounces", String.valueOf(rayBounces));
         props.setProperty("chunkBuildingBatchSize", String.valueOf(chunkBuildingBatchSize));
         props.setProperty("chunkBuildingTotalBatches", String.valueOf(chunkBuildingTotalBatches));
+        props.setProperty("vrEnabled", String.valueOf(vrEnabled));
+        props.setProperty("vrRenderScale", String.valueOf(vrRenderScale));
+        props.setProperty("vrIPD", String.valueOf(vrIPD));
+        props.setProperty("vrWorldScale", String.valueOf(vrWorldScale));
 
         try {
             Files.createDirectories(path.getParent());
@@ -168,6 +185,38 @@ public class Options {
     public static void setChunkBuildingTotalBatches(int chunkBuildingTotalBatches, boolean write) {
         Options.chunkBuildingTotalBatches = chunkBuildingTotalBatches;
         nativeSetChunkBuildingTotalBatches(chunkBuildingTotalBatches, write);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static void setVREnabled(boolean enabled, boolean write) {
+        Options.vrEnabled = enabled;
+        VRProxy.setEnabled(enabled);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static void setVRRenderScale(float renderScale, boolean write) {
+        Options.vrRenderScale = renderScale;
+        VRProxy.setRenderScale(renderScale);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static void setVRIPD(float ipd, boolean write) {
+        Options.vrIPD = ipd;
+        VRProxy.setIPD(ipd);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static void setVRWorldScale(float worldScale, boolean write) {
+        Options.vrWorldScale = worldScale;
+        VRProxy.setWorldScale(worldScale);
         if (write) {
             overwriteConfig();
         }

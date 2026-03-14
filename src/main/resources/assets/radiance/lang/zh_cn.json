@@ -1,4 +1,8 @@
 {
+  "category.radiance.vr": "VR控制",
+  "key.radiance.toggle_vr_performance": "切换VR性能显示",
+  "key.radiance.toggle_vr_charts": "切换VR性能图表",
+  "key.radiance.cycle_vr_position": "循环VR界面位置",
   "options.video.category.gameplay": "游戏内容",
   "options.video.category.window": "窗口",
   "options.video.category.dlss": "DLSS",

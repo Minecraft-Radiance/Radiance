@@ -21,12 +21,14 @@ import org.lwjgl.system.MemoryUtil;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
+import com.radiance.client.proxy.vulkan.VRProxy;
 import org.yaml.snakeyaml.constructor.Constructor;
 import org.yaml.snakeyaml.inspector.TagInspector;
 
 public class Pipeline {
 
     public static Pipeline INSTANCE = new Pipeline();
+    public static int eyeCount = 1; // Updated from VRProxy at runtime
     private static Path PIPELINE_CONFIG_PATH = null;
     private final List<Module> modules = new ArrayList<>();
     private final Map<ImageConfig, List<ImageConfig>> moduleConnections = new HashMap<>();
@@ -92,6 +94,9 @@ public class Pipeline {
     }
 
     public static void build() {
+        // Sync eyeCount from VRSystem before building
+        eyeCount = VRProxy.isEnabled() ? VRProxy.getEyeCount() : 1;
+
         try {
             Map<ImageConfig, ImageConfig> dstTosrcMap = new HashMap<>();
             for (Map.Entry<ImageConfig, List<ImageConfig>> entry : INSTANCE.moduleConnections.entrySet()) {
@@ -297,7 +302,7 @@ public class Pipeline {
             ByteBuffer params = allocAndTrack(allocatedBuffers, 56);
 
             params.putInt(moduleCount);
-            params.putInt(0); // Padding
+            params.putInt(eyeCount); // 1=mono, 2=stereo (VR)
 
             params.putLong(MemoryUtil.memAddress(namesPtrBuffer));
             params.putLong(MemoryUtil.memAddress(formatBuffer));

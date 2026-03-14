@@ -4,6 +4,13 @@ import com.mojang.logging.LogUtils;
 import com.radiance.client.option.Options;
 import com.radiance.client.pipeline.Pipeline;
 import com.radiance.client.proxy.vulkan.RendererProxy;
+import com.radiance.client.config.VRPerformanceConfig;
+import com.radiance.client.gui.VRPerformanceManager;
+import com.radiance.client.keybindings.VRPerformanceKeys;
+import com.radiance.client.vr.VRMouseState;
+import com.radiance.client.vr.XRSessionController;
+import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
+import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
@@ -93,6 +100,26 @@ public class RadianceClient implements ClientModInitializer {
         Options.readOptions();
 
         Pipeline.reloadAllModuleEntries();
+
+        // VR keyboard+mouse sync: each tick, push mouseYaw → worldOrientation
+        // and sync player facing from HMD direction. No-op when VR is disabled.
+        ClientTickEvents.START_CLIENT_TICK.register(VRMouseState::syncPerTick);
+        ClientTickEvents.END_CLIENT_TICK.register(XRSessionController::tick);
+
+        // Register VR performance keybindings so language keys appear in Controls.
+        for (var keyBinding : VRPerformanceKeys.getAllKeybindings()) {
+            KeyBindingHelper.registerKeyBinding(keyBinding);
+        }
+
+        // Keep VR performance monitor updated and process hotkeys.
+        ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            VRPerformanceKeys.handleKeyPresses();
+            if (client.player != null) {
+                VRPerformanceManager.getInstance().update();
+            }
+        });
+
+        VRPerformanceConfig.resetToDefaults();
     }
 
     public void copyFileFromResource(Path targetPath, Path resourcePath) {

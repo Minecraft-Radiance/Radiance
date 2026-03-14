@@ -1,4 +1,8 @@
 {
+  "category.radiance.vr": "VR Controls",
+  "key.radiance.toggle_vr_performance": "Toggle VR Performance Display",
+  "key.radiance.toggle_vr_charts": "Toggle VR Performance Charts",
+  "key.radiance.cycle_vr_position": "Cycle VR HUD Position",
   "options.video.category.gameplay": "Game Play",
   "options.video.category.window": "Window",
   "options.video.category.dlss": "DLSS",

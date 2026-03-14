@@ -16,7 +16,8 @@ public class MixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
-        return ENABLED;
+        if (!ENABLED) return false;
+        return true;
     }
 
     @Override

@@ -66,7 +66,9 @@
     "vulkan_render_integration.TextureUtilMixins",
     "vulkan_render_integration.VideoWarningManagerWarningPatternLoaderMixins",
     "vulkan_render_integration.WindowMixins",
-    "vulkan_render_integration.WorldRendererMixins"
+    "vulkan_render_integration.WorldRendererMixins",
+    "vr_input.VRMouseSyncMixin",
+    "vr_debug.DebugHudVRMixin"
   ],
   "injectors": {
     "defaultRequire": 1
