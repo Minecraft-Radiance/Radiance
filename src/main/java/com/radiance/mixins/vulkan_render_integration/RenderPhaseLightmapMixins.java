@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(RenderPhase.Lightmap.class)
+@Mixin(targets = "net.minecraft.client.render.RenderPhase$Lightmap")
 public class RenderPhaseLightmapMixins extends RenderPhaseMixins {
 
     @Inject(method = "<init>(Z)V", at = @At(value = "TAIL"))

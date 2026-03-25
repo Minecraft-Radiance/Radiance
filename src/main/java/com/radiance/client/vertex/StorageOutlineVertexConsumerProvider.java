@@ -57,11 +57,11 @@ public class StorageOutlineVertexConsumerProvider implements VertexConsumerProvi
 
         public OutlineVertexConsumer(VertexConsumer delegate, int red, int green, int blue,
             int alpha) {
-            this(delegate, ColorHelper.getArgb(alpha, red, green, blue));
+            this(delegate, ColorHelper.Argb.getArgb(alpha, red, green, blue));
         }
 
         @Override
-        public VertexConsumer vertex(float x, float y, float z) {
+        public VertexConsumer vertex(double x, double y, double z) {
             this.delegate.vertex(x, y, z)
                 .color(this.color);
             return this;
@@ -91,6 +91,19 @@ public class StorageOutlineVertexConsumerProvider implements VertexConsumerProvi
         @Override
         public VertexConsumer normal(float x, float y, float z) {
             return this;
+        }
+
+        @Override
+        public void next() {
+            this.delegate.next();
+        }
+
+        @Override
+        public void fixedColor(int red, int green, int blue, int alpha) {
+        }
+
+        @Override
+        public void unfixColor() {
         }
     }
 }

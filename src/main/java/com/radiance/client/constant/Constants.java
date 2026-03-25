@@ -6,7 +6,6 @@ import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Collectors;
 import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.RenderPhase;
 import net.minecraft.client.render.VertexFormat;
 
 public class Constants {
@@ -166,30 +165,11 @@ public class Constants {
                 return WORLD_SOLID;
             }
 
-            if (multiPhase.isTranslucent()) {
+            if (multiPhase.name.contains("translucent") || multiPhase.name.contains("glint")
+                || multiPhase.name.contains("lightning") || multiPhase.name.contains("crumbling")
+                || multiPhase.name.contains("tripwire")) {
                 // transparent
-                if (RenderPhase.NO_TRANSPARENCY.equals(multiPhase.phases.transparency)) {
-                    return WORLD_TRANSPARENT;
-                } else if (RenderPhase.ADDITIVE_TRANSPARENCY.equals(
-                    multiPhase.phases.transparency)) {
-                    return WORLD_TRANSPARENT;
-                } else if (RenderPhase.LIGHTNING_TRANSPARENCY.equals(
-                    multiPhase.phases.transparency)) {
-                    return WORLD_TRANSPARENT;
-                } else if (RenderPhase.GLINT_TRANSPARENCY.equals(multiPhase.phases.transparency)) {
-                    return WORLD_TRANSPARENT;
-                } else if (RenderPhase.CRUMBLING_TRANSPARENCY.equals(
-                    multiPhase.phases.transparency)) {
-                    return WORLD_TRANSPARENT;
-                } else if (RenderPhase.OVERLAY_TRANSPARENCY.equals(
-                    multiPhase.phases.transparency)) {
-                    return WORLD_TRANSPARENT;
-                } else if (RenderPhase.TRANSLUCENT_TRANSPARENCY.equals(
-                    multiPhase.phases.transparency)) {
-                    return WORLD_TRANSPARENT;
-                } else {
-                    throw new IllegalArgumentException("Invalid render layer " + multiPhase);
-                }
+                return WORLD_TRANSPARENT;
             } else {
                 // cut out
                 return WORLD_TRANSPARENT;

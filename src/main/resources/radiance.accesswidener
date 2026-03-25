@@ -61,13 +61,9 @@ accessible method net/minecraft/client/render/chunk/ChunkBuilder$BuiltChunk setN
 accessible method net/minecraft/client/render/item/HeldItemRenderer getHandRenderType (Lnet/minecraft/client/network/ClientPlayerEntity;)Lnet/minecraft/client/render/item/HeldItemRenderer$HandRenderType;
 accessible field net/minecraft/client/render/item/HeldItemRenderer$HandRenderType renderMainHand Z
 accessible field net/minecraft/client/render/item/HeldItemRenderer$HandRenderType renderOffHand Z
-accessible field net/minecraft/client/render/SkyRendering SUN_TEXTURE Lnet/minecraft/util/Identifier;
-accessible field net/minecraft/client/render/SkyRendering MOON_PHASES_TEXTURE Lnet/minecraft/util/Identifier;
 accessible class net/minecraft/client/gui/widget/OptionListWidget$WidgetEntry
 accessible method net/minecraft/client/gui/widget/OptionListWidget$WidgetEntry <init> (Ljava/util/List;Lnet/minecraft/client/gui/screen/Screen;)V
 accessible method net/minecraft/client/gui/widget/EntryListWidget addEntry (Lnet/minecraft/client/gui/widget/EntryListWidget$Entry;)I
-
-accessible class net/minecraft/client/render/CloudRenderer$ViewMode
 
 accessible class net/minecraft/client/option/SimpleOption$CyclingCallbacks
 accessible field net/minecraft/client/option/SimpleOption textGetter Ljava/util/function/Function;
