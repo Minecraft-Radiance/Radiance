@@ -6,7 +6,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(RenderPhase.Target.class)
+@Mixin(targets = "net.minecraft.client.render.RenderPhase$Target")
 public class RenderPhaseTargetMixins extends RenderPhaseMixins {
 
     @Inject(method = "<init>(Ljava/lang/String;Ljava/lang/Runnable;Ljava/lang/Runnable;)V", at = @At(value = "TAIL"))

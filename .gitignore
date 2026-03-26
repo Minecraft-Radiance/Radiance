@@ -1,5 +1,7 @@
 # User-specific stuff
 .idea/
+.ai
+MCVR-Repo/
 
 *.iml
 *.ipr

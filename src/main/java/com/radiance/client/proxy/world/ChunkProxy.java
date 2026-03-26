@@ -3,11 +3,12 @@ package com.radiance.client.proxy.world;
 import static net.minecraft.client.render.VertexFormat.DrawMode.QUADS;
 import static org.lwjgl.system.MemoryUtil.memAddress;
 
-import com.mojang.blaze3d.systems.VertexSorter;
 import com.radiance.client.constant.Constants;
 import com.radiance.client.proxy.vulkan.BufferProxy;
+import com.radiance.client.vertex.PBRVertexConsumer;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IChunkBuilderBuiltChunkExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IChunkBuilderExt;
+import it.unimi.dsi.fastutil.objects.Reference2ObjectArrayMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.List;
@@ -18,22 +19,29 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import net.minecraft.block.BlockRenderType;
+import net.minecraft.block.BlockState;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.BuiltBuffer;
+import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.Camera;
 import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.chunk.BlockBufferAllocatorStorage;
+import net.minecraft.client.render.RenderLayers;
+import net.minecraft.client.render.block.BlockModelRenderer;
+import net.minecraft.client.render.block.BlockRenderManager;
+import net.minecraft.client.render.block.entity.BlockEntityRenderer;
 import net.minecraft.client.render.chunk.ChunkBuilder;
+import net.minecraft.client.render.chunk.ChunkOcclusionDataBuilder;
 import net.minecraft.client.render.chunk.ChunkRendererRegion;
 import net.minecraft.client.render.chunk.ChunkRendererRegionBuilder;
-import net.minecraft.client.render.chunk.SectionBuilder;
 import net.minecraft.client.texture.MissingSprite;
 import net.minecraft.client.texture.TextureManager;
+import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.fluid.FluidState;
 import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ChunkSectionPos;
 import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.Vec3d;
+import net.minecraft.util.math.random.Random;
 import org.lwjgl.system.MemoryUtil;
 
 public class ChunkProxy {
@@ -49,25 +57,27 @@ public class ChunkProxy {
         public boolean isVisibleThrough(Direction from, Direction to) {
             return false;
         }
+
+        @Override
+        public boolean isEmpty(RenderLayer layer) {
+            return true;
+        }
     };
-    private static final Map<Integer, ChunkBuilder.BuiltChunk> rebuildQueue = new ConcurrentHashMap<>();
+    private static final Map<Integer, ChunkBuilder.BuiltChunk> rebuildQueue =
+        new ConcurrentHashMap<>();
     private static final List<Future<?>> rebuildTasks = new ArrayList<>();
-    private static final int numNormalChunkRebuildThreads = 1;
-    private static final int numImportantChunkRebuildThreads = 1;
-    private static final ExecutorService
-        importantChunkRebuildExecutor =
-        Executors.newFixedThreadPool(numImportantChunkRebuildThreads, r -> {
-            Thread thread = new Thread(r);
+    private static final int NUM_NORMAL_CHUNK_REBUILD_THREADS = 1;
+    private static final int NUM_IMPORTANT_CHUNK_REBUILD_THREADS = 1;
+    private static final ExecutorService IMPORTANT_CHUNK_REBUILD_EXECUTOR =
+        Executors.newFixedThreadPool(NUM_IMPORTANT_CHUNK_REBUILD_THREADS, runnable -> {
+            Thread thread = new Thread(runnable);
             thread.setPriority(Thread.NORM_PRIORITY);
             return thread;
         });
-    private static final ThreadLocal<BlockBufferAllocatorStorage>
-        blockBufferAllocatorStorageThreadLocal =
-        ThreadLocal.withInitial(BlockBufferAllocatorStorage::new);
     public static int builtChunkNum = 0;
-    private static ExecutorService backgroundChunkRebuildExecutor = Executors.newFixedThreadPool(
-        numNormalChunkRebuildThreads, r -> {
-            Thread thread = new Thread(r);
+    private static ExecutorService backgroundChunkRebuildExecutor =
+        Executors.newFixedThreadPool(NUM_NORMAL_CHUNK_REBUILD_THREADS, runnable -> {
+            Thread thread = new Thread(runnable);
             thread.setPriority(Thread.NORM_PRIORITY);
             return thread;
         });
@@ -79,24 +89,26 @@ public class ChunkProxy {
         initNative(numChunks);
     }
 
-    public static AutoCloseable scopedBlockBufferAllocatorStorage() {
-        final BlockBufferAllocatorStorage s = blockBufferAllocatorStorageThreadLocal.get();
-        s.reset();
-        return s::clear;
+    public static AutoCloseable scopedBlockBufferStorage() {
+        return () -> {
+        };
     }
 
     public static void clear() {
         waitImportantChunkRebuild();
+        builtChunkNum = 0;
 
         backgroundChunkRebuildExecutor.shutdown();
         try {
             backgroundChunkRebuildExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
-        backgroundChunkRebuildExecutor = Executors.newFixedThreadPool(numNormalChunkRebuildThreads,
-            r -> {
-                Thread thread = new Thread(r);
+
+        backgroundChunkRebuildExecutor =
+            Executors.newFixedThreadPool(NUM_NORMAL_CHUNK_REBUILD_THREADS, runnable -> {
+                Thread thread = new Thread(runnable);
                 thread.setPriority(Thread.NORM_PRIORITY);
                 return thread;
             });
@@ -110,29 +122,23 @@ public class ChunkProxy {
     }
 
     public static void rebuild(Camera camera) {
-
         BlockPos blockPos = camera.getBlockPos();
         for (ChunkBuilder.BuiltChunk builtChunk : rebuildQueue.values()) {
-            if (builtChunk.needsRebuild() && builtChunk.shouldBuild()) {
-                builtChunk.cancelRebuild();
+            if (!builtChunk.needsRebuild() || !builtChunk.shouldBuild()) {
+                continue;
+            }
 
-                BlockPos
-                    chunkCenterPos =
-                    builtChunk.getOrigin()
-                        .add(8, 8, 8);
-                boolean isImportant = chunkCenterPos.getSquaredDistance(blockPos) < 768.0
-                    || builtChunk.needsImportantRebuild();
+            builtChunk.cancelRebuild();
+            BlockPos chunkCenterPos = builtChunk.getOrigin().add(8, 8, 8);
+            boolean isImportant = chunkCenterPos.getSquaredDistance(blockPos) < 768.0
+                || builtChunk.needsImportantRebuild();
 
-                if (isImportant) {
-                    Future<?> rebuildTask = importantChunkRebuildExecutor.submit(() -> {
-                        rebuildSingle(builtChunk, true);
-                    });
-                    rebuildTasks.add(rebuildTask);
-                } else {
-                    backgroundChunkRebuildExecutor.execute(() -> {
-                        rebuildSingle(builtChunk, false);
-                    });
-                }
+            if (isImportant) {
+                Future<?> rebuildTask = IMPORTANT_CHUNK_REBUILD_EXECUTOR.submit(
+                    () -> rebuildSingle(builtChunk, true));
+                rebuildTasks.add(rebuildTask);
+            } else {
+                backgroundChunkRebuildExecutor.execute(() -> rebuildSingle(builtChunk, false));
             }
         }
 
@@ -147,7 +153,10 @@ public class ChunkProxy {
         for (Future<?> rebuildTask : rebuildTasks) {
             try {
                 rebuildTask.get();
-            } catch (InterruptedException | ExecutionException e) {
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            } catch (ExecutionException e) {
                 throw new RuntimeException(e);
             }
         }
@@ -156,70 +165,113 @@ public class ChunkProxy {
     }
 
     private static void rebuildSingle(ChunkBuilder.BuiltChunk builtChunk, boolean important) {
-        try (var scope = scopedBlockBufferAllocatorStorage()) {
-            ChunkRendererRegionBuilder chunkRendererRegionBuilder = new ChunkRendererRegionBuilder();
-            IChunkBuilderBuiltChunkExt builtChunkExt = (IChunkBuilderBuiltChunkExt) builtChunk;
+        try (var ignored = scopedBlockBufferStorage()) {
+            IChunkBuilderBuiltChunkExt builtChunkExt =
+                (IChunkBuilderBuiltChunkExt) builtChunk;
             ChunkBuilder chunkBuilder = builtChunkExt.radiance$getChunkBuilder();
-            IChunkBuilderExt chunkBuilderExt = (IChunkBuilderExt) chunkBuilder;
-            ChunkRendererRegion
-                chunkRendererRegion =
-                chunkRendererRegionBuilder.build(chunkBuilderExt.radiance$getWorld(),
-                    ChunkSectionPos.from(builtChunk.getSectionPos()));
+            ChunkRendererRegionBuilder regionBuilder = new ChunkRendererRegionBuilder();
+            BlockPos origin = builtChunk.getOrigin();
+            ChunkRendererRegion region = regionBuilder.build(
+                ((IChunkBuilderExt) chunkBuilder).radiance$getWorld(),
+                origin.add(-1, -1, -1),
+                origin.add(16, 16, 16),
+                1);
 
-            if (chunkRendererRegion == null) {
+            if (region == null) {
                 invalidateSingle(builtChunk.index);
                 builtChunk.data.set(ChunkBuilder.ChunkData.EMPTY);
                 return;
             }
 
-            BlockBufferAllocatorStorage storage = blockBufferAllocatorStorageThreadLocal.get();
-            rebuildSingle(chunkRendererRegion, chunkBuilder, chunkBuilderExt, builtChunk, storage,
-                important);
+            rebuildSingle(region, builtChunk, important);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    private static void rebuildSingle(ChunkRendererRegion chunkRendererRegion,
-        ChunkBuilder chunkBuilder,
-        IChunkBuilderExt chunkBuilderExt,
+    private static void rebuildSingle(ChunkRendererRegion region,
         ChunkBuilder.BuiltChunk builtChunk,
-        BlockBufferAllocatorStorage storage,
         boolean important) {
+        BlockPos startPos = builtChunk.getOrigin();
+        BlockPos endPos = startPos.add(15, 15, 15);
+        ChunkOcclusionDataBuilder occlusionBuilder = new ChunkOcclusionDataBuilder();
+        MatrixStack matrixStack = new MatrixStack();
+        Map<RenderLayer, PBRVertexConsumer> builders =
+            new Reference2ObjectArrayMap<>(RenderLayer.getBlockLayers().size());
+        List<BlockEntity> blockEntities = new ArrayList<>();
+        List<BlockEntity> noCullingBlockEntities = new ArrayList<>();
+        Random random = Random.create();
+        BlockModelRenderer.enableBrightnessCache();
 
-        ChunkSectionPos chunkSectionPos = ChunkSectionPos.from(builtChunk.getOrigin());
+        try {
+            BlockRenderManager blockRenderManager =
+                MinecraftClient.getInstance().getBlockRenderManager();
 
-        Vec3d vec3d = chunkBuilder.getCameraPosition();
-        // TODO: cancel out the sort operation in section builder
-        VertexSorter
-            vertexSorter =
-            VertexSorter.byDistance((float) (vec3d.x - builtChunk.getOrigin()
-                    .getX()),
-                (float) (vec3d.y - builtChunk.getOrigin()
-                    .getY()),
-                (float) (vec3d.z - builtChunk.getOrigin()
-                    .getZ()));
+            for (BlockPos blockPos : BlockPos.iterate(startPos, endPos)) {
+                BlockState blockState = region.getBlockState(blockPos);
+                if (blockState.isOpaqueFullCube(region, blockPos)) {
+                    occlusionBuilder.markClosed(blockPos);
+                }
 
-        SectionBuilder.RenderData renderData;
-        synchronized (ChunkBuilder.class) {
-            renderData =
-                ((IChunkBuilderExt) chunkBuilder).radiance$getSectionBuilder()
-                    .build(chunkSectionPos, chunkRendererRegion, vertexSorter, storage);
+                if (blockState.hasBlockEntity()) {
+                    BlockEntity blockEntity = region.getBlockEntity(blockPos);
+                    if (blockEntity != null) {
+                        blockEntities.add(blockEntity);
+                        BlockEntityRenderer<BlockEntity> renderer =
+                            MinecraftClient.getInstance()
+                                .getBlockEntityRenderDispatcher()
+                                .get(blockEntity);
+                        if (renderer != null && renderer.rendersOutsideBoundingBox(blockEntity)) {
+                            noCullingBlockEntities.add(blockEntity);
+                        }
+                    }
+                }
+
+                FluidState fluidState = blockState.getFluidState();
+                if (!fluidState.isEmpty()) {
+                    RenderLayer renderLayer = RenderLayers.getFluidLayer(fluidState);
+                    PBRVertexConsumer consumer = beginBufferBuilding(builders, renderLayer);
+                    blockRenderManager.renderFluid(blockPos, region, consumer, blockState,
+                        fluidState);
+                }
+
+                if (blockState.getRenderType() == BlockRenderType.MODEL) {
+                    RenderLayer renderLayer = RenderLayers.getBlockLayer(blockState);
+                    PBRVertexConsumer consumer = beginBufferBuilding(builders, renderLayer);
+                    matrixStack.push();
+                    matrixStack.translate(blockPos.getX() & 15, blockPos.getY() & 15,
+                        blockPos.getZ() & 15);
+                    blockRenderManager.renderBlock(blockState, blockPos, region, matrixStack,
+                        consumer, true, random);
+                    matrixStack.pop();
+                }
+            }
+        } finally {
+            BlockModelRenderer.disableBrightnessCache();
         }
 
-        Map<RenderLayer, BuiltBuffer> buffers = renderData.buffers;
-        builtChunk.setNoCullingBlockEntities(renderData.noCullingBlockEntities);
+        Map<RenderLayer, BufferBuilder.BuiltBuffer> buffers =
+            new Reference2ObjectArrayMap<>(builders.size());
+        for (Map.Entry<RenderLayer, PBRVertexConsumer> entry : builders.entrySet()) {
+            BufferBuilder.BuiltBuffer builtBuffer = entry.getValue().endNullable();
+            if (builtBuffer != null && !builtBuffer.isEmpty()) {
+                buffers.put(entry.getKey(), builtBuffer);
+            }
+        }
+
+        ((IChunkBuilderBuiltChunkExt) builtChunk).radiance$setNoCullingBlockEntities(
+            noCullingBlockEntities);
 
         if (buffers.isEmpty()) {
             ChunkBuilder.ChunkData chunkData = new ChunkBuilder.ChunkData() {
                 @Override
                 public List<BlockEntity> getBlockEntities() {
-                    return renderData.blockEntities;
+                    return blockEntities;
                 }
 
                 @Override
                 public boolean isVisibleThrough(Direction from, Direction to) {
-                    return renderData.chunkOcclusionData.isVisibleThrough(from, to);
+                    return occlusionBuilder.build().isVisibleThrough(from, to);
                 }
 
                 @Override
@@ -229,165 +281,130 @@ public class ChunkProxy {
             };
             builtChunk.data.set(chunkData);
             builtChunkNum++;
-
             invalidateSingle(builtChunk.index);
-        } else {
-            ChunkBuilder.ChunkData chunkData = new ChunkBuilder.ChunkData() {
-                @Override
-                public List<BlockEntity> getBlockEntities() {
-                    return renderData.blockEntities;
-                }
+            return;
+        }
 
-                @Override
-                public boolean isVisibleThrough(Direction from, Direction to) {
-                    return renderData.chunkOcclusionData.isVisibleThrough(from, to);
-                }
+        ChunkBuilder.ChunkData chunkData = new ChunkBuilder.ChunkData() {
+            @Override
+            public List<BlockEntity> getBlockEntities() {
+                return blockEntities;
+            }
 
-                @Override
-                public boolean isEmpty(RenderLayer layer) {
-                    return false;
-                }
-            };
-            builtChunk.data.set(chunkData);
-            builtChunkNum++;
+            @Override
+            public boolean isVisibleThrough(Direction from, Direction to) {
+                return occlusionBuilder.build().isVisibleThrough(from, to);
+            }
 
-            ByteBuffer geometryTypeBB = null;
-            ByteBuffer geometryGroupNameBB = null;
-            ByteBuffer geometryTextureBB = null;
-            ByteBuffer vertexFormatBB = null;
-            ByteBuffer vertexCountBB = null;
-            ByteBuffer verticesBB = null;
-            List<ByteBuffer> geometryGroupNameBuffers = new ArrayList<>(buffers.size());
+            @Override
+            public boolean isEmpty(RenderLayer layer) {
+                return !buffers.containsKey(layer);
+            }
+        };
+        builtChunk.data.set(chunkData);
+        builtChunkNum++;
 
-            try {
-                int geometryTypeSize = buffers.size() * Integer.BYTES;
-                geometryTypeBB = MemoryUtil.memAlloc(geometryTypeSize);
-                long geometryTypeAddr = memAddress(geometryTypeBB);
-                int geometryTypeBaseAddr = 0;
+        ByteBuffer geometryTypeBuffer = null;
+        ByteBuffer geometryGroupNameBuffer = null;
+        ByteBuffer geometryTextureBuffer = null;
+        ByteBuffer vertexFormatBuffer = null;
+        ByteBuffer vertexCountBuffer = null;
+        ByteBuffer verticesBuffer = null;
+        List<ByteBuffer> geometryGroupNameBuffers = new ArrayList<>(buffers.size());
 
-                int geometryGroupNameSize = buffers.size() * Long.BYTES;
-                geometryGroupNameBB = MemoryUtil.memAlloc(geometryGroupNameSize);
-                long geometryGroupNameAddr = memAddress(geometryGroupNameBB);
-                int geometryGroupNameBaseAddr = 0;
+        try {
+            geometryTypeBuffer = MemoryUtil.memAlloc(buffers.size() * Integer.BYTES);
+            geometryGroupNameBuffer = MemoryUtil.memAlloc(buffers.size() * Long.BYTES);
+            geometryTextureBuffer = MemoryUtil.memAlloc(buffers.size() * Integer.BYTES);
+            vertexFormatBuffer = MemoryUtil.memAlloc(buffers.size() * Integer.BYTES);
+            vertexCountBuffer = MemoryUtil.memAlloc(buffers.size() * Integer.BYTES);
+            verticesBuffer = MemoryUtil.memAlloc(buffers.size() * Long.BYTES);
 
-                int geometryTextureSize = buffers.size() * Integer.BYTES;
-                geometryTextureBB = MemoryUtil.memAlloc(geometryTextureSize);
-                long geometryTextureAddr = memAddress(geometryTextureBB);
-                int geometryTextureBaseAddr = 0;
+            int geometryTypeOffset = 0;
+            int geometryGroupNameOffset = 0;
+            int geometryTextureOffset = 0;
+            int vertexFormatOffset = 0;
+            int vertexCountOffset = 0;
+            int verticesOffset = 0;
+            TextureManager textureManager = MinecraftClient.getInstance().getTextureManager();
 
-                int vertexFormatSize = buffers.size() * Integer.BYTES;
-                vertexFormatBB = MemoryUtil.memAlloc(vertexFormatSize);
-                long vertexFormatAddr = memAddress(vertexFormatBB);
-                int vertexFormatBaseAddr = 0;
+            for (Map.Entry<RenderLayer, BufferBuilder.BuiltBuffer> entry : buffers.entrySet()) {
+                RenderLayer renderLayer = entry.getKey();
+                BufferBuilder.BuiltBuffer builtBuffer = entry.getValue();
+                BufferBuilder.DrawParameters parameters = builtBuffer.getParameters();
+                BufferProxy.BufferInfo bufferInfo = BufferProxy.getBufferInfo(
+                    builtBuffer.getVertexBuffer());
 
-                int vertexCountSize = buffers.size() * Integer.BYTES;
-                vertexCountBB = MemoryUtil.memAlloc(vertexCountSize);
-                long vertexCountAddr = memAddress(vertexCountBB);
-                int vertexCountBaseAddr = 0;
+                int geometryTypeId = Constants.GeometryTypes.getGeometryType(renderLayer, true)
+                    .getValue();
+                int geometryTextureId = textureManager.getTexture(
+                    renderLayer instanceof RenderLayer.MultiPhase multiPhase ?
+                        multiPhase.phases.texture.getId().orElse(MissingSprite.getMissingSpriteId())
+                        : MissingSprite.getMissingSpriteId()).getGlId();
+                int vertexFormatId = Constants.VertexFormats.getValue(parameters.format());
 
-                int verticesSize = buffers.size() * Long.BYTES;
-                verticesBB = MemoryUtil.memAlloc(verticesSize);
-                long verticesAddr = memAddress(verticesBB);
-                int verticesBaseAddr = 0;
+                geometryTypeBuffer.putInt(geometryTypeOffset, geometryTypeId);
+                geometryTypeOffset += Integer.BYTES;
 
-                for (Map.Entry<RenderLayer, BuiltBuffer> entry : buffers.entrySet()) {
-                    RenderLayer renderLayer = entry.getKey();
-                    assert renderLayer.getDrawMode() == QUADS;
+                ByteBuffer groupNameBuffer = MemoryUtil.memUTF8(renderLayer.name, true);
+                geometryGroupNameBuffers.add(groupNameBuffer);
+                geometryGroupNameBuffer.putLong(geometryGroupNameOffset, memAddress(groupNameBuffer));
+                geometryGroupNameOffset += Long.BYTES;
 
-                    BuiltBuffer vertexBuffer = entry.getValue();
-                    BufferProxy.BufferInfo vertexBufferInfo = BufferProxy.getBufferInfo(
-                        vertexBuffer.getBuffer());
-                    assert vertexBuffer.getDrawParameters()
-                        .indexCount() == vertexBuffer.getDrawParameters()
-                        .vertexCount() / 4 * 6;
+                geometryTextureBuffer.putInt(geometryTextureOffset, geometryTextureId);
+                geometryTextureOffset += Integer.BYTES;
 
-                    TextureManager
-                        textureManager =
-                        MinecraftClient.getInstance()
-                            .getTextureManager();
+                vertexFormatBuffer.putInt(vertexFormatOffset, vertexFormatId);
+                vertexFormatOffset += Integer.BYTES;
 
-                    int
-                        geometryTypeID =
-                        Constants.GeometryTypes.getGeometryType(renderLayer, true)
-                            .getValue();
-                    int
-                        geometryTextureID =
-                        textureManager.getTexture(
-                                ((RenderLayer.MultiPhase) renderLayer).phases.texture.getId()
-                                    .orElse(MissingSprite.getMissingSpriteId()))
-                            .getGlId();
-                    int vertexFormatID = Constants.VertexFormats.getValue(
-                        vertexBuffer.getDrawParameters()
-                            .format());
+                vertexCountBuffer.putInt(vertexCountOffset, parameters.vertexCount());
+                vertexCountOffset += Integer.BYTES;
 
-                    geometryTypeBB.putInt(geometryTypeBaseAddr, geometryTypeID);
-                    geometryTypeBaseAddr += Integer.BYTES;
+                verticesBuffer.putLong(verticesOffset, bufferInfo.addr());
+                verticesOffset += Long.BYTES;
+            }
 
-                    ByteBuffer geometryGroupNameBuffer = MemoryUtil.memUTF8(renderLayer.name, true);
-                    geometryGroupNameBuffers.add(geometryGroupNameBuffer);
-                    geometryGroupNameBB.putLong(geometryGroupNameBaseAddr,
-                        memAddress(geometryGroupNameBuffer));
-                    geometryGroupNameBaseAddr += Long.BYTES;
-
-                    geometryTextureBB.putInt(geometryTextureBaseAddr, geometryTextureID);
-                    geometryTextureBaseAddr += Integer.BYTES;
-
-                    vertexFormatBB.putInt(vertexFormatBaseAddr, vertexFormatID);
-                    vertexFormatBaseAddr += Integer.BYTES;
-
-                    vertexCountBB.putInt(vertexCountBaseAddr,
-                        vertexBuffer.getDrawParameters()
-                            .vertexCount());
-                    vertexCountBaseAddr += Integer.BYTES;
-
-                    verticesBB.putLong(verticesBaseAddr, vertexBufferInfo.addr());
-                    verticesBaseAddr += Long.BYTES;
-                }
-
-                rebuildSingle(builtChunk.getOrigin()
-                        .getX(),
-                    builtChunk.getOrigin()
-                        .getY(),
-                    builtChunk.getOrigin()
-                        .getZ(),
-                    builtChunk.index,
-                    buffers.size(),
-                    geometryTypeAddr,
-                    geometryGroupNameAddr,
-                    geometryTextureAddr,
-                    vertexFormatAddr,
-                    vertexCountAddr,
-                    verticesAddr,
-                    important);
-            } finally {
-                if (geometryTypeBB != null) {
-                    MemoryUtil.memFree(geometryTypeBB);
-                }
-                if (geometryGroupNameBB != null) {
-                    MemoryUtil.memFree(geometryGroupNameBB);
-                }
-                if (geometryTextureBB != null) {
-                    MemoryUtil.memFree(geometryTextureBB);
-                }
-                if (vertexFormatBB != null) {
-                    MemoryUtil.memFree(vertexFormatBB);
-                }
-                if (vertexCountBB != null) {
-                    MemoryUtil.memFree(vertexCountBB);
-                }
-                if (verticesBB != null) {
-                    MemoryUtil.memFree(verticesBB);
-                }
-                for (ByteBuffer geometryGroupNameBuffer : geometryGroupNameBuffers) {
-                    MemoryUtil.memFree(geometryGroupNameBuffer);
-                }
+            rebuildSingle(startPos.getX(), startPos.getY(), startPos.getZ(), builtChunk.index,
+                buffers.size(), memAddress(geometryTypeBuffer), memAddress(geometryGroupNameBuffer),
+                memAddress(geometryTextureBuffer), memAddress(vertexFormatBuffer),
+                memAddress(vertexCountBuffer), memAddress(verticesBuffer), important);
+        } finally {
+            for (BufferBuilder.BuiltBuffer builtBuffer : buffers.values()) {
+                builtBuffer.release();
+            }
+            if (geometryTypeBuffer != null) {
+                MemoryUtil.memFree(geometryTypeBuffer);
+            }
+            if (geometryGroupNameBuffer != null) {
+                MemoryUtil.memFree(geometryGroupNameBuffer);
+            }
+            if (geometryTextureBuffer != null) {
+                MemoryUtil.memFree(geometryTextureBuffer);
+            }
+            if (vertexFormatBuffer != null) {
+                MemoryUtil.memFree(vertexFormatBuffer);
+            }
+            if (vertexCountBuffer != null) {
+                MemoryUtil.memFree(vertexCountBuffer);
+            }
+            if (verticesBuffer != null) {
+                MemoryUtil.memFree(verticesBuffer);
+            }
+            for (ByteBuffer groupNameBuffer : geometryGroupNameBuffers) {
+                MemoryUtil.memFree(groupNameBuffer);
             }
         }
+    }
 
-        for (Map.Entry<RenderLayer, BuiltBuffer> entry : buffers.entrySet()) {
-            entry.getValue()
-                .close();
+    private static PBRVertexConsumer beginBufferBuilding(
+        Map<RenderLayer, PBRVertexConsumer> builders,
+        RenderLayer layer) {
+        PBRVertexConsumer consumer = builders.get(layer);
+        if (consumer == null) {
+            consumer = new PBRVertexConsumer(layer);
+            builders.put(layer, consumer);
         }
+        return consumer;
     }
 
     private static native void rebuildSingle(int originX,

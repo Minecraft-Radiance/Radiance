@@ -53,30 +53,36 @@ public abstract class HeldItemRendererMixins implements IHeldItemRendererExt {
         VertexConsumerProvider vertexConsumers,
         ClientPlayerEntity player,
         int light) {
-        float f = player.getHandSwingProgress(tickDelta);
+        float swingProgress = player.getHandSwingProgress(tickDelta);
         Hand hand = MoreObjects.firstNonNull(player.preferredHand, Hand.MAIN_HAND);
-        float g = player.getLerpedPitch(tickDelta);
-        HeldItemRenderer.HandRenderType handRenderType = HeldItemRenderer.getHandRenderType(player);
-        float h = MathHelper.lerp(tickDelta, player.lastRenderPitch, player.renderPitch);
-        float i = MathHelper.lerp(tickDelta, player.lastRenderYaw, player.renderYaw);
+        float pitch = MathHelper.lerp(tickDelta, player.prevPitch, player.getPitch());
+        HeldItemRenderer.HandRenderType handRenderType = HeldItemRenderer.getHandRenderType(
+            player);
+        float renderPitch = MathHelper.lerp(tickDelta, player.lastRenderPitch,
+            player.renderPitch);
+        float renderYaw = MathHelper.lerp(tickDelta, player.lastRenderYaw, player.renderYaw);
+
         matrices.multiply(
-            RotationAxis.POSITIVE_X.rotationDegrees((player.getPitch(tickDelta) - h) * 0.1F));
+            RotationAxis.POSITIVE_X.rotationDegrees((player.getPitch(tickDelta) - renderPitch)
+                * 0.1F));
         matrices.multiply(
-            RotationAxis.POSITIVE_Y.rotationDegrees((player.getYaw(tickDelta) - i) * 0.1F));
+            RotationAxis.POSITIVE_Y.rotationDegrees((player.getYaw(tickDelta) - renderYaw)
+                * 0.1F));
+
         if (handRenderType.renderMainHand) {
-            float j = hand == Hand.MAIN_HAND ? f : 0.0F;
-            float k = 1.0F - MathHelper.lerp(tickDelta, this.prevEquipProgressMainHand,
-                this.equipProgressMainHand);
-            this.renderFirstPersonItem(player, tickDelta, g, Hand.MAIN_HAND, j, this.mainHand, k,
-                matrices, vertexConsumers, light);
+            float handSwing = hand == Hand.MAIN_HAND ? swingProgress : 0.0F;
+            float equipProgress = 1.0F - MathHelper.lerp(tickDelta,
+                this.prevEquipProgressMainHand, this.equipProgressMainHand);
+            this.renderFirstPersonItem(player, tickDelta, pitch, Hand.MAIN_HAND, handSwing,
+                this.mainHand, equipProgress, matrices, vertexConsumers, light);
         }
 
         if (handRenderType.renderOffHand) {
-            float j = hand == Hand.OFF_HAND ? f : 0.0F;
-            float k = 1.0F - MathHelper.lerp(tickDelta, this.prevEquipProgressOffHand,
-                this.equipProgressOffHand);
-            this.renderFirstPersonItem(player, tickDelta, g, Hand.OFF_HAND, j, this.offHand, k,
-                matrices, vertexConsumers, light);
+            float handSwing = hand == Hand.OFF_HAND ? swingProgress : 0.0F;
+            float equipProgress = 1.0F - MathHelper.lerp(tickDelta,
+                this.prevEquipProgressOffHand, this.equipProgressOffHand);
+            this.renderFirstPersonItem(player, tickDelta, pitch, Hand.OFF_HAND, handSwing,
+                this.offHand, equipProgress, matrices, vertexConsumers, light);
         }
     }
 }
