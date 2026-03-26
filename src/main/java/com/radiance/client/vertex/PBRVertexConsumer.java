@@ -22,6 +22,7 @@ public class PBRVertexConsumer implements VertexConsumer {
     private static final int ALPHA_MODE_OPAQUE = 0;
     private static final int ALPHA_MODE_CUTOUT = 1;
     private static final int ALPHA_MODE_TRANSPARENT = 2;
+    private static final int DEFAULT_INITIAL_BUFFER_SIZE = 32 * 1024;
 
     private final BufferBuilder bufferBuilder;
     private final VertexFormat format;
@@ -63,11 +64,11 @@ public class PBRVertexConsumer implements VertexConsumer {
 
     public PBRVertexConsumer(int initialSize, RenderLayer renderLayer) {
         this(VertexFormat.DrawMode.QUADS, PBRVertexFormats.PBR_TRIANGLE,
-            Math.max(initialSize, renderLayer.getExpectedBufferSize()), renderLayer);
+            Math.max(256, Math.min(initialSize, DEFAULT_INITIAL_BUFFER_SIZE)), renderLayer);
     }
 
     public PBRVertexConsumer(RenderLayer renderLayer) {
-        this(renderLayer.getExpectedBufferSize(), renderLayer);
+        this(DEFAULT_INITIAL_BUFFER_SIZE, renderLayer);
     }
 
     private PBRVertexConsumer(VertexFormat.DrawMode drawMode, VertexFormat format, int initialSize,

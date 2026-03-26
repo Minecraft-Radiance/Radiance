@@ -40,6 +40,10 @@ repositories {
     mavenCentral()
 }
 
+configurations {
+    shade
+}
+
 dependencies {
     // To change the versions see the gradle.properties file
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
@@ -50,7 +54,7 @@ dependencies {
 
     // https://mvnrepository.com/artifact/org.yaml/snakeyaml
     implementation "org.yaml:snakeyaml:2.5"
-    include "org.yaml:snakeyaml:2.5"
+    shade "org.yaml:snakeyaml:2.5"
 }
 
 processResources {
@@ -93,6 +97,12 @@ jar {
     from("LICENSE") {
         rename { "${it}_${project.archivesBaseName}" }
     }
+
+    from({
+        configurations.shade.collect { it.isDirectory() ? it : zipTree(it) }
+    }) {
+        exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
+    }
 }
 
 tasks.named("remapJar") {
@@ -101,6 +111,27 @@ tasks.named("remapJar") {
 
 tasks.named("remapSourcesJar") {
     archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${project.minecraft_version}-sources.jar")
+}
+
+def stripArchiveCopyAction = { task ->
+    def filteredActions = task.actions.findAll { action ->
+        if (action.class.name != "org.gradle.api.internal.project.taskfactory.StandardTaskAction") {
+            return true
+        }
+
+        def methodField = action.class.getDeclaredField("method")
+        methodField.accessible = true
+        methodField.get(action).name != "copy"
+    }
+    task.setActions(filteredActions)
+}
+
+tasks.named("remapJar") {
+    stripArchiveCopyAction(delegate)
+}
+
+tasks.named("remapSourcesJar") {
+    stripArchiveCopyAction(delegate)
 }
 
 // configure the maven publication

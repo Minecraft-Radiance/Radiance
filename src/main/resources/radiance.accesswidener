@@ -1,20 +1,4 @@
 accessWidener v2 named
-accessible class net/minecraft/client/font/BitmapFont$BitmapFontGlyph
-
-accessible class net/minecraft/client/font/TrueTypeFont$TtfGlyph
-accessible method net/minecraft/client/font/TrueTypeFont getInfo ()Lorg/lwjgl/util/freetype/FT_Face;
-accessible field net/minecraft/client/font/TrueTypeFont oversample F
-
-accessible method net/minecraft/client/font/UnihexFont addGlyphPixels (Ljava/nio/IntBuffer;Lnet/minecraft/client/font/UnihexFont$BitmapGlyph;II)V
-accessible class net/minecraft/client/font/UnihexFont$UnicodeTextureGlyph
-accessible field net/minecraft/client/font/UnihexFont$UnicodeTextureGlyph contents Lnet/minecraft/client/font/UnihexFont$BitmapGlyph;
-accessible field net/minecraft/client/font/UnihexFont$UnicodeTextureGlyph left I
-accessible field net/minecraft/client/font/UnihexFont$UnicodeTextureGlyph right I
-
-accessible class net/minecraft/client/font/GlyphAtlasTexture$Slot
-accessible method net/minecraft/client/font/GlyphAtlasTexture$Slot findSlotFor (Lnet/minecraft/client/font/RenderableGlyph;)Lnet/minecraft/client/font/GlyphAtlasTexture$Slot;
-accessible field net/minecraft/client/font/GlyphAtlasTexture$Slot x I
-accessible field net/minecraft/client/font/GlyphAtlasTexture$Slot y I
 
 accessible class net/minecraft/client/texture/SpriteContents$Animation
 accessible field net/minecraft/client/texture/SpriteContents width I
@@ -61,11 +45,7 @@ accessible method net/minecraft/client/render/chunk/ChunkBuilder$BuiltChunk setN
 accessible method net/minecraft/client/render/item/HeldItemRenderer getHandRenderType (Lnet/minecraft/client/network/ClientPlayerEntity;)Lnet/minecraft/client/render/item/HeldItemRenderer$HandRenderType;
 accessible field net/minecraft/client/render/item/HeldItemRenderer$HandRenderType renderMainHand Z
 accessible field net/minecraft/client/render/item/HeldItemRenderer$HandRenderType renderOffHand Z
-accessible class net/minecraft/client/gui/widget/OptionListWidget$WidgetEntry
-accessible method net/minecraft/client/gui/widget/OptionListWidget$WidgetEntry <init> (Ljava/util/List;Lnet/minecraft/client/gui/screen/Screen;)V
-accessible method net/minecraft/client/gui/widget/EntryListWidget addEntry (Lnet/minecraft/client/gui/widget/EntryListWidget$Entry;)I
 
 accessible class net/minecraft/client/option/SimpleOption$CyclingCallbacks
 accessible field net/minecraft/client/option/SimpleOption textGetter Ljava/util/function/Function;
 accessible field net/minecraft/client/option/SimpleOption text Lnet/minecraft/text/Text;
-accessible field net/minecraft/client/gui/screen/Screen drawables Ljava/util/List;

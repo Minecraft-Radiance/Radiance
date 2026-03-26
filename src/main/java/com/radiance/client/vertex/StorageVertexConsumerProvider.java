@@ -29,7 +29,8 @@ public class StorageVertexConsumerProvider implements VertexConsumerProvider {
         if (vertexConsumer == null) {
             VertexFormat.DrawMode drawMode = renderLayer.getDrawMode();
             VertexFormat vertexFormat = renderLayer.getVertexFormat();
-            int initialSize = Math.max(this.size, renderLayer.getExpectedBufferSize());
+            int initialSize = Math.max(256,
+                Math.min(this.size, renderLayer.getExpectedBufferSize()));
 
             if (drawMode == VertexFormat.DrawMode.QUADS) {
                 vertexConsumer = new PBRVertexConsumer(initialSize, renderLayer);

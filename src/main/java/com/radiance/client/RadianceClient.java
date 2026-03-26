@@ -10,6 +10,7 @@ import java.net.JarURLConnection;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.FileSystem;
 import java.nio.file.FileSystemNotFoundException;
 import java.nio.file.FileSystems;
@@ -98,6 +99,12 @@ public class RadianceClient implements ClientModInitializer {
 
             Files.createDirectories(targetPath.getParent());
             Files.copy(is, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AccessDeniedException e) {
+            if (Files.exists(targetPath)) {
+                LOGGER.warn("Using existing locked native/resource file {}", targetPath);
+                return;
+            }
+            throw new RuntimeException(e);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -111,6 +118,12 @@ public class RadianceClient implements ClientModInitializer {
 
             Files.createDirectories(targetPath.getParent());
             Files.copy(is, targetPath, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AccessDeniedException e) {
+            if (Files.exists(targetPath)) {
+                LOGGER.warn("Using existing locked optional file {}", targetPath);
+                return;
+            }
+            throw new RuntimeException(e);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }

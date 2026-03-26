@@ -319,11 +319,11 @@ public class GlStateManagerMixins {
     // endregion
 
     // region <DrawCommandProxy.Overlay>
-    @Inject(method = "_clear(I)V",
+    @Inject(method = "_clear(IZ)V",
         at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;assertOnRenderThreadOrInit()V", shift = At.Shift.AFTER),
         cancellable = true,
         remap = false)
-    private static void redirectClear(int mask, CallbackInfo ci) {
+    private static void redirectClear(int mask, boolean getError, CallbackInfo ci) {
         DrawCommandProxy.Overlay.glClear(mask);
         ci.cancel();
     }

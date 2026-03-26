@@ -101,8 +101,8 @@ public class Constants {
         private static final Map<VertexFormat, Integer>
             BY_VERTEX_FORMAT =
             Collections.unmodifiableMap(Arrays.stream(values())
-                .collect(
-                    Collectors.toMap(VertexFormats::getVertexFormat, VertexFormats::getValue)));
+                .collect(Collectors.toMap(VertexFormats::getVertexFormat,
+                    VertexFormats::getValue, (existing, ignored) -> existing)));
 
         private final VertexFormat vertexFormat;
         private final int value;

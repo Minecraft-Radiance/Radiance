@@ -12,7 +12,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public abstract class ReloadableTextureMixins extends AbstractTextureMixins {
 
     @Inject(method = "upload(Lnet/minecraft/client/texture/NativeImage;ZZ)V",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/texture/NativeImage;upload(IIIIIIIZ)V"))
+        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/texture/NativeImage;upload(IIIIIIIZZZZ)V"))
     public void setTargetIDBeforeUpload(NativeImage image, boolean blur, boolean clamp,
         CallbackInfo ci) {
         int id = getGlId();

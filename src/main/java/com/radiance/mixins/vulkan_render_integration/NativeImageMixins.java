@@ -1,9 +1,11 @@
 package com.radiance.mixins.vulkan_render_integration;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.radiance.client.constant.VulkanConstants;
 import com.radiance.client.proxy.vulkan.RendererProxy;
 import com.radiance.client.proxy.vulkan.TextureProxy;
 import com.radiance.client.texture.AuxiliaryTextures;
+import com.radiance.client.texture.TextureTracker;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import java.util.function.IntUnaryOperator;
 import net.minecraft.client.texture.NativeImage;
@@ -44,12 +46,39 @@ public abstract class NativeImageMixins implements
     @Shadow
     public abstract NativeImage.Format getFormat();
 
-    @Inject(method = "uploadInternal(IIIIIIIZ)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/texture/NativeImage;checkAllocated()V", shift = At.Shift.AFTER), cancellable = true)
+    @Inject(method = "uploadInternal(IIIIIIIZZZZ)V",
+        at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/texture/NativeImage;checkAllocated()V",
+            shift = At.Shift.AFTER),
+        cancellable = true)
     public void redirectUploadInternal(int level, int offsetX, int offsetY, int unpackSkipPixels,
-        int unpackSkipRows, int regionWidth, int regionHeight, boolean blur, CallbackInfo ci) {
+        int unpackSkipRows, int regionWidth, int regionHeight, boolean blur, boolean clamp,
+        boolean mipmap, boolean close, CallbackInfo ci) {
         try {
             INativeImageExt self = (INativeImageExt) this;
             int targetId = self.radiance$getTargetID();
+            if (targetId == -1) {
+                targetId = TextureTracker.currentBoundTextureID;
+                if (targetId != -1) {
+                    self.radiance$setTargetID(targetId);
+                }
+            }
+            if (targetId == -1) {
+                throw new IllegalStateException("No active texture target for NativeImage upload");
+            }
+
+            TextureProxy.setFilter(targetId,
+                blur ? VulkanConstants.VkFilter.VK_FILTER_LINEAR.getValue() :
+                    VulkanConstants.VkFilter.VK_FILTER_NEAREST.getValue(),
+                mipmap
+                    ? (blur
+                        ? VulkanConstants.VkSamplerMipmapMode.VK_SAMPLER_MIPMAP_MODE_LINEAR.getValue()
+                        : VulkanConstants.VkSamplerMipmapMode.VK_SAMPLER_MIPMAP_MODE_NEAREST.getValue())
+                    : VulkanConstants.VkSamplerMipmapMode.VK_SAMPLER_MIPMAP_MODE_NEAREST.getValue());
+            TextureProxy.setClamp(targetId,
+                clamp
+                    ? VulkanConstants.VkSamplerAddressMode.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.getValue()
+                    : VulkanConstants.VkSamplerAddressMode.VK_SAMPLER_ADDRESS_MODE_REPEAT.getValue());
 
             AuxiliaryTextures.loadAndUpload((NativeImage) (Object) this, self, level, offsetX,
                 offsetY, unpackSkipPixels, unpackSkipRows, regionWidth, regionHeight, blur);
@@ -57,7 +86,7 @@ public abstract class NativeImageMixins implements
             TextureProxy.queueUpload(pointer, (int) sizeBytes, width, targetId, unpackSkipPixels,
                 unpackSkipRows, offsetX, offsetY, regionWidth, regionHeight, level);
         } finally {
-            if (blur) {
+            if (close) {
                 this.close();
             }
         }

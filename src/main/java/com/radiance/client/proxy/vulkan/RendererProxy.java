@@ -40,6 +40,14 @@ public class RendererProxy {
         pipelineType = type;
     }
 
+    public static boolean hasOverlayPipeline() {
+        return pipelineType >= 0;
+    }
+
+    public static int getOverlayPipelineType() {
+        return pipelineType;
+    }
+
     public static native void drawOverlay(int vertexId, int indexId, int pipelineType,
         int indexCount, int indexType);
 
