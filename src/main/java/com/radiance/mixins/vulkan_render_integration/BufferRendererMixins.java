@@ -22,9 +22,10 @@ public class BufferRendererMixins {
         cancellable = true)
     private static void rewriteDrawWithGlobalProgram(BufferBuilder.BuiltBuffer buffer,
         CallbackInfo ci) {
-        int pipelineType = RendererProxy.hasOverlayPipeline()
-            ? RendererProxy.getOverlayPipelineType()
-            : resolveOverlayPipelineType(buffer);
+        int pipelineType = resolveOverlayPipelineType(buffer);
+        if (pipelineType < 0 && RendererProxy.hasOverlayPipeline()) {
+            pipelineType = RendererProxy.getOverlayPipelineType();
+        }
         if (pipelineType < 0) {
             return;
         }
@@ -39,6 +40,7 @@ public class BufferRendererMixins {
         RendererProxy.drawOverlay(handle,
             buffer.getParameters()
                 .indexCount(),
+            pipelineType,
             buffer.getParameters()
                 .indexType());
 

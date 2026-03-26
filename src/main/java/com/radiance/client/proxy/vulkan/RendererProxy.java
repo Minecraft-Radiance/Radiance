@@ -52,6 +52,13 @@ public class RendererProxy {
         int indexCount, int indexType);
 
     public static void drawOverlay(BufferProxy.VertexIndexBufferHandle handle, int indexCount,
+        int pipelineType,
+        VertexFormat.IndexType indexType) {
+        drawOverlay(handle.vertexId, handle.indexId, pipelineType, indexCount,
+            Constants.IndexTypes.getValue(indexType));
+    }
+
+    public static void drawOverlay(BufferProxy.VertexIndexBufferHandle handle, int indexCount,
         VertexFormat.IndexType indexType) {
         drawOverlay(handle.vertexId, handle.indexId, pipelineType, indexCount,
             Constants.IndexTypes.getValue(indexType));
