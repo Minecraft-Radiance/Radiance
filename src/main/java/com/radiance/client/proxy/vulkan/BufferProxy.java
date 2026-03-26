@@ -13,9 +13,9 @@ import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Map;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.BuiltBuffer;
+import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.Fog;
+import net.minecraft.client.render.FogShape;
 import net.minecraft.client.render.RenderPhase;
 import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.world.ClientWorld;
@@ -53,20 +53,20 @@ public class BufferProxy {
     public static native void performQueuedUpload();
 
     public static VertexIndexBufferHandle createAndUploadVertexIndexBuffer(
-        BuiltBuffer builtBuffer) {
-        BuiltBuffer.DrawParameters drawParameters = builtBuffer.getDrawParameters();
-        assert builtBuffer.getDrawParameters().mode() == VertexFormat.DrawMode.QUADS;
+        BufferBuilder.BuiltBuffer builtBuffer) {
+        BufferBuilder.DrawParameters drawParameters = builtBuffer.getParameters();
+        assert drawParameters.mode() == VertexFormat.DrawMode.QUADS;
 
         int vertexSize = drawParameters.vertexCount() * drawParameters.format().getVertexSizeByte();
         int vertexId = allocateBuffer();
         initializeBuffer(vertexId, vertexSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT.getValue());
-        queueUpload(builtBuffer.getBuffer(), vertexSize, vertexId);
+        queueUpload(builtBuffer.getVertexBuffer(), vertexSize, vertexId);
 
         int indexSize = drawParameters.indexCount() * drawParameters.indexType().size;
         int indexId = allocateBuffer();
         initializeBuffer(indexId, indexSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT.getValue());
-        if (builtBuffer.getSortedBuffer() != null) {
-            queueUpload(builtBuffer.getSortedBuffer(), indexSize, indexId);
+        if (builtBuffer.getIndexBuffer() != null) {
+            queueUpload(builtBuffer.getIndexBuffer(), indexSize, indexId);
         } else {
             int type = Constants.IndexTypes.getValue(drawParameters.indexType());
             int drawMode = Constants.DrawModes.getValue(drawParameters.mode());
@@ -110,20 +110,19 @@ public class BufferProxy {
             bb.putFloat(baseAddr, shaderGlintAlpha);
             baseAddr += Float.BYTES;
 
-            Fog fog = RenderSystem.getShaderFog();
-            float fogStart = fog.start();
+            float fogStart = RenderSystem.getShaderFogStart();
             bb.putFloat(baseAddr, fogStart);
             baseAddr += Float.BYTES;
 
-            float fogEnd = fog.end();
+            float fogEnd = RenderSystem.getShaderFogEnd();
             bb.putFloat(baseAddr, fogEnd);
             baseAddr += Float.BYTES;
 
-            int fogShape = fog.shape().getId();
+            int fogShape = RenderSystem.getShaderFogShape().getId();
             bb.putInt(baseAddr, fogShape);
             baseAddr += Integer.BYTES;
 
-            float[] fogColor = {fog.red(), fog.green(), fog.blue(), fog.alpha()};
+            float[] fogColor = RenderSystem.getShaderFogColor();
             for (int i = 0; i < 4; i++) {
                 bb.putFloat(baseAddr, fogColor[i]);
                 baseAddr += Float.BYTES;
@@ -202,8 +201,9 @@ public class BufferProxy {
     public static native void updateWorldUniform(long ptr);
 
     public static void updateWorldUniform(Camera camera, Matrix4f viewMatrix,
-        Matrix4f effectedViewMatrix, Matrix4f projectionMatrix, int overlayTextureID, Fog fog,
-        ClientWorld world, int endSkyTextureID, int endPortalTextureID) {
+        Matrix4f effectedViewMatrix, Matrix4f projectionMatrix, int overlayTextureID,
+        float fogStart, float fogEnd, float[] fogColor, FogShape fogShape, ClientWorld world,
+        int endSkyTextureID, int endPortalTextureID) {
         try (MemoryStack stack = stackPush()) {
             int size = 560;
             ByteBuffer bb = stack.malloc(size);
@@ -238,21 +238,21 @@ public class BufferProxy {
             baseAddr += Integer.BYTES;
             bb.putInt(baseAddr, camera.isThirdPerson() ? 0 : 1);
             baseAddr += Integer.BYTES;
-            bb.putFloat(baseAddr, fog.start());
+            bb.putFloat(baseAddr, fogStart);
             baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, fog.end());
-            baseAddr += Float.BYTES;
-
-            bb.putFloat(baseAddr, fog.red());
-            baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, fog.green());
-            baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, fog.blue());
-            baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, fog.alpha());
+            bb.putFloat(baseAddr, fogEnd);
             baseAddr += Float.BYTES;
 
-            bb.putInt(baseAddr, fog.shape().getId());
+            bb.putFloat(baseAddr, fogColor[0]);
+            baseAddr += Float.BYTES;
+            bb.putFloat(baseAddr, fogColor[1]);
+            baseAddr += Float.BYTES;
+            bb.putFloat(baseAddr, fogColor[2]);
+            baseAddr += Float.BYTES;
+            bb.putFloat(baseAddr, fogColor[3]);
+            baseAddr += Float.BYTES;
+
+            bb.putInt(baseAddr, fogShape.getId());
             baseAddr += Integer.BYTES;
             bb.putInt(baseAddr, world.getDimensionEffects().getSkyType().ordinal());
             baseAddr += Integer.BYTES;

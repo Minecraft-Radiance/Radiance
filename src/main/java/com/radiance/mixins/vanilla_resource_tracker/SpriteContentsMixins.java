@@ -28,7 +28,8 @@ public class SpriteContentsMixins implements ISpriteContentsExt {
     }
 
     @Inject(method = "upload(IIII[Lnet/minecraft/client/texture/NativeImage;)V",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/texture/NativeImage;upload(IIIIIIIZ)V"))
+        at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/texture/NativeImage;upload(IIIIIIIZZ)V"))
     public void setImageTargetIDBeforeUpload(int x,
         int y,
         int unpackSkipPixels,

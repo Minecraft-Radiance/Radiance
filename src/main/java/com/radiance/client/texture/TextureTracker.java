@@ -13,6 +13,7 @@ public class TextureTracker {
     public static Map<Integer, Integer> GLID2SpecularGLID = new ConcurrentHashMap<>();
     public static Map<Integer, Integer> GLID2NormalGLID = new ConcurrentHashMap<>();
     public static Map<Integer, Integer> GLID2FlagGLID = new ConcurrentHashMap<>();
+    public static volatile int currentBoundTextureID = -1;
 
     public record Texture(int width, int height, int channel, VulkanConstants.VkFormat format,
                           int maxLayer) {

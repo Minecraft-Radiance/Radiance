@@ -1,42 +1,20 @@
 package com.radiance.client.vertex;
 
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_ALBEDO_EMISSION;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_COLOR_LAYER;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_GLINT_TEXTURE;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_GLINT_UV;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_LIGHT_UV;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_NORM;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_OVERLAY_UV;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_POS;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_POST_BASE;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_TEXTURE_ID;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_TEXTURE_UV;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_COLOR_LAYER;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_GLINT;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_LIGHT;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_NORM;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_OVERLAY;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_TEXTURE;
-
 import java.nio.ByteOrder;
-import java.util.stream.Collectors;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.BuiltBuffer;
+import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.RenderPhase;
 import net.minecraft.client.render.VertexConsumer;
 import net.minecraft.client.render.VertexFormat;
-import net.minecraft.client.render.VertexFormatElement;
 import net.minecraft.client.texture.MissingSprite;
-import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Direction;
+import com.radiance.mixins.vulkan_render_integration.BufferBuilderMixins;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-import org.lwjgl.system.MemoryUtil;
 
 public class PBRVertexConsumer implements VertexConsumer {
 
@@ -44,48 +22,61 @@ public class PBRVertexConsumer implements VertexConsumer {
     private static final int ALPHA_MODE_OPAQUE = 0;
     private static final int ALPHA_MODE_CUTOUT = 1;
     private static final int ALPHA_MODE_TRANSPARENT = 2;
+    private static final int DEFAULT_INITIAL_BUFFER_SIZE = 32 * 1024;
 
-    private final BufferAllocator allocator;
+    private final BufferBuilder bufferBuilder;
     private final VertexFormat format;
     private final VertexFormat.DrawMode drawMode;
-
-    private final int vertexSizeByte;
-    private final int writableMask;
-    private final int requiredMask;
-    private final int[] offsetsByElementId;
-    private final float albedoEmission = 0;
-    private long vertexPointer = -1L;
     private int vertexCount = 0;
-    private int currentMask = 0;
     private boolean building = true;
     private int textureID;
     private final int alphaMode;
     private float baseX = 0;
     private float baseY = 0;
     private float baseZ = 0;
+    private boolean hasPendingVertex;
+    private float pendingX;
+    private float pendingY;
+    private float pendingZ;
+    private boolean useNorm;
+    private float normX;
+    private float normY;
+    private float normZ;
+    private boolean useColorLayer;
+    private float colorR;
+    private float colorG;
+    private float colorB;
+    private float colorA;
+    private boolean useTexture;
+    private float textureU;
+    private float textureV;
+    private boolean useOverlay;
+    private int overlayU;
+    private int overlayV;
+    private boolean useGlint;
+    private float glintU;
+    private float glintV;
+    private int glintTextureID;
+    private boolean useLight;
+    private int lightU;
+    private int lightV;
+    private float albedoEmission;
 
-    public PBRVertexConsumer(BufferAllocator allocator, RenderLayer renderLayer) {
-        this(allocator, VertexFormat.DrawMode.QUADS, PBRVertexFormats.PBR_TRIANGLE, renderLayer);
+    public PBRVertexConsumer(int initialSize, RenderLayer renderLayer) {
+        this(VertexFormat.DrawMode.QUADS, PBRVertexFormats.PBR_TRIANGLE,
+            Math.max(256, Math.min(initialSize, DEFAULT_INITIAL_BUFFER_SIZE)), renderLayer);
     }
 
-    private PBRVertexConsumer(BufferAllocator allocator, VertexFormat.DrawMode drawMode,
-        VertexFormat format, RenderLayer renderLayer) {
-        this.allocator = allocator;
+    public PBRVertexConsumer(RenderLayer renderLayer) {
+        this(DEFAULT_INITIAL_BUFFER_SIZE, renderLayer);
+    }
+
+    private PBRVertexConsumer(VertexFormat.DrawMode drawMode, VertexFormat format, int initialSize,
+        RenderLayer renderLayer) {
+        this.bufferBuilder = new BufferBuilder(initialSize);
         this.drawMode = drawMode;
         this.format = format;
-
-        this.vertexSizeByte = format.getVertexSizeByte();
-        this.writableMask = format.getRequiredMask() & ~PBR_POS.getBit();
-        this.requiredMask = 0;
-        this.offsetsByElementId = format.getOffsetsByElementId();
-
-        if (this.vertexSizeByte != 128) {
-            throw new IllegalStateException(
-                "PBR vertex stride must be 128, got " + this.vertexSizeByte);
-        }
-        if (!format.has(PBR_POS)) {
-            throw new IllegalArgumentException("PBR format must contain POSITION element");
-        }
+        this.bufferBuilder.begin(drawMode, format);
 
         if (renderLayer instanceof RenderLayer.MultiPhase) {
             Identifier
@@ -102,12 +93,7 @@ public class PBRVertexConsumer implements VertexConsumer {
     }
 
     private static void putInt(long ptr, int v) {
-        if (LITTLE_ENDIAN) {
-            MemoryUtil.memPutInt(ptr, v);
-        } else {
-            MemoryUtil.memPutShort(ptr, (short) (v & 0xFFFF));
-            MemoryUtil.memPutShort(ptr + 2L, (short) ((v >>> 16) & 0xFFFF));
-        }
+        throw new UnsupportedOperationException("Pointer writes are not used on 1.20.1");
     }
 
     private static int getAlphaMode(RenderLayer renderLayer) {
@@ -123,11 +109,9 @@ public class PBRVertexConsumer implements VertexConsumer {
             return ALPHA_MODE_CUTOUT;
         }
 
-        if (RenderPhase.NO_TRANSPARENCY.equals(multiPhase.phases.transparency)) {
-            return ALPHA_MODE_CUTOUT;
-        }
-
-        return ALPHA_MODE_TRANSPARENT;
+        return multiPhase.name.contains("translucent") || multiPhase.name.contains("glint")
+            || multiPhase.name.contains("lightning") ? ALPHA_MODE_TRANSPARENT :
+            ALPHA_MODE_CUTOUT;
     }
 
     public VertexFormat getFormat() {
@@ -151,267 +135,246 @@ public class PBRVertexConsumer implements VertexConsumer {
     }
 
     @Nullable
-    public BuiltBuffer endNullable() {
+    public BufferBuilder.BuiltBuffer endNullable() {
         ensureBuilding();
-        endVertex();
-        BuiltBuffer built = build();
+        flushPendingVertex();
+        BufferBuilder.BuiltBuffer built = this.vertexCount == 0 ? null : this.bufferBuilder.endNullable();
         building = false;
-        vertexPointer = -1L;
         return built;
     }
 
-    public BuiltBuffer end() {
-        BuiltBuffer built = endNullable();
+    public BufferBuilder.BuiltBuffer end() {
+        BufferBuilder.BuiltBuffer built = endNullable();
         if (built == null) {
             throw new IllegalStateException("PBRBufferBuilder was empty");
         }
         return built;
     }
 
-    @Nullable
-    private BuiltBuffer build() {
-        if (vertexCount == 0) {
-            return null;
+    public void close() {
+        if (this.building) {
+            this.bufferBuilder.clear();
+            this.building = false;
         }
-
-        BufferAllocator.CloseableBuffer buf = allocator.getAllocated();
-        if (buf == null) {
-            return null;
-        }
-
-        int indexCount = drawMode.getIndexCount(vertexCount);
-        VertexFormat.IndexType indexType = VertexFormat.IndexType.smallestFor(vertexCount);
-        return new BuiltBuffer(buf,
-            new BuiltBuffer.DrawParameters(format, vertexCount, indexCount, drawMode, indexType));
     }
 
-    private long beginVertex() {
-        ensureBuilding();
-        endVertex();
-
-        vertexCount++;
-        long ptr = allocator.allocate(vertexSizeByte);
-        vertexPointer = ptr;
-        MemoryUtil.memSet(ptr, 0, vertexSizeByte);
-
-        if (this.textureID != 0) {
-            int off = this.offsetsByElementId[PBR_TEXTURE_ID.id()];
-            if (off >= 0) {
-                putInt(ptr + off, this.textureID);
-            }
+    private void writeInt(int offset, int value) {
+        if (LITTLE_ENDIAN) {
+            this.bufferBuilder.putByte(offset, (byte) (value & 0xFF));
+            this.bufferBuilder.putByte(offset + 1, (byte) ((value >>> 8) & 0xFF));
+            this.bufferBuilder.putByte(offset + 2, (byte) ((value >>> 16) & 0xFF));
+            this.bufferBuilder.putByte(offset + 3, (byte) ((value >>> 24) & 0xFF));
+        } else {
+            this.bufferBuilder.putByte(offset, (byte) ((value >>> 24) & 0xFF));
+            this.bufferBuilder.putByte(offset + 1, (byte) ((value >>> 16) & 0xFF));
+            this.bufferBuilder.putByte(offset + 2, (byte) ((value >>> 8) & 0xFF));
+            this.bufferBuilder.putByte(offset + 3, (byte) (value & 0xFF));
         }
-
-        int offBase = this.offsetsByElementId[PBR_POST_BASE.id()];
-        if (offBase >= 0) {
-            MemoryUtil.memPutFloat(ptr + offBase, baseX);
-            MemoryUtil.memPutFloat(ptr + offBase + 4L, baseY);
-            MemoryUtil.memPutFloat(ptr + offBase + 8L, baseZ);
-            // Reuse the trailing padding word after postBase for alpha mode.
-            putInt(ptr + offBase + 12L, this.alphaMode);
-        }
-
-        return ptr;
     }
 
-    private long beginVertex(int glintTextureID) {
-        ensureBuilding();
-        endVertex();
-
-        vertexCount++;
-        long ptr = allocator.allocate(vertexSizeByte);
-        vertexPointer = ptr;
-        MemoryUtil.memSet(ptr, 0, vertexSizeByte);
-
-        if (this.textureID != 0) {
-            int off = this.offsetsByElementId[PBR_TEXTURE_ID.id()];
-            if (off >= 0) {
-                putInt(ptr + off, this.textureID);
-            }
-        }
-
-        int offBase = this.offsetsByElementId[PBR_POST_BASE.id()];
-        if (offBase >= 0) {
-            MemoryUtil.memPutFloat(ptr + offBase, baseX);
-            MemoryUtil.memPutFloat(ptr + offBase + 4L, baseY);
-            MemoryUtil.memPutFloat(ptr + offBase + 8L, baseZ);
-            // Reuse the trailing padding word after postBase for alpha mode.
-            putInt(ptr + offBase + 12L, this.alphaMode);
-        }
-
-        if (glintTextureID != 0) {
-            int off = this.offsetsByElementId[PBR_GLINT_TEXTURE.id()];
-            if (off >= 0) {
-                putInt(ptr + off, glintTextureID);
-            }
-        }
-
-        return ptr;
+    private void writeFlag(boolean enabled) {
+        writeInt(0, enabled ? 1 : 0);
+        this.bufferBuilder.nextElement();
     }
 
-    private long beginElement(VertexFormatElement element) {
-        int mask = currentMask;
-        int bit = element.getBit();
-        if ((mask & bit) == 0) {
-            return -1L;
-        }
-
-        currentMask = mask & ~bit;
-
-        long base = vertexPointer;
-        if (base == -1L) {
-            throw new IllegalStateException("Not currently building vertex");
-        }
-
-        int id = element.id();
-        int off = offsetsByElementId[id];
-        if (off < 0) {
-            throw new IllegalStateException(
-                "Element present in mask but not in format: " + element);
-        }
-        return base + off;
-    }
-
-    private void endVertex() {
-        if (vertexCount == 0) {
+    private void flushPendingVertex() {
+        if (!this.hasPendingVertex) {
             return;
         }
 
-        int missing = currentMask & requiredMask;
-        if (missing != 0) {
-            String
-                s =
-                VertexFormatElement.streamFromMask(currentMask)
-                    .map(format::getName)
-                    .collect(Collectors.joining(", "));
-            throw new IllegalStateException("Missing elements in vertex: " + s);
+        ensureBuilding();
+        ((BufferBuilderMixins) (Object) this.bufferBuilder).radiance$grow(this.format.getVertexSizeByte());
+
+        this.bufferBuilder.putFloat(0, pendingX);
+        this.bufferBuilder.putFloat(4, pendingY);
+        this.bufferBuilder.putFloat(8, pendingZ);
+        this.bufferBuilder.nextElement();
+
+        writeFlag(this.useNorm);
+        this.bufferBuilder.putFloat(0, this.normX);
+        this.bufferBuilder.putFloat(4, this.normY);
+        this.bufferBuilder.putFloat(8, this.normZ);
+        this.bufferBuilder.nextElement();
+
+        writeFlag(this.useColorLayer);
+        this.bufferBuilder.putFloat(0, this.colorR);
+        this.bufferBuilder.putFloat(4, this.colorG);
+        this.bufferBuilder.putFloat(8, this.colorB);
+        this.bufferBuilder.putFloat(12, this.colorA);
+        this.bufferBuilder.nextElement();
+
+        writeFlag(this.useTexture);
+        writeFlag(this.useOverlay);
+        this.bufferBuilder.putFloat(0, this.textureU);
+        this.bufferBuilder.putFloat(4, this.textureV);
+        this.bufferBuilder.nextElement();
+
+        writeInt(0, this.overlayU);
+        writeInt(4, this.overlayV);
+        this.bufferBuilder.nextElement();
+
+        writeFlag(this.useGlint);
+        writeInt(0, this.textureID);
+        this.bufferBuilder.nextElement();
+
+        this.bufferBuilder.putFloat(0, this.glintU);
+        this.bufferBuilder.putFloat(4, this.glintV);
+        this.bufferBuilder.nextElement();
+
+        writeInt(0, this.glintTextureID);
+        this.bufferBuilder.nextElement();
+        writeFlag(this.useLight);
+        writeInt(0, this.lightU);
+        writeInt(4, this.lightV);
+        this.bufferBuilder.nextElement();
+
+        writeInt(0, 0);
+        this.bufferBuilder.nextElement();
+        this.bufferBuilder.putFloat(0, this.albedoEmission);
+        this.bufferBuilder.nextElement();
+
+        this.bufferBuilder.putFloat(0, this.baseX);
+        this.bufferBuilder.putFloat(4, this.baseY);
+        this.bufferBuilder.putFloat(8, this.baseZ);
+        writeInt(12, this.alphaMode);
+        this.bufferBuilder.nextElement();
+        this.bufferBuilder.next();
+
+        this.vertexCount++;
+        this.hasPendingVertex = false;
+    }
+
+    private void beginVertex(float x, float y, float z, int glintTextureID) {
+        flushPendingVertex();
+        ensureBuilding();
+        this.hasPendingVertex = true;
+        this.pendingX = Float.isNaN(x) ? 0 : x;
+        this.pendingY = Float.isNaN(y) ? 0 : y;
+        this.pendingZ = Float.isNaN(z) ? 0 : z;
+        this.useNorm = false;
+        this.normX = 0;
+        this.normY = 0;
+        this.normZ = 0;
+        this.useColorLayer = false;
+        this.colorR = 0;
+        this.colorG = 0;
+        this.colorB = 0;
+        this.colorA = 0;
+        this.useTexture = false;
+        this.textureU = 0;
+        this.textureV = 0;
+        this.useOverlay = false;
+        this.overlayU = 0;
+        this.overlayV = 0;
+        this.useGlint = false;
+        this.glintU = 0;
+        this.glintV = 0;
+        this.glintTextureID = glintTextureID;
+        this.useLight = false;
+        this.lightU = 0;
+        this.lightV = 0;
+        this.albedoEmission = 0;
+    }
+
+    void useGlint(float u, float v) {
+        this.useGlint = true;
+        this.glintU = u;
+        this.glintV = v;
+    }
+
+    void useGlintTexture(int glintTextureID) {
+        this.glintTextureID = glintTextureID;
+        this.useGlint = glintTextureID != 0;
+    }
+
+    private void ensureVertexStarted() {
+        if (!this.hasPendingVertex) {
+            throw new IllegalStateException("Not currently building vertex");
         }
     }
 
     @Override
+    public VertexConsumer vertex(double x, double y, double z) {
+        beginVertex((float) x, (float) y, (float) z, 0);
+        return this;
+    }
+
     public VertexConsumer vertex(float x, float y, float z) {
-        long base = beginVertex();
-        currentMask = writableMask;
-
-        int posOff = offsetsByElementId[PBR_POS.id()];
-        long p = base + posOff;
-
-        if (Float.isNaN(x) || Float.isNaN(y) || Float.isNaN(z)) {
-            MemoryUtil.memPutFloat(p, 0);
-            MemoryUtil.memPutFloat(p + 4L, 0);
-            MemoryUtil.memPutFloat(p + 8L, 0);
-        } else {
-            MemoryUtil.memPutFloat(p, x);
-            MemoryUtil.memPutFloat(p + 4L, y);
-            MemoryUtil.memPutFloat(p + 8L, z);
-        }
-
+        beginVertex(x, y, z, 0);
         return this;
     }
 
     public VertexConsumer vertex(float x, float y, float z, int glintTextureID) {
-        long base = beginVertex(glintTextureID);
-        currentMask = writableMask;
-
-        int posOff = offsetsByElementId[PBR_POS.id()];
-        long p = base + posOff;
-
-        if (Float.isNaN(x) || Float.isNaN(y) || Float.isNaN(z)) {
-            MemoryUtil.memPutFloat(p, 0);
-            MemoryUtil.memPutFloat(p + 4L, 0);
-            MemoryUtil.memPutFloat(p + 8L, 0);
-        } else {
-            MemoryUtil.memPutFloat(p, x);
-            MemoryUtil.memPutFloat(p + 4L, y);
-            MemoryUtil.memPutFloat(p + 8L, z);
-        }
-
+        beginVertex(x, y, z, glintTextureID);
         return this;
     }
 
     @Override
     public VertexConsumer color(int red, int green, int blue, int alpha) {
-        long f = beginElement(PBR_USE_COLOR_LAYER);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
-
-        long p = beginElement(PBR_COLOR_LAYER);
-        if (p != -1L) {
-            MemoryUtil.memPutFloat(p, red / 255.0f);
-            MemoryUtil.memPutFloat(p + 4L, green / 255.0f);
-            MemoryUtil.memPutFloat(p + 8L, blue / 255.0f);
-            MemoryUtil.memPutFloat(p + 12L, alpha / 255.0f);
-        }
+        ensureVertexStarted();
+        this.useColorLayer = true;
+        this.colorR = red / 255.0f;
+        this.colorG = green / 255.0f;
+        this.colorB = blue / 255.0f;
+        this.colorA = alpha / 255.0f;
         return this;
     }
 
     @Override
     public VertexConsumer texture(float u, float v) {
-        long f = beginElement(PBR_USE_TEXTURE);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
-
-        long p = beginElement(PBR_TEXTURE_UV);
-        if (p != -1L) {
-            MemoryUtil.memPutFloat(p, u);
-            MemoryUtil.memPutFloat(p + 4L, v);
-        }
+        ensureVertexStarted();
+        this.useTexture = true;
+        this.textureU = u;
+        this.textureV = v;
         return this;
     }
 
     @Override
     public VertexConsumer overlay(int u, int v) {
-        long f = beginElement(PBR_USE_OVERLAY);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
-
-        long p = beginElement(PBR_OVERLAY_UV);
-        if (p != -1L) {
-            putInt(p, u);
-            putInt(p + 4L, v);
-        }
+        ensureVertexStarted();
+        this.useOverlay = true;
+        this.overlayU = u;
+        this.overlayV = v;
         return this;
     }
 
     @Override
     public VertexConsumer light(int u, int v) {
-        long f = beginElement(PBR_USE_LIGHT);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
-
-        long p = beginElement(PBR_LIGHT_UV);
-        if (p != -1L) {
-            putInt(p, u);
-            putInt(p + 4L, v);
-        }
+        ensureVertexStarted();
+        this.useLight = true;
+        this.lightU = u;
+        this.lightV = v;
         return this;
     }
 
     @Override
     public VertexConsumer normal(float x, float y, float z) {
-        long f = beginElement(PBR_USE_NORM);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
-
-        long p = beginElement(PBR_NORM);
-        if (p != -1L) {
-            MemoryUtil.memPutFloat(p, x);
-            MemoryUtil.memPutFloat(p + 4L, y);
-            MemoryUtil.memPutFloat(p + 8L, z);
-        }
+        ensureVertexStarted();
+        this.useNorm = true;
+        this.normX = x;
+        this.normY = y;
+        this.normZ = z;
         return this;
     }
 
     public VertexConsumer albedoEmission(float emission) {
-        long p = beginElement(PBR_ALBEDO_EMISSION);
-        if (p != -1L) {
-            MemoryUtil.memPutFloat(p, emission);
-        }
+        ensureVertexStarted();
+        this.albedoEmission = emission;
         return this;
+    }
+
+    @Override
+    public void next() {
+        flushPendingVertex();
+    }
+
+    @Override
+    public void fixedColor(int red, int green, int blue, int alpha) {
+        this.color(red, green, blue, alpha);
+    }
+
+    @Override
+    public void unfixColor() {
     }
 
     public static class GLint implements VertexConsumer {
@@ -435,8 +398,9 @@ public class PBRVertexConsumer implements VertexConsumer {
         }
 
         @Override
-        public VertexConsumer vertex(float x, float y, float z) {
-            delegate.vertex(x, y, z, this.glintTextureID);
+        public VertexConsumer vertex(double x, double y, double z) {
+            delegate.useGlintTexture(this.glintTextureID);
+            delegate.vertex((float) x, (float) y, (float) z, this.glintTextureID);
             return this;
         }
 
@@ -449,17 +413,7 @@ public class PBRVertexConsumer implements VertexConsumer {
         @Override
         public VertexConsumer texture(float u, float v) {
             delegate.texture(u, v);
-
-            long f = delegate.beginElement(PBR_USE_GLINT);
-            if (f != -1L) {
-                putInt(f, 1);
-            }
-
-            long p = delegate.beginElement(PBR_GLINT_UV);
-            if (p != -1L) {
-                MemoryUtil.memPutFloat(p, u);
-                MemoryUtil.memPutFloat(p + 4L, v);
-            }
+            delegate.useGlint(u, v);
             return this;
         }
 
@@ -479,6 +433,21 @@ public class PBRVertexConsumer implements VertexConsumer {
         public VertexConsumer normal(float x, float y, float z) {
             delegate.normal(x, y, z);
             return this;
+        }
+
+        @Override
+        public void next() {
+            delegate.next();
+        }
+
+        @Override
+        public void fixedColor(int red, int green, int blue, int alpha) {
+            delegate.fixedColor(red, green, blue, alpha);
+        }
+
+        @Override
+        public void unfixColor() {
+            delegate.unfixColor();
         }
     }
 
@@ -516,10 +485,20 @@ public class PBRVertexConsumer implements VertexConsumer {
         }
 
         @Override
+        public VertexConsumer vertex(double x, double y, double z) {
+            this.x = (float) x;
+            this.y = (float) y;
+            this.z = (float) z;
+            delegate.useGlintTexture(this.glintTextureID);
+            delegate.vertex(this.x, this.y, this.z, this.glintTextureID);
+            return this;
+        }
+
         public VertexConsumer vertex(float x, float y, float z) {
             this.x = x;
             this.y = y;
             this.z = z;
+            delegate.useGlintTexture(this.glintTextureID);
             delegate.vertex(x, y, z, this.glintTextureID);
             return this;
         }
@@ -558,18 +537,24 @@ public class PBRVertexConsumer implements VertexConsumer {
             vector3f2.rotateY((float) Math.PI);
             vector3f2.rotateX((float) (-Math.PI / 2));
             vector3f2.rotate(direction.getRotationQuaternion());
-
-            long f = delegate.beginElement(PBR_USE_GLINT);
-            if (f != -1L) {
-                putInt(f, 1);
-            }
-
-            long p = delegate.beginElement(PBR_GLINT_UV);
-            if (p != -1L) {
-                MemoryUtil.memPutFloat(p, -vector3f2.x() * this.textureScale);
-                MemoryUtil.memPutFloat(p + 4L, -vector3f2.y() * this.textureScale);
-            }
+            delegate.useGlint(-vector3f2.x() * this.textureScale,
+                -vector3f2.y() * this.textureScale);
             return this;
+        }
+
+        @Override
+        public void next() {
+            delegate.next();
+        }
+
+        @Override
+        public void fixedColor(int red, int green, int blue, int alpha) {
+            delegate.fixedColor(red, green, blue, alpha);
+        }
+
+        @Override
+        public void unfixColor() {
+            delegate.unfixColor();
         }
     }
 }
