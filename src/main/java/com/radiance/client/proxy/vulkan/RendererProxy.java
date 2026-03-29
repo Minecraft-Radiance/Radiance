@@ -49,8 +49,11 @@ public class RendererProxy {
     }
 
     public static void requestShutdown() {
+        if (shuttingDown) {
+            return;
+        }
+        shuttingDown = true;
         synchronized (TextureProxy.class) {
-            shuttingDown = true;
             beginShutdownNative();
         }
     }

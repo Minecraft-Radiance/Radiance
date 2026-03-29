@@ -24,6 +24,7 @@ def radianceWindowsJarPath = providers.gradleProperty("radianceWindowsJar")
     .orNull
 def radianceWindowsJar = radianceWindowsJarPath ? file(radianceWindowsJarPath) : null
 def extractedRadianceWindowsRuntimeDir = layout.buildDirectory.dir("generated/radianceRuntime/windows")
+def bundledXessRuntimeDir = file("external/MCVR/extern/xess/bin")
 def radianceAllowIncompleteRuntimePackaging = providers
     .gradleProperty("radianceAllowIncompleteRuntimePackaging")
     .map { it.toBoolean() }
@@ -215,8 +216,16 @@ processResources {
             include "libcore.so"
             include "nvngx_*.dll"
             include "libxess*.dll"
+            include "libxell.dll"
             include "sl.*.dll"
             include "NvLowLatencyVk.dll"
+        }
+    }
+
+    if (bundledXessRuntimeDir.exists()) {
+        from(bundledXessRuntimeDir) {
+            include "libxess*.dll"
+            include "libxell.dll"
         }
     }
 
