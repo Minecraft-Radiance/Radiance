@@ -7,12 +7,14 @@ import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.system.MemoryUtil.memSet;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.radiance.client.RadianceClient;
 import com.radiance.client.constant.Constants;
 import com.radiance.client.option.EnvironmentRenderStyles;
 import com.radiance.client.texture.TextureTracker;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.Camera;
@@ -25,6 +27,8 @@ import org.joml.Vector3f;
 import org.lwjgl.system.MemoryStack;
 
 public class BufferProxy {
+
+    private static final AtomicBoolean warnedAboutTextureSlotOverflow = new AtomicBoolean(false);
 
     public static native int allocateBuffer();
 
@@ -283,7 +287,7 @@ public class BufferProxy {
         float horizontalColorR, float horizontalColorG, float horizontalColorB,
         float horizontalColorA, Vector3f sunDirection, int skyType, boolean sunRisingOrSetting,
         boolean skyDark, boolean hasBlindnessOrDarkness, int submersionType, int moonPhase,
-        float rainGradient, int sunTextureID, int moonTextureID) {
+        float rainGradient, float cloudLayerHeight, int sunTextureID, int moonTextureID) {
         try (MemoryStack stack = stackPush()) {
             int size = 160;
             ByteBuffer bb = stack.malloc(size);
@@ -332,7 +336,7 @@ public class BufferProxy {
             baseAddr += Float.BYTES;
             bb.putFloat(baseAddr, EnvironmentRenderStyles.cloudVolumeMode().shaderId());
             baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, 0.0f);
+            bb.putFloat(baseAddr, cloudLayerHeight);
             baseAddr += Float.BYTES;
 
             // AtmosphereParams
@@ -354,7 +358,7 @@ public class BufferProxy {
 
     public static void updateMapping() {
         try (MemoryStack stack = stackPush()) {
-            final int elementCount = 4096;
+            final int elementCount = TextureTracker.MAX_TEXTURE_SLOTS;
             int size = elementCount * Integer.BYTES * 3;
             ByteBuffer bb = stack.malloc(size);
             long addr = memAddress(bb);
@@ -367,9 +371,7 @@ public class BufferProxy {
                 if (sourceID >= 0 && sourceID < elementCount) {
                     intView.put(sourceID * 3, targetID);
                 } else {
-                    throw new RuntimeException(
-                        "Specular mapping sourceID " + sourceID + " out of index [0, " + (
-                            elementCount - 1) + "]");
+                    warnTextureSlotOverflow(sourceID, elementCount);
                 }
             }
 
@@ -379,9 +381,7 @@ public class BufferProxy {
                 if (sourceID >= 0 && sourceID < elementCount) {
                     intView.put(sourceID * 3 + 1, targetID);
                 } else {
-                    throw new RuntimeException(
-                        "Normal mapping sourceID " + sourceID + " out of index [0, " + (elementCount
-                            - 1) + "]");
+                    warnTextureSlotOverflow(sourceID, elementCount);
                 }
             }
 
@@ -391,13 +391,19 @@ public class BufferProxy {
                 if (sourceID >= 0 && sourceID < elementCount) {
                     intView.put(sourceID * 3 + 2, targetID);
                 } else {
-                    throw new RuntimeException(
-                        "Flag mapping sourceID " + sourceID + " out of index [0, " + (elementCount
-                            - 1) + "]");
+                    warnTextureSlotOverflow(sourceID, elementCount);
                 }
             }
 
             updateMapping(addr);
+        }
+    }
+
+    private static void warnTextureSlotOverflow(int sourceId, int elementCount) {
+        if (warnedAboutTextureSlotOverflow.compareAndSet(false, true)) {
+            RadianceClient.LOGGER.warn(
+                "Texture id {} exceeded the supported mapping range [0, {}]. Auxiliary mappings for this id will be skipped.",
+                sourceId, elementCount - 1);
         }
     }
 

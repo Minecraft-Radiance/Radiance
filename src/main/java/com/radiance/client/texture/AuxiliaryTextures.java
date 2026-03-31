@@ -2,6 +2,7 @@ package com.radiance.client.texture;
 
 import com.radiance.client.constant.VulkanConstants;
 import com.radiance.client.proxy.vulkan.TextureProxy;
+import com.radiance.client.util.MaterialToolkit;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import java.io.IOException;
 import java.util.Arrays;
@@ -163,7 +164,9 @@ public enum AuxiliaryTextures {
                     }
 
                     if (!success) {
-                        auxiliaryTemplateImage = source.applyToCopy(i -> 0);
+                        auxiliaryTemplateImage = MaterialToolkit.isAutoPbrEnabled()
+                            ? AutoPBRGenerator.generate(auxiliaryTexture, identifier, source)
+                            : source.applyToCopy(i -> 0);
                     }
                 }
 

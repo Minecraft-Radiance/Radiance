@@ -7,6 +7,8 @@ public class TextureProxy {
 
     public synchronized static native int generateTextureId();
 
+    public synchronized static native void releaseTextureId(int id);
+
     public synchronized static native void prepareImage(int id, int mipLevels, int width,
         int height, int format);
 

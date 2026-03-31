@@ -2,11 +2,16 @@ package com.radiance.client.proxy.vulkan;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.radiance.client.constant.Constants;
+import com.radiance.client.RadianceClient;
+import com.radiance.client.util.HdrPngScreenshotWriter;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.INativeImageExt;
+import java.nio.ByteBuffer;
+import java.nio.file.Path;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.util.Window;
+import org.lwjgl.system.MemoryUtil;
 
 public class RendererProxy {
 
@@ -63,6 +68,7 @@ public class RendererProxy {
     }
 
     public static void closeRenderer() {
+        shuttingDown = true;
         synchronized (TextureProxy.class) {
             close();
         }
@@ -120,5 +126,19 @@ public class RendererProxy {
         NativeImage nativeImage = new NativeImage(width, height, false);
         ((INativeImageExt) (Object) nativeImage).radiance$loadFromTextureImageWithoutUI(0, true);
         return nativeImage;
+    }
+
+    public static Path exportHdrScreenshot() {
+        MinecraftClient mc = MinecraftClient.getInstance();
+        int width = mc.getWindow().getWidth();
+        int height = mc.getWindow().getHeight();
+        ByteBuffer buffer = MemoryUtil.memAlloc(width * height * 8);
+        try {
+            takeScreenshot(false, width, height, 8, MemoryUtil.memAddress(buffer));
+            Path directory = RadianceClient.radianceDir.resolve("screenshots");
+            return HdrPngScreenshotWriter.write(directory, width, height, buffer);
+        } finally {
+            MemoryUtil.memFree(buffer);
+        }
     }
 }

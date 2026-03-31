@@ -20,6 +20,7 @@ import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_TEXTURE
 
 import com.radiance.client.texture.TextureTracker;
 import java.nio.ByteOrder;
+import java.util.Locale;
 import java.util.stream.Collectors;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BuiltBuffer;
@@ -45,6 +46,7 @@ public class PBRVertexConsumer implements VertexConsumer {
     private static final int ALPHA_MODE_CUTOUT = 1;
     private static final int ALPHA_MODE_TRANSPARENT = 2;
     public static final int MATERIAL_HINT_FORCE_NO_PBR = 1 << 0;
+    public static final int MATERIAL_HINT_WIND_REACTIVE = 1 << 1;
 
     private final BufferAllocator allocator;
     private final VertexFormat format;
@@ -61,6 +63,7 @@ public class PBRVertexConsumer implements VertexConsumer {
     private boolean building = true;
     private int textureID;
     private final int alphaMode;
+    private final int defaultMaterialHints;
     private int materialHints = 0;
     private float baseX = 0;
     private float baseY = 0;
@@ -96,6 +99,8 @@ public class PBRVertexConsumer implements VertexConsumer {
                 MissingSprite.getMissingSpriteId());
         }
         this.alphaMode = getAlphaMode(renderLayer);
+        this.defaultMaterialHints = getDefaultMaterialHints(renderLayer);
+        this.materialHints = this.defaultMaterialHints;
     }
 
     private static void putInt(long ptr, int v) {
@@ -131,6 +136,25 @@ public class PBRVertexConsumer implements VertexConsumer {
         return ALPHA_MODE_TRANSPARENT;
     }
 
+    private static int getDefaultMaterialHints(RenderLayer renderLayer) {
+        if (!(renderLayer instanceof RenderLayer.MultiPhase multiPhase)) {
+            return 0;
+        }
+
+        String name = multiPhase.name.toLowerCase(Locale.ROOT);
+        boolean windReactive =
+            name.contains("cutout")
+                || name.contains("tripwire")
+                || name.contains("vine")
+                || name.contains("leaves")
+                || name.contains("grass")
+                || name.contains("plant")
+                || name.contains("crop")
+                || name.contains("sapling")
+                || name.contains("flower");
+        return windReactive ? MATERIAL_HINT_WIND_REACTIVE : 0;
+    }
+
     public VertexFormat getFormat() {
         return this.format;
     }
@@ -140,7 +164,7 @@ public class PBRVertexConsumer implements VertexConsumer {
     }
 
     public PBRVertexConsumer materialHints(int materialHints) {
-        this.materialHints = Math.max(materialHints, 0);
+        this.materialHints = Math.max(materialHints, 0) | this.defaultMaterialHints;
         return this;
     }
 

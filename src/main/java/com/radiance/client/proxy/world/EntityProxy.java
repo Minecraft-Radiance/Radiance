@@ -10,6 +10,8 @@ import com.radiance.client.constant.Constants;
 import com.radiance.client.constant.Constants.RayTracingFlags;
 import com.radiance.client.proxy.vulkan.BufferProxy;
 import com.radiance.client.texture.TextureTracker;
+import com.radiance.client.util.LightSourceDef;
+import com.radiance.client.util.LightSourceRegistry;
 import com.radiance.client.vertex.PBRVertexConsumer;
 import com.radiance.client.vertex.StorageVertexConsumerProvider;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IHeldItemRendererExt;
@@ -1102,6 +1104,10 @@ public class EntityProxy {
 
     private static float particleEmissionStrength(Particle particle) {
         String particleName = particle.getClass().getSimpleName().toLowerCase(Locale.ROOT);
+        LightSourceDef registeredSource = LightSourceRegistry.findParticle(particleName);
+        if (registeredSource != null) {
+            return LightSourceRegistry.resolveStrength(registeredSource, 0.0f);
+        }
         if (particleName.contains("soul")) {
             return 1.6f;
         }
@@ -1771,10 +1777,11 @@ public class EntityProxy {
             if (!(vertexConsumer instanceof PBRVertexConsumer pbrVertexConsumer)) {
                 return vertexConsumer;
             }
-            pbrVertexConsumer.materialHints(PBRVertexConsumer.MATERIAL_HINT_FORCE_NO_PBR);
             if (emissionStrength <= 0.0f) {
+                pbrVertexConsumer.materialHints(0);
                 return pbrVertexConsumer;
             }
+            pbrVertexConsumer.materialHints(PBRVertexConsumer.MATERIAL_HINT_FORCE_NO_PBR);
             return wrappedConsumers.computeIfAbsent(renderLayer,
                 unused -> new ParticleGlowVertexConsumer(pbrVertexConsumer, renderLayer,
                     emissionStrength));
