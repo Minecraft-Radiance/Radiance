@@ -4,9 +4,12 @@ import static net.minecraft.client.render.VertexFormat.DrawMode.QUADS;
 import static org.lwjgl.system.MemoryUtil.memAddress;
 
 import com.mojang.blaze3d.systems.VertexSorter;
+import com.mojang.logging.LogUtils;
+import com.radiance.client.RadianceClient;
 import com.radiance.client.constant.Constants;
 import com.radiance.client.proxy.vulkan.BufferProxy;
 import com.radiance.client.texture.TextureTracker;
+import com.radiance.client.util.ChunkLightCollector;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IChunkBuilderBuiltChunkExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IChunkBuilderExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IBlockColorsExt;
@@ -20,7 +23,10 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ThreadPoolExecutor;
 import net.minecraft.block.entity.BlockEntity;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
@@ -44,6 +50,8 @@ import net.minecraft.util.math.Vec3d;
 import org.lwjgl.system.MemoryUtil;
 
 public class ChunkProxy {
+
+    private static final org.slf4j.Logger LOGGER = LogUtils.getLogger();
 
     private static final long FNV64_OFFSET_BASIS = 0xcbf29ce484222325L;
     private static final long FNV64_PRIME = 0x100000001b3L;
@@ -76,21 +84,27 @@ public class ChunkProxy {
     private static final double VIEW_CONTRIBUTION_BASE_HALF_ANGLE_DEGREES = 100.0;
     private static final ExecutorService
         importantChunkRebuildExecutor =
-        Executors.newFixedThreadPool(numImportantChunkRebuildThreads, r -> {
-            Thread thread = new Thread(r);
-            thread.setPriority(Thread.NORM_PRIORITY);
-            return thread;
-        });
+        new ThreadPoolExecutor(numImportantChunkRebuildThreads, numImportantChunkRebuildThreads,
+            0L, TimeUnit.MILLISECONDS, new SynchronousQueue<>(),
+            r -> {
+                Thread thread = new Thread(r);
+                thread.setPriority(Thread.NORM_PRIORITY);
+                thread.setName("radiance-chunk-important");
+                return thread;
+            });
     private static final ThreadLocal<BlockBufferAllocatorStorage>
         blockBufferAllocatorStorageThreadLocal =
         ThreadLocal.withInitial(BlockBufferAllocatorStorage::new);
     public static int builtChunkNum = 0;
     private static long rebuildFrameCounter = 0L;
     private static final long VISIBLE_REBUILD_GRACE_FRAMES = 45L;
-    private static ExecutorService backgroundChunkRebuildExecutor = Executors.newFixedThreadPool(
-        numNormalChunkRebuildThreads, r -> {
+    private static ExecutorService backgroundChunkRebuildExecutor = new ThreadPoolExecutor(
+        numNormalChunkRebuildThreads, numNormalChunkRebuildThreads,
+        0L, TimeUnit.MILLISECONDS, new SynchronousQueue<>(),
+        r -> {
             Thread thread = new Thread(r);
             thread.setPriority(Thread.NORM_PRIORITY);
+            thread.setName("radiance-chunk-background");
             return thread;
         });
 
@@ -110,18 +124,30 @@ public class ChunkProxy {
     public static void clear() {
         waitImportantChunkRebuild();
 
-        backgroundChunkRebuildExecutor.shutdown();
-        try {
-            backgroundChunkRebuildExecutor.awaitTermination(Long.MAX_VALUE, TimeUnit.DAYS);
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-        backgroundChunkRebuildExecutor = Executors.newFixedThreadPool(numNormalChunkRebuildThreads,
+        // Create new executor BEFORE shutting down the old one to minimize task rejection window
+        ThreadPoolExecutor newBackgroundExecutor = new ThreadPoolExecutor(numNormalChunkRebuildThreads,
+            numNormalChunkRebuildThreads, 0L, TimeUnit.MILLISECONDS, new SynchronousQueue<>(),
             r -> {
                 Thread thread = new Thread(r);
                 thread.setPriority(Thread.NORM_PRIORITY);
+                thread.setName("radiance-chunk-background");
                 return thread;
             });
+
+        ExecutorService oldExecutor = backgroundChunkRebuildExecutor;
+        backgroundChunkRebuildExecutor = newBackgroundExecutor;
+
+        oldExecutor.shutdown();
+        try {
+            if (!oldExecutor.awaitTermination(30, TimeUnit.SECONDS)) {
+                LOGGER.warn("Background chunk rebuild executor did not terminate in time, forcing shutdown");
+                oldExecutor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            LOGGER.warn("Interrupted while waiting for background chunk rebuild executor", e);
+            oldExecutor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
 
         rebuildQueue.clear();
         rebuildTasks.clear();
@@ -203,16 +229,33 @@ public class ChunkProxy {
                 }
             }
 
+            boolean scheduled = false;
+            if (isImportant) {
+                try {
+                    Future<?> rebuildTask = importantChunkRebuildExecutor.submit(() ->
+                        rebuildSingle(builtChunk, true));
+                    rebuildTasks.add(rebuildTask);
+                    scheduled = true;
+                } catch (RejectedExecutionException e) {
+                    RadianceClient.LOGGER.warn("Important chunk rebuild task rejected for chunk {}, will retry",
+                        builtChunk.index);
+                    // Do NOT add to processedChunks - chunk remains in rebuildQueue for retry
+                    continue;
+                }
+            } else {
+                try {
+                    backgroundChunkRebuildExecutor.execute(() -> rebuildSingle(builtChunk, false));
+                    scheduled = true;
+                } catch (RejectedExecutionException e) {
+                    RadianceClient.LOGGER.warn("Background chunk rebuild task rejected for chunk {}, will retry",
+                        builtChunk.index);
+                    // Do NOT add to processedChunks - chunk remains in rebuildQueue for retry
+                    continue;
+                }
+            }
+
             builtChunk.cancelRebuild();
             processedChunks.add(rebuildEntry.getKey());
-
-            if (isImportant) {
-                Future<?> rebuildTask = importantChunkRebuildExecutor.submit(() ->
-                    rebuildSingle(builtChunk, true));
-                rebuildTasks.add(rebuildTask);
-            } else {
-                backgroundChunkRebuildExecutor.execute(() -> rebuildSingle(builtChunk, false));
-            }
         }
 
         for (Integer processedChunk : processedChunks) {
@@ -647,39 +690,10 @@ public class ChunkProxy {
 
     private static long computeLightStateHash(ChunkRendererRegion chunkRendererRegion,
         ChunkSectionPos chunkSectionPos) {
-        BlockPos minPos = chunkSectionPos.getMinPos();
-        BlockPos.Mutable mutable = new BlockPos.Mutable();
         BlockColors blockColors = MinecraftClient.getInstance().getBlockColors();
         IBlockColorsExt blockColorsExt =
             blockColors instanceof IBlockColorsExt ext ? ext : null;
-        long hash = FNV64_OFFSET_BASIS;
-
-        for (int localZ = 0; localZ < 16; localZ++) {
-            for (int localY = 0; localY < 16; localY++) {
-                for (int localX = 0; localX < 16; localX++) {
-                    mutable.set(minPos.getX() + localX, minPos.getY() + localY,
-                        minPos.getZ() + localZ);
-                    BlockState blockState = chunkRendererRegion.getBlockState(mutable);
-                    int stateId = Block.getRawIdFromState(blockState);
-                    int blockLight = chunkRendererRegion.getLightLevel(
-                        net.minecraft.world.LightType.BLOCK, mutable);
-                    int skyLight = chunkRendererRegion.getLightLevel(
-                        net.minecraft.world.LightType.SKY, mutable);
-                    int luminance = blockState.getLuminance();
-                    int emissiveHint = 0;
-                    if (blockColorsExt != null && !blockState.isAir()) {
-                        float emission = blockColorsExt.radiance$getEmission(blockState,
-                            chunkRendererRegion, mutable, 0);
-                        emissiveHint = Math.max(0, Math.min(255, Math.round(emission * 64.0f)));
-                    }
-
-                    hash = mixLightHash(hash, stateId);
-                    hash = mixLightHash(hash,
-                        blockLight | (skyLight << 4) | (luminance << 8) | (emissiveHint << 16));
-                }
-            }
-        }
-        return hash;
+        return ChunkLightCollector.collectHash(chunkRendererRegion, chunkSectionPos, blockColorsExt);
     }
 
     private static long mixLightHash(long hash, int value) {
