@@ -951,7 +951,7 @@ public class RenderPipelineScreen extends Screen {
     }
 
     private List<ClickableWidget> buildPresetWidgets(AttributeConfig cfg) {
-        return AttributeWidgetUtil.buildWidgets(cfg, textRenderer, 200, 64);
+        return AttributeWidgetUtil.buildWidgets(cfg, this, textRenderer, 200, 64);
     }
 
     private class PresetSelector {

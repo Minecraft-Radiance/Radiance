@@ -208,115 +208,124 @@ public class Pipeline {
 
     public static void build() {
         try {
-            Map<ImageConfig, ImageConfig> dstTosrcMap = new HashMap<>();
-            for (Map.Entry<ImageConfig, List<ImageConfig>> entry : INSTANCE.moduleConnections.entrySet()) {
-                ImageConfig source = entry.getKey();
-                for (ImageConfig dest : entry.getValue()) {
-                    if (dstTosrcMap.containsKey(dest)) {
-                        throw new RuntimeException(
-                                "Input config '" + dest.name + "' has multiple sources connected!");
-                    }
-                    dstTosrcMap.put(dest, source);
-                }
-            }
-
-            ImageConfig finalOutputConfig = null;
-            Module finalModule = null;
-
-            for (Module module : INSTANCE.modules) {
-                for (ImageConfig conf : module.outputImageConfigs) {
-                    if (conf.finalOutput) {
-                        if (finalOutputConfig != null) {
-                            throw new RuntimeException(
-                                    "Multiple final outputs detected! Only one allows.");
-                        }
-                        finalOutputConfig = conf;
-                        finalModule = module;
-                    }
-                }
-            }
-
-            if (finalOutputConfig == null) {
-                throw new RuntimeException("No final output configured.");
-            }
-
-            // topological sort
-            List<Module> sortedModules = new ArrayList<>();
-            Set<Module> visited = new HashSet<>();
-            Set<Module> visiting = new HashSet<>();
-
-            topologicalSort(finalModule, dstTosrcMap, visited, visiting, sortedModules);
-
-            // integrity check
-            for (Module m : sortedModules) {
-                for (ImageConfig inputConf : m.inputImageConfigs) {
-                    if (!dstTosrcMap.containsKey(inputConf)) {
-                        throw new RuntimeException(
-                                "Module '" + m.name + "' has unconnected input: " + inputConf.name);
-                    }
-                }
-            }
-
-            // image list
-            List<Integer> imageFormatList = new ArrayList<>();
-            Map<ImageConfig, Integer> configToImageIdMap = new HashMap<>();
-
-            int finalFmtId = VulkanConstants.VkFormat.getVkFormatByName(finalOutputConfig.format);
-            imageFormatList.add(finalFmtId);
-            configToImageIdMap.put(finalOutputConfig, 0);
-
-            for (Module module : sortedModules) {
-                for (ImageConfig outConfig : module.outputImageConfigs) {
-                    int imgId;
-                    if (configToImageIdMap.containsKey(outConfig)) {
-                        imgId = configToImageIdMap.get(outConfig);
-
-                        if (imgId != 0) {
-                            throw new RuntimeException();
-                        }
-                    } else {
-                        imgId = imageFormatList.size();
-                        imageFormatList.add(
-                                VulkanConstants.VkFormat.getVkFormatByName(outConfig.format));
-                        configToImageIdMap.put(outConfig, imgId);
-                    }
-
-                    List<ImageConfig> connectedInputs = INSTANCE.moduleConnections.get(outConfig);
-                    if (connectedInputs != null && !connectedInputs.isEmpty()) {
-                        for (ImageConfig inputConf : connectedInputs) {
-                            configToImageIdMap.put(inputConf, imgId);
-                        }
-                    }
-                }
-            }
-
-            List<List<AttributeConfig>> moduleAttributes = new ArrayList<>();
-            for (Module m : sortedModules) {
-                moduleAttributes.add(
-                        m.attributeConfigs != null ? m.attributeConfigs : new ArrayList<>());
-            }
-
-            buildNative(sortedModules, imageFormatList, configToImageIdMap, moduleAttributes);
-        } catch (Exception e) {
-            RadianceClient.LOGGER.error("Failed to build render pipeline", e);
-            if (!buildRecoveryInProgress) {
-                buildRecoveryInProgress = true;
-                try {
-                    clear();
-                    assembleBestAvailablePreset(
-                        "Pipeline build failed (" + e.getMessage() + ").");
-                    build();
-                    return;
-                } catch (Exception recoveryException) {
-                    RadianceClient.LOGGER.error("Fallback pipeline build also failed",
-                        recoveryException);
-                } finally {
-                    buildRecoveryInProgress = false;
-                }
-            }
-        } finally {
+            buildOnce();
             savePipeline();
+        } catch (Exception initialFailure) {
+            RadianceClient.LOGGER.error("Failed to build render pipeline", initialFailure);
+            if (buildRecoveryInProgress) {
+                throw new IllegalStateException("Failed to build render pipeline", initialFailure);
+            }
+
+            buildRecoveryInProgress = true;
+            try {
+                clear();
+                assembleBestAvailablePreset(
+                    "Pipeline build failed (" + initialFailure.getMessage() + ").");
+                buildOnce();
+                savePipeline();
+            } catch (Exception recoveryFailure) {
+                RadianceClient.LOGGER.error("Fallback pipeline build also failed",
+                    recoveryFailure);
+                IllegalStateException combinedFailure = new IllegalStateException(
+                    "Fallback pipeline build also failed", recoveryFailure);
+                combinedFailure.addSuppressed(initialFailure);
+                throw combinedFailure;
+            } finally {
+                buildRecoveryInProgress = false;
+            }
         }
+    }
+
+    private static void buildOnce() {
+        Map<ImageConfig, ImageConfig> dstTosrcMap = new HashMap<>();
+        for (Map.Entry<ImageConfig, List<ImageConfig>> entry : INSTANCE.moduleConnections.entrySet()) {
+            ImageConfig source = entry.getKey();
+            for (ImageConfig dest : entry.getValue()) {
+                if (dstTosrcMap.containsKey(dest)) {
+                    throw new RuntimeException(
+                            "Input config '" + dest.name + "' has multiple sources connected!");
+                }
+                dstTosrcMap.put(dest, source);
+            }
+        }
+
+        ImageConfig finalOutputConfig = null;
+        Module finalModule = null;
+
+        for (Module module : INSTANCE.modules) {
+            for (ImageConfig conf : module.outputImageConfigs) {
+                if (conf.finalOutput) {
+                    if (finalOutputConfig != null) {
+                        throw new RuntimeException(
+                                "Multiple final outputs detected! Only one allows.");
+                    }
+                    finalOutputConfig = conf;
+                    finalModule = module;
+                }
+            }
+        }
+
+        if (finalOutputConfig == null) {
+            throw new RuntimeException("No final output configured.");
+        }
+
+        // topological sort
+        List<Module> sortedModules = new ArrayList<>();
+        Set<Module> visited = new HashSet<>();
+        Set<Module> visiting = new HashSet<>();
+
+        topologicalSort(finalModule, dstTosrcMap, visited, visiting, sortedModules);
+
+        // integrity check
+        for (Module m : sortedModules) {
+            for (ImageConfig inputConf : m.inputImageConfigs) {
+                if (!dstTosrcMap.containsKey(inputConf)) {
+                    throw new RuntimeException(
+                            "Module '" + m.name + "' has unconnected input: " + inputConf.name);
+                }
+            }
+        }
+
+        // image list
+        List<Integer> imageFormatList = new ArrayList<>();
+        Map<ImageConfig, Integer> configToImageIdMap = new HashMap<>();
+
+        int finalFmtId = VulkanConstants.VkFormat.getVkFormatByName(finalOutputConfig.format);
+        imageFormatList.add(finalFmtId);
+        configToImageIdMap.put(finalOutputConfig, 0);
+
+        for (Module module : sortedModules) {
+            for (ImageConfig outConfig : module.outputImageConfigs) {
+                int imgId;
+                if (configToImageIdMap.containsKey(outConfig)) {
+                    imgId = configToImageIdMap.get(outConfig);
+
+                    if (imgId != 0) {
+                        throw new RuntimeException();
+                    }
+                } else {
+                    imgId = imageFormatList.size();
+                    imageFormatList.add(
+                            VulkanConstants.VkFormat.getVkFormatByName(outConfig.format));
+                    configToImageIdMap.put(outConfig, imgId);
+                }
+
+                List<ImageConfig> connectedInputs = INSTANCE.moduleConnections.get(outConfig);
+                if (connectedInputs != null && !connectedInputs.isEmpty()) {
+                    for (ImageConfig inputConf : connectedInputs) {
+                        configToImageIdMap.put(inputConf, imgId);
+                    }
+                }
+            }
+        }
+
+        List<List<AttributeConfig>> moduleAttributes = new ArrayList<>();
+        for (Module m : sortedModules) {
+            moduleAttributes.add(
+                    m.attributeConfigs != null ? m.attributeConfigs : new ArrayList<>());
+        }
+
+        buildNative(sortedModules, imageFormatList, configToImageIdMap, moduleAttributes);
     }
 
     private static void topologicalSort(Module current,
@@ -885,6 +894,32 @@ public class Pipeline {
         return fallback;
     }
 
+    public static String getDefaultModuleAttributeValue(String moduleName, String attributeName,
+        String fallback) {
+        if (INSTANCE.moduleEntries == null || moduleName == null || attributeName == null) {
+            return fallback;
+        }
+
+        ModuleEntry moduleEntry = INSTANCE.moduleEntries.get(moduleName);
+        if (moduleEntry == null) {
+            return fallback;
+        }
+
+        Module module = moduleEntry.loadModule();
+        if (module == null || module.attributeConfigs == null) {
+            return fallback;
+        }
+
+        for (AttributeConfig attributeConfig : module.attributeConfigs) {
+            if (!Objects.equals(attributeConfig.name, attributeName)) {
+                continue;
+            }
+            return attributeConfig.value != null ? attributeConfig.value : fallback;
+        }
+
+        return fallback;
+    }
+
     public static int getModuleAttributeIntValue(String moduleName, String attributeName,
         int fallback) {
         String value = getModuleAttributeValue(moduleName, attributeName, null);
@@ -1227,7 +1262,7 @@ public class Pipeline {
         dumperOptions.setIndent(2);
 
         Yaml yaml = new Yaml(dumperOptions);
-        String yamlText = yaml.dump(storage);
+        String yamlText = yaml.dumpAsMap(storage);
 
         try {
             Files.createDirectories(PIPELINE_CONFIG_PATH.getParent());
@@ -1392,7 +1427,8 @@ public class Pipeline {
             return;
         }
 
-        ImageConfig finalImageConfig = finalModule.getOutputImageConfig(pipelineStorage.finalOutputImageName);
+        ImageConfig finalImageConfig = finalModule.findOutputImageConfig(
+            pipelineStorage.finalOutputImageName);
         if (finalImageConfig == null) {
             INSTANCE.mode = PipelineMode.PRESET;
             assembleDefault();
@@ -1420,8 +1456,10 @@ public class Pipeline {
                     continue;
                 }
 
-                ImageConfig srcImageConfig = srcModule.getOutputImageConfig(storedConnection.srcImageName);
-                ImageConfig dstImageConfig = dstModule.getInputImageConfig(storedConnection.dstImageName);
+                ImageConfig srcImageConfig = srcModule.findOutputImageConfig(
+                    storedConnection.srcImageName);
+                ImageConfig dstImageConfig = dstModule.findInputImageConfig(
+                    storedConnection.dstImageName);
 
                 if (srcImageConfig == null || dstImageConfig == null) {
                     continue;
@@ -1443,8 +1481,10 @@ public class Pipeline {
 
         if (storage == null) {
             INSTANCE.mode = PipelineMode.PRESET;
-            assembleDefault();
+            assemblePreset(Options.getPreferredPresetForCurrentQuality());
+            Options.applyQualityProfile(false);
             savePipeline();
+            build();
             return;
         }
 

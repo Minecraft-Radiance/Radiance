@@ -8,6 +8,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
 
@@ -95,6 +97,8 @@ public class Options {
         "render_pipeline.module.ray_tracing.attribute.reflection_ray_material_mode";
     private static final String RT_DIFFUSE_GI_MODE =
         "render_pipeline.module.ray_tracing.attribute.diffuse_gi_mode";
+    private static final String RT_CLOUD_VOLUME_MODE =
+        "render_pipeline.module.ray_tracing.attribute.cloud_volume_mode";
     private static final String RT_TRANSPARENT_SPLIT_MODE =
         "render_pipeline.module.ray_tracing.attribute.transparent_split_mode";
     private static final String RT_USE_JITTER =
@@ -247,8 +251,10 @@ public class Options {
     public static int rayBounces = 4;
     public static int chunkBuildingBatchSize = 14;
     public static int chunkBuildingTotalBatches = 16;
+    private static final List<String> invalidOptionKeys = new ArrayList<>();
 
     public static void readOptions() {
+        clearInvalidOptionWarnings();
         Path path = RadianceClient.radianceDir.resolve(OPTION_PROPERTIES);
         if (!Files.exists(path)) {
 //            System.out.println("Generating default options...");
@@ -260,42 +266,92 @@ public class Options {
         try (InputStream in = Files.newInputStream(path)) {
             props.load(in);
 
-            setMaxFps(Integer.parseInt(props.getProperty("maxFps", String.valueOf(maxFps))), false);
-            setInactivityFpsLimit(Integer.parseInt(
-                    props.getProperty("inactivityFpsLimit", String.valueOf(inactivityFpsLimit))),
-                false);
-            setVsync(Boolean.parseBoolean(props.getProperty("vsync", String.valueOf(vsync))),
-                false);
-            setHdrOutput(Boolean.parseBoolean(props.getProperty("hdrOutput",
-                String.valueOf(hdrOutput))), false);
-            setDlssFrameGeneration(Boolean.parseBoolean(props.getProperty("dlssFrameGeneration",
-                String.valueOf(dlssFrameGeneration))), false);
-            setOutputScale2x(Boolean.parseBoolean(props.getProperty("outputScale2x",
-                String.valueOf(outputScale2x))), false);
-            setSimplifiedIndirect(Boolean.parseBoolean(props.getProperty("simplifiedIndirect",
-                String.valueOf(simplifiedIndirect))), false);
-            setReflexEnabled(Boolean.parseBoolean(props.getProperty("reflexEnabled",
-                String.valueOf(reflexEnabled))), false);
-            setReflexBoost(Boolean.parseBoolean(props.getProperty("reflexBoost",
-                String.valueOf(reflexBoost))), false);
-            setVrrMode(Boolean.parseBoolean(props.getProperty("vrrMode",
-                String.valueOf(vrrMode))), false);
-            qualityLevel = Integer.parseInt(
-                props.getProperty("qualityLevel", String.valueOf(qualityLevel)));
-            setRayBounces(Integer.parseInt(props.getProperty("rayBounces",
-                String.valueOf(rayBounces))), false);
-            setChunkBuildingBatchSize(Integer.parseInt(props.getProperty("chunkBuildingBatchSize",
-                    String.valueOf(chunkBuildingBatchSize))),
-                false);
+            setMaxFps(parseIntProperty(props, "maxFps", maxFps), false);
+            setInactivityFpsLimit(parseIntProperty(props, "inactivityFpsLimit",
+                inactivityFpsLimit), false);
+            setVsync(parseBooleanProperty(props, "vsync", vsync), false);
+            setHdrOutput(parseBooleanProperty(props, "hdrOutput", hdrOutput), false);
+            setDlssFrameGeneration(parseBooleanProperty(props, "dlssFrameGeneration",
+                dlssFrameGeneration), false);
+            setOutputScale2x(parseBooleanProperty(props, "outputScale2x", outputScale2x), false);
+            setSimplifiedIndirect(parseBooleanProperty(props, "simplifiedIndirect",
+                simplifiedIndirect), false);
+            setReflexEnabled(parseBooleanProperty(props, "reflexEnabled", reflexEnabled), false);
+            setReflexBoost(parseBooleanProperty(props, "reflexBoost", reflexBoost), false);
+            setVrrMode(parseBooleanProperty(props, "vrrMode", vrrMode), false);
+            qualityLevel = parseIntProperty(props, "qualityLevel", qualityLevel);
+            dlssMode = clamp(parseIntProperty(props, "dlssMode", dlssMode), 0, 3);
+            upscalerType = clamp(parseIntProperty(props, "upscalerType", upscalerType), 0, 1);
+            upscalerQuality = clamp(parseIntProperty(props, "upscalerQuality", upscalerQuality), 0,
+                3);
+            denoiserMode = clamp(parseIntProperty(props, "denoiserMode", denoiserMode), 0, 3);
+            setRayBounces(parseIntProperty(props, "rayBounces", rayBounces), false);
+            setChunkBuildingBatchSize(parseIntProperty(props, "chunkBuildingBatchSize",
+                chunkBuildingBatchSize), false);
             setChunkBuildingTotalBatches(
-                Integer.parseInt(props.getProperty("chunkBuildingTotalBatches",
-                    String.valueOf(chunkBuildingTotalBatches))), false);
+                parseIntProperty(props, "chunkBuildingTotalBatches", chunkBuildingTotalBatches),
+                false);
+
+            if (hasInvalidOptionValues()) {
+                RadianceClient.LOGGER.warn(
+                    "Invalid values were found in {} for keys {}. Defaults were applied and the file will be rewritten.",
+                    path, invalidOptionKeys);
+            }
 
             overwriteConfig();
 //            System.out.println("Successfully read options: " + path);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static boolean hasInvalidOptionValues() {
+        return !invalidOptionKeys.isEmpty();
+    }
+
+    public static List<String> getInvalidOptionKeys() {
+        return List.copyOf(invalidOptionKeys);
+    }
+
+    private static void clearInvalidOptionWarnings() {
+        invalidOptionKeys.clear();
+    }
+
+    private static void recordInvalidOption(String key, String rawValue) {
+        if (!invalidOptionKeys.contains(key)) {
+            invalidOptionKeys.add(key);
+        }
+        RadianceClient.LOGGER.warn(
+            "Invalid options.properties value for '{}': '{}'. Falling back to the default value.",
+            key, rawValue);
+    }
+
+    private static int parseIntProperty(Properties props, String key, int fallback) {
+        String rawValue = props.getProperty(key);
+        if (rawValue == null || rawValue.isBlank()) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(rawValue.trim());
+        } catch (NumberFormatException e) {
+            recordInvalidOption(key, rawValue);
+            return fallback;
+        }
+    }
+
+    private static boolean parseBooleanProperty(Properties props, String key, boolean fallback) {
+        String rawValue = props.getProperty(key);
+        if (rawValue == null || rawValue.isBlank()) {
+            return fallback;
+        }
+        if ("true".equalsIgnoreCase(rawValue.trim())) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(rawValue.trim())) {
+            return false;
+        }
+        recordInvalidOption(key, rawValue);
+        return fallback;
     }
 
     public static void overwriteConfig() {
@@ -490,6 +546,20 @@ public class Options {
         }
     }
 
+    public static void setDlssMode(int dlssMode, boolean write) {
+        Options.dlssMode = Math.max(0, Math.min(3, dlssMode));
+        String mappedMode = switch (Options.dlssMode) {
+            case 0 -> "render_pipeline.module.dlss.attribute.mode.performance";
+            case 1 -> "render_pipeline.module.dlss.attribute.mode.balanced";
+            case 2 -> "render_pipeline.module.dlss.attribute.mode.quality";
+            default -> "render_pipeline.module.dlss.attribute.mode.dlaa";
+        };
+        setAttr(DLSS_MODULE, DLSS_MODE_ATTRIBUTE, mappedMode);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
     public static void applyQualityProfile(boolean rebuildPipeline) {
         applyQualityProfile(QualityLevel.fromId(qualityLevel), rebuildPipeline, false);
     }
@@ -505,7 +575,10 @@ public class Options {
 
         boolean pipelineChanged = false;
         if (Pipeline.INSTANCE.getModuleEntries() != null) {
-            pipelineChanged |= preparePresetForQuality(resolvedLevel);
+            boolean shouldSwitchPreset = writeOptions || Pipeline.INSTANCE.getModules().isEmpty();
+            if (shouldSwitchPreset) {
+                pipelineChanged |= preparePresetForQuality(resolvedLevel);
+            }
             if (!Pipeline.INSTANCE.getModules().isEmpty()) {
                 pipelineChanged |= applyPipelineQualityProfile(resolvedLevel);
             }
@@ -609,6 +682,8 @@ public class Options {
             "render_pipeline.module.ray_tracing.attribute.reflection_ray_material_mode.water_glass_metal");
         changed |= setAttr(RAY_TRACING_MODULE, RT_DIFFUSE_GI_MODE,
             "render_pipeline.module.ray_tracing.attribute.diffuse_gi_mode.low_cost_hybrid");
+        changed |= setAttr(RAY_TRACING_MODULE, RT_CLOUD_VOLUME_MODE,
+            "render_pipeline.module.ray_tracing.attribute.cloud_volume_mode.native");
         changed |= setAttr(RAY_TRACING_MODULE, RT_TERRAIN_UPDATE_INTERVAL_FRAMES, "4");
         changed |= setAttr(RAY_TRACING_MODULE, RT_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
         changed |= setAttr(RAY_TRACING_MODULE, RT_BLOCK_ENTITY_UPDATE_INTERVAL_FRAMES, "2");
@@ -631,23 +706,23 @@ public class Options {
         changed |= setAttr(RAY_TRACING_MODULE, RT_INDIRECT_LIGHT_STRENGTH, "16.5");
         changed |= setAttr(NRD_MODULE, NRD_ANTILAG_LUMINANCE_SIGMA_SCALE, "4.6");
         changed |= setAttr(NRD_MODULE, NRD_ANTILAG_LUMINANCE_SENSITIVITY, "3.6");
-        changed |= setAttr(NRD_MODULE, NRD_RESPONSIVE_ACCUMULATION_ROUGHNESS_THRESHOLD, "0.10");
+        changed |= setAttr(NRD_MODULE, NRD_RESPONSIVE_ACCUMULATION_ROUGHNESS_THRESHOLD, "0.16");
         changed |= setAttr(NRD_MODULE, NRD_RESPONSIVE_ACCUMULATION_MIN_ACCUMULATED_FRAME_NUM, "1");
-        changed |= setAttr(NRD_MODULE, NRD_MAX_ACCUMULATED_FRAME_NUM, "44");
-        changed |= setAttr(NRD_MODULE, NRD_MAX_FAST_ACCUMULATED_FRAME_NUM, "2");
-        changed |= setAttr(NRD_MODULE, NRD_MAX_STABILIZED_FRAME_NUM, "44");
+        changed |= setAttr(NRD_MODULE, NRD_MAX_ACCUMULATED_FRAME_NUM, "24");
+        changed |= setAttr(NRD_MODULE, NRD_MAX_FAST_ACCUMULATED_FRAME_NUM, "1");
+        changed |= setAttr(NRD_MODULE, NRD_MAX_STABILIZED_FRAME_NUM, "28");
         changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_FRAME_NUM, "1");
-        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_BASE_PIXEL_STRIDE, "18");
-        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_ALTERNATE_PIXEL_STRIDE, "20");
-        changed |= setAttr(NRD_MODULE, NRD_FAST_HISTORY_CLAMPING_SIGMA_SCALE, "1.9");
-        changed |= setAttr(NRD_MODULE, NRD_DIFFUSE_PREPASS_BLUR_RADIUS, "34.0");
-        changed |= setAttr(NRD_MODULE, NRD_SPECULAR_PREPASS_BLUR_RADIUS, "56.0");
+        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_BASE_PIXEL_STRIDE, "10");
+        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_ALTERNATE_PIXEL_STRIDE, "12");
+        changed |= setAttr(NRD_MODULE, NRD_FAST_HISTORY_CLAMPING_SIGMA_SCALE, "1.35");
+        changed |= setAttr(NRD_MODULE, NRD_DIFFUSE_PREPASS_BLUR_RADIUS, "18.0");
+        changed |= setAttr(NRD_MODULE, NRD_SPECULAR_PREPASS_BLUR_RADIUS, "26.0");
         changed |= setAttr(NRD_MODULE, NRD_MIN_HIT_DISTANCE_WEIGHT, "0.12");
         changed |= setAttr(NRD_MODULE, NRD_MIN_BLUR_RADIUS, "1.2");
-        changed |= setAttr(NRD_MODULE, NRD_MAX_BLUR_RADIUS, "116.0");
+        changed |= setAttr(NRD_MODULE, NRD_MAX_BLUR_RADIUS, "48.0");
         changed |= setAttr(NRD_MODULE, NRD_LOBE_ANGLE_FRACTION, "0.19");
         changed |= setAttr(NRD_MODULE, NRD_ROUGHNESS_FRACTION, "0.18");
-        changed |= setAttr(NRD_MODULE, NRD_PLANE_DISTANCE_SENSITIVITY, "0.030");
+        changed |= setAttr(NRD_MODULE, NRD_PLANE_DISTANCE_SENSITIVITY, "0.040");
         changed |= setAttr(NRD_MODULE, NRD_SPECULAR_PROBABILITY_THRESHOLD_MIN, "0.44");
         changed |= setAttr(NRD_MODULE, NRD_SPECULAR_PROBABILITY_THRESHOLD_MAX, "0.82");
         changed |= setAttr(NRD_MODULE, NRD_FIREFLY_SUPPRESSOR_MIN_RELATIVE_SCALE, "2.4");
@@ -715,6 +790,8 @@ public class Options {
             "render_pipeline.module.ray_tracing.attribute.reflection_ray_material_mode.water_glass_metal");
         changed |= setAttr(RAY_TRACING_MODULE, RT_DIFFUSE_GI_MODE,
             "render_pipeline.module.ray_tracing.attribute.diffuse_gi_mode.low_cost_hybrid");
+        changed |= setAttr(RAY_TRACING_MODULE, RT_CLOUD_VOLUME_MODE,
+            "render_pipeline.module.ray_tracing.attribute.cloud_volume_mode.efficient_volume");
         changed |= setAttr(RAY_TRACING_MODULE, RT_TERRAIN_UPDATE_INTERVAL_FRAMES, "3");
         changed |= setAttr(RAY_TRACING_MODULE, RT_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
         changed |= setAttr(RAY_TRACING_MODULE, RT_BLOCK_ENTITY_UPDATE_INTERVAL_FRAMES, "2");
@@ -737,23 +814,23 @@ public class Options {
         changed |= setAttr(RAY_TRACING_MODULE, RT_INDIRECT_LIGHT_STRENGTH, "17.0");
         changed |= setAttr(NRD_MODULE, NRD_ANTILAG_LUMINANCE_SIGMA_SCALE, "4.2");
         changed |= setAttr(NRD_MODULE, NRD_ANTILAG_LUMINANCE_SENSITIVITY, "3.3");
-        changed |= setAttr(NRD_MODULE, NRD_RESPONSIVE_ACCUMULATION_ROUGHNESS_THRESHOLD, "0.08");
-        changed |= setAttr(NRD_MODULE, NRD_RESPONSIVE_ACCUMULATION_MIN_ACCUMULATED_FRAME_NUM, "2");
-        changed |= setAttr(NRD_MODULE, NRD_MAX_ACCUMULATED_FRAME_NUM, "54");
-        changed |= setAttr(NRD_MODULE, NRD_MAX_FAST_ACCUMULATED_FRAME_NUM, "3");
-        changed |= setAttr(NRD_MODULE, NRD_MAX_STABILIZED_FRAME_NUM, "58");
-        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_FRAME_NUM, "2");
-        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_BASE_PIXEL_STRIDE, "16");
-        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_ALTERNATE_PIXEL_STRIDE, "16");
-        changed |= setAttr(NRD_MODULE, NRD_FAST_HISTORY_CLAMPING_SIGMA_SCALE, "1.8");
-        changed |= setAttr(NRD_MODULE, NRD_DIFFUSE_PREPASS_BLUR_RADIUS, "30.0");
-        changed |= setAttr(NRD_MODULE, NRD_SPECULAR_PREPASS_BLUR_RADIUS, "50.0");
+        changed |= setAttr(NRD_MODULE, NRD_RESPONSIVE_ACCUMULATION_ROUGHNESS_THRESHOLD, "0.12");
+        changed |= setAttr(NRD_MODULE, NRD_RESPONSIVE_ACCUMULATION_MIN_ACCUMULATED_FRAME_NUM, "1");
+        changed |= setAttr(NRD_MODULE, NRD_MAX_ACCUMULATED_FRAME_NUM, "32");
+        changed |= setAttr(NRD_MODULE, NRD_MAX_FAST_ACCUMULATED_FRAME_NUM, "1");
+        changed |= setAttr(NRD_MODULE, NRD_MAX_STABILIZED_FRAME_NUM, "36");
+        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_FRAME_NUM, "1");
+        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_BASE_PIXEL_STRIDE, "12");
+        changed |= setAttr(NRD_MODULE, NRD_HISTORY_FIX_ALTERNATE_PIXEL_STRIDE, "12");
+        changed |= setAttr(NRD_MODULE, NRD_FAST_HISTORY_CLAMPING_SIGMA_SCALE, "1.40");
+        changed |= setAttr(NRD_MODULE, NRD_DIFFUSE_PREPASS_BLUR_RADIUS, "20.0");
+        changed |= setAttr(NRD_MODULE, NRD_SPECULAR_PREPASS_BLUR_RADIUS, "30.0");
         changed |= setAttr(NRD_MODULE, NRD_MIN_HIT_DISTANCE_WEIGHT, "0.11");
         changed |= setAttr(NRD_MODULE, NRD_MIN_BLUR_RADIUS, "1.1");
-        changed |= setAttr(NRD_MODULE, NRD_MAX_BLUR_RADIUS, "102.0");
+        changed |= setAttr(NRD_MODULE, NRD_MAX_BLUR_RADIUS, "60.0");
         changed |= setAttr(NRD_MODULE, NRD_LOBE_ANGLE_FRACTION, "0.18");
         changed |= setAttr(NRD_MODULE, NRD_ROUGHNESS_FRACTION, "0.17");
-        changed |= setAttr(NRD_MODULE, NRD_PLANE_DISTANCE_SENSITIVITY, "0.026");
+        changed |= setAttr(NRD_MODULE, NRD_PLANE_DISTANCE_SENSITIVITY, "0.034");
         changed |= setAttr(NRD_MODULE, NRD_SPECULAR_PROBABILITY_THRESHOLD_MIN, "0.46");
         changed |= setAttr(NRD_MODULE, NRD_SPECULAR_PROBABILITY_THRESHOLD_MAX, "0.84");
         changed |= setAttr(NRD_MODULE, NRD_FIREFLY_SUPPRESSOR_MIN_RELATIVE_SCALE, "2.3");
@@ -821,6 +898,8 @@ public class Options {
             "render_pipeline.module.ray_tracing.attribute.reflection_ray_material_mode.water_glass_metal");
         changed |= setAttr(RAY_TRACING_MODULE, RT_DIFFUSE_GI_MODE,
             "render_pipeline.module.ray_tracing.attribute.diffuse_gi_mode.low_cost_hybrid");
+        changed |= setAttr(RAY_TRACING_MODULE, RT_CLOUD_VOLUME_MODE,
+            "render_pipeline.module.ray_tracing.attribute.cloud_volume_mode.efficient_volume");
         changed |= setAttr(RAY_TRACING_MODULE, RT_TERRAIN_UPDATE_INTERVAL_FRAMES, "1");
         changed |= setAttr(RAY_TRACING_MODULE, RT_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
         changed |= setAttr(RAY_TRACING_MODULE, RT_BLOCK_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
@@ -927,6 +1006,8 @@ public class Options {
             "render_pipeline.module.ray_tracing.attribute.reflection_ray_material_mode.all_materials");
         changed |= setAttr(RAY_TRACING_MODULE, RT_DIFFUSE_GI_MODE,
             "render_pipeline.module.ray_tracing.attribute.diffuse_gi_mode.full_ray_tracing");
+        changed |= setAttr(RAY_TRACING_MODULE, RT_CLOUD_VOLUME_MODE,
+            "render_pipeline.module.ray_tracing.attribute.cloud_volume_mode.realistic_volume");
         changed |= setAttr(RAY_TRACING_MODULE, RT_TERRAIN_UPDATE_INTERVAL_FRAMES, "2");
         changed |= setAttr(RAY_TRACING_MODULE, RT_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
         changed |= setAttr(RAY_TRACING_MODULE, RT_BLOCK_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
@@ -1033,6 +1114,8 @@ public class Options {
             "render_pipeline.module.ray_tracing.attribute.reflection_ray_material_mode.all_materials");
         changed |= setAttr(RAY_TRACING_MODULE, RT_DIFFUSE_GI_MODE,
             "render_pipeline.module.ray_tracing.attribute.diffuse_gi_mode.full_ray_tracing");
+        changed |= setAttr(RAY_TRACING_MODULE, RT_CLOUD_VOLUME_MODE,
+            "render_pipeline.module.ray_tracing.attribute.cloud_volume_mode.realistic_volume");
         changed |= setAttr(RAY_TRACING_MODULE, RT_TERRAIN_UPDATE_INTERVAL_FRAMES, "1");
         changed |= setAttr(RAY_TRACING_MODULE, RT_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
         changed |= setAttr(RAY_TRACING_MODULE, RT_BLOCK_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
@@ -1139,6 +1222,8 @@ public class Options {
             "render_pipeline.module.ray_tracing.attribute.reflection_ray_material_mode.all_materials");
         changed |= setAttr(RAY_TRACING_MODULE, RT_DIFFUSE_GI_MODE,
             "render_pipeline.module.ray_tracing.attribute.diffuse_gi_mode.full_ray_tracing");
+        changed |= setAttr(RAY_TRACING_MODULE, RT_CLOUD_VOLUME_MODE,
+            "render_pipeline.module.ray_tracing.attribute.cloud_volume_mode.realistic_volume");
         changed |= setAttr(RAY_TRACING_MODULE, RT_TERRAIN_UPDATE_INTERVAL_FRAMES, "1");
         changed |= setAttr(RAY_TRACING_MODULE, RT_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
         changed |= setAttr(RAY_TRACING_MODULE, RT_BLOCK_ENTITY_UPDATE_INTERVAL_FRAMES, "1");
@@ -1218,5 +1303,9 @@ public class Options {
 
     private static boolean setAttr(String moduleName, String attributeName, String value) {
         return Pipeline.setModuleAttributeValue(moduleName, attributeName, value);
+    }
+
+    private static int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
     }
 }
