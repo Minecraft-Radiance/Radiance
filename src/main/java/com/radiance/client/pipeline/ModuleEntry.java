@@ -8,6 +8,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
 import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
@@ -55,6 +57,7 @@ public class ModuleEntry {
             }
         } else if ("jar".equals(protocol)) {
             JarURLConnection jarConn = (JarURLConnection) url.openConnection();
+            jarConn.setUseCaches(false);
             try (JarFile jarFile = jarConn.getJarFile()) {
                 Enumeration<JarEntry> jarEntries = jarFile.entries();
 
@@ -96,8 +99,7 @@ public class ModuleEntry {
         LoaderOptions options = new LoaderOptions();
         Yaml yaml = new Yaml(new Constructor(Module.class, options));
 
-        try (InputStream inputStream = getClass().getClassLoader()
-            .getResourceAsStream(this.resourcePath)) {
+        try (InputStream inputStream = openModuleStream()) {
             if (inputStream == null) {
                 throw new RuntimeException("Module not found in resource: " + this.resourcePath);
             }
@@ -112,6 +114,17 @@ public class ModuleEntry {
         } catch (Exception e) {
             throw new RuntimeException("Failed to load module from: " + this.resourcePath, e);
         }
+    }
+
+    private InputStream openModuleStream() throws IOException {
+        if (RadianceClient.radianceDir != null && resourcePath != null && !resourcePath.isBlank()) {
+            Path diskPath = RadianceClient.radianceDir.resolve(resourcePath);
+            if (Files.exists(diskPath)) {
+                return Files.newInputStream(diskPath);
+            }
+        }
+
+        return getClass().getClassLoader().getResourceAsStream(this.resourcePath);
     }
 
     @Override

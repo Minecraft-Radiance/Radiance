@@ -1,6 +1,8 @@
 package com.radiance.client;
 
 import com.mojang.logging.LogUtils;
+import com.radiance.client.util.LightSourceRegistry;
+import com.radiance.client.util.MaterialToolkit;
 import com.radiance.client.option.Options;
 import com.radiance.client.pipeline.Pipeline;
 import com.radiance.client.proxy.vulkan.RendererProxy;
@@ -73,13 +75,23 @@ public class RadianceClient implements ClientModInitializer {
 
             loadOptionalLibrary(xessPath);
 
-            System.load(dllTargetPath.toAbsolutePath().toString());
+            try {
+                System.load(dllTargetPath.toAbsolutePath().toString());
+            } catch (UnsatisfiedLinkError e) {
+                throw new RuntimeException("Failed to load core library from: " + dllTargetPath
+                    + ". This may indicate missing dependencies or an incompatible platform.", e);
+            }
         } else if (osName.toLowerCase().contains("linux")) {
             Path soTargetPath = radianceDir.resolve("libcore.so");
             Path soResourcePath = Path.of("libcore.so");
             copyFileFromResource(soTargetPath, soResourcePath);
 
-            System.load(soTargetPath.toAbsolutePath().toString());
+            try {
+                System.load(soTargetPath.toAbsolutePath().toString());
+            } catch (UnsatisfiedLinkError e) {
+                throw new RuntimeException("Failed to load core library from: " + soTargetPath
+                    + ". This may indicate missing dependencies or an incompatible platform.", e);
+            }
         } else {
             throw new RuntimeException("The OS " + osName + " is not supported");
         }
@@ -87,15 +99,17 @@ public class RadianceClient implements ClientModInitializer {
         // shaders
         Path shaderTargetPath = radianceDir.resolve("shaders");
         Path shaderResourcePath = Path.of("shaders");
-        copyFolderFromResource(shaderTargetPath, shaderResourcePath);
+        copyFolderFromResource(shaderTargetPath, shaderResourcePath, true);
 
         // modules
         Path moduleTargetPath = radianceDir.resolve("modules");
         Path moduleResourcePath = Path.of("modules");
-        copyFolderFromResource(moduleTargetPath, moduleResourcePath);
+        copyFolderFromResource(moduleTargetPath, moduleResourcePath, true);
 
         RendererProxy.initFolderPath(radianceDir.toAbsolutePath().toString());
         Pipeline.initFolderPath(radianceDir);
+        MaterialToolkit.init(radianceDir);
+        LightSourceRegistry.init(radianceDir);
 
         Options.readOptions();
 
@@ -147,6 +161,10 @@ public class RadianceClient implements ClientModInitializer {
     }
 
     public void copyFolderFromResource(Path targetPath, Path resourcePath) {
+        copyFolderFromResource(targetPath, resourcePath, false);
+    }
+
+    public void copyFolderFromResource(Path targetPath, Path resourcePath, boolean preserveExisting) {
         String resourcePathStr = toResourcePath(resourcePath);
         URL url = getClass().getResource(resourcePathStr);
 
@@ -179,30 +197,35 @@ public class RadianceClient implements ClientModInitializer {
                     }
 
                     Path root = fs.getPath(resourcePathStr);
-                    walkAndCopy(root, targetPath, resourcePath);
+                    walkAndCopy(root, targetPath, resourcePath, preserveExisting);
                 } finally {
                     if (created) {
                         try {
                             fs.close();
-                        } catch (IOException ignored) {
+                        } catch (IOException e) {
+                            LOGGER.warn("Failed to close JAR filesystem", e);
                         }
                     }
                 }
             } else {
                 Path root = Paths.get(uri);
-                walkAndCopy(root, targetPath, resourcePath);
+                walkAndCopy(root, targetPath, resourcePath, preserveExisting);
             }
         } catch (URISyntaxException | IOException e) {
             throw new RuntimeException("Failed to copy resource folder", e);
         }
     }
 
-    private void walkAndCopy(Path walkRoot, Path targetRoot, Path baseResourcePath)
+    private void walkAndCopy(Path walkRoot, Path targetRoot, Path baseResourcePath,
+        boolean preserveExisting)
         throws IOException {
         try (Stream<Path> stream = Files.walk(walkRoot)) {
             stream.filter(Files::isRegularFile).forEach(source -> {
                 String relativePathStr = walkRoot.relativize(source).toString();
                 Path targetFile = targetRoot.resolve(relativePathStr);
+                if (preserveExisting && Files.exists(targetFile)) {
+                    return;
+                }
                 Path childResourcePath = baseResourcePath.resolve(relativePathStr);
                 copyFileFromResource(targetFile, childResourcePath);
             });
