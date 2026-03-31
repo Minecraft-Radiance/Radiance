@@ -1,6 +1,10 @@
 package com.radiance.mixins.vulkan_render_integration;
 
 import com.radiance.client.util.BlockColorEmissionProvider;
+import com.radiance.client.util.EmissiveBlock;
+import com.radiance.client.util.LightSourceDef;
+import com.radiance.client.util.LightSourceRegistry;
+import com.radiance.client.util.MaterialToolkit;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IBlockColorsExt;
 import net.minecraft.block.BlockState;
 import net.minecraft.client.color.block.BlockColorProvider;
@@ -43,9 +47,20 @@ public class BlockColorsMixins implements IBlockColorsExt {
         BlockColorProvider blockColorProvider = this.providers.get(
             Registries.BLOCK.getRawId(state.getBlock()));
         if (blockColorProvider instanceof BlockColorEmissionProvider blockColorEmissionProvider) {
-            return blockColorEmissionProvider.getEmission(state, world, pos, tintIndex);
-        } else {
-            return 0.0F;
+            float providedEmission = blockColorEmissionProvider.getEmission(state, world, pos,
+                tintIndex);
+            if (providedEmission > 0.0F) {
+                return providedEmission;
+            }
         }
+
+        String blockKey = Registries.BLOCK.getId(state.getBlock()).toString();
+        EmissiveBlock emissiveBlock = MaterialToolkit.findEmissiveBlock(blockKey);
+        if (emissiveBlock != null && emissiveBlock.strength != null) {
+            return emissiveBlock.strength;
+        }
+
+        LightSourceDef lightSourceDef = LightSourceRegistry.findBlock(blockKey);
+        return LightSourceRegistry.resolveStrength(lightSourceDef, 0.0f);
     }
 }

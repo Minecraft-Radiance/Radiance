@@ -6,7 +6,7 @@ import static net.minecraft.client.option.InactivityFpsLimit.AFK;
 import com.google.common.collect.ImmutableList;
 import com.mojang.serialization.Codec;
 import com.radiance.client.gui.PotentialValuesBasedCallbacksNoValue;
-import com.radiance.client.gui.RenderPipelineScreen;
+import com.radiance.client.gui.RadianceSettingsScreen;
 import com.radiance.client.option.Options;
 import com.radiance.client.option.QualityLevel;
 import com.radiance.client.util.CategoryVideoOptionEntry;
@@ -222,14 +222,14 @@ public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
                     Options.setChunkBuildingTotalBatches(value, true);
                 });
 
-        SimpleOption<Boolean> pipelineSettings = new SimpleOption<>(Options.PIPELINE_SETUP_KEY,
+        SimpleOption<Boolean> pipelineSettings = new SimpleOption<>("radiance.settings.title",
             SimpleOption.emptyTooltip(),
             (optionText, value) -> optionText,
             BOOLEAN_NO_KEY,
             false,
             value -> {
                 MinecraftClient.getInstance()
-                    .setScreen(new RenderPipelineScreen((VideoOptionsScreen) (Object) this));
+                    .setScreen(new RadianceSettingsScreen((VideoOptionsScreen) (Object) this));
             });
 
         SimpleOption<QualityLevel> qualityLevel = new SimpleOption<>(Options.QUALITY_LEVEL_KEY,

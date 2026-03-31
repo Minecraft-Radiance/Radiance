@@ -56,20 +56,17 @@ public class BlockModelRendererMixins {
         float f;
         float g;
         float h;
-        float emission;
+        float emission = ((IBlockColorsExt) this.colors).radiance$getEmission(state, world, pos,
+            quad.getTintIndex());
         if (quad.hasTint()) {
             int i = this.colors.getColor(state, world, pos, quad.getTintIndex());
             f = (i >> 16 & 0xFF) / 255.0F;
             g = (i >> 8 & 0xFF) / 255.0F;
             h = (i & 0xFF) / 255.0F;
-
-            emission = ((IBlockColorsExt) this.colors).radiance$getEmission(state, world, pos,
-                quad.getTintIndex());
         } else {
             f = 1.0F;
             g = 1.0F;
             h = 1.0F;
-            emission = 0.0F;
         }
 
         PBRVertexConsumer pbrVertexConsumer = null;

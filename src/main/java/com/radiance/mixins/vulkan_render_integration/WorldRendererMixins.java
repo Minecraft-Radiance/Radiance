@@ -288,6 +288,14 @@ public abstract class WorldRendererMixins {
         int moonPhase = this.world.getMoonPhase();
 
         float rainGradient = this.world.getRainGradient(tickDelta);
+        CloudRenderMode cloudRenderMode = this.client.options.getCloudRenderModeValue();
+        float cloudLayerHeight = -16384.0F;
+        if (cloudRenderMode != CloudRenderMode.OFF) {
+            float cloudsHeight = this.world.getDimensionEffects().getCloudsHeight();
+            if (!Float.isNaN(cloudsHeight)) {
+                cloudLayerHeight = cloudsHeight + 0.33F;
+            }
+        }
 
         int sunTextureID = textureManager.getTexture(SkyRendering.SUN_TEXTURE).getGlId();
 
@@ -296,7 +304,7 @@ public abstract class WorldRendererMixins {
         BufferProxy.updateSkyUniform(baseColorR, baseColorG, baseColorB, horizontalColorR,
             horizontalColorG, horizontalColorB, horizontalColorA, sunDirection, skyType,
             sunRisingOrSetting, skyDark, hasBlindnessOrDarkness, submersionType, moonPhase,
-            rainGradient, sunTextureID, moonTextureID);
+            rainGradient, cloudLayerHeight, sunTextureID, moonTextureID);
 
         BufferProxy.updateMapping();
 
@@ -331,7 +339,6 @@ public abstract class WorldRendererMixins {
             camera, this.ticks, tickDelta);
 
         // clouds
-        CloudRenderMode cloudRenderMode = this.client.options.getCloudRenderModeValue();
         if (cloudRenderMode != CloudRenderMode.OFF) {
             float k = this.world.getDimensionEffects().getCloudsHeight();
             if (!Float.isNaN(k)) {

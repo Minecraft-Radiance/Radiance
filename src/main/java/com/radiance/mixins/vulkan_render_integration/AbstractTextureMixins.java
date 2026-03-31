@@ -3,6 +3,7 @@ package com.radiance.mixins.vulkan_render_integration;
 import com.mojang.blaze3d.platform.TextureUtil;
 import com.radiance.client.constant.VulkanConstants;
 import com.radiance.client.proxy.vulkan.TextureProxy;
+import com.radiance.client.texture.TextureTracker;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IAbstractTextureExt;
 import net.minecraft.client.texture.AbstractTexture;
 import org.spongepowered.asm.mixin.Mixin;
@@ -47,6 +48,12 @@ public class AbstractTextureMixins implements IAbstractTextureExt {
 
     @Inject(method = "clearGlId()V", at = @At(value = "HEAD"), cancellable = true)
     public void cancelClearGlId(CallbackInfo ci) {
+        synchronized (AbstractTextureMixins.class) {
+            if (this.glId != -1) {
+                TextureTracker.releaseTextureRegistration(this.glId);
+                this.glId = -1;
+            }
+        }
         ci.cancel();
     }
 

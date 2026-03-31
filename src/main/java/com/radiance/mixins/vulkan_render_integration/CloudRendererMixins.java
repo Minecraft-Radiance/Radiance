@@ -96,55 +96,18 @@ public class CloudRendererMixins {
         Vec3d cameraPos,
         float ticks,
         CallbackInfo ci) {
-        if (this.cells != null) {
-            float f = (float) (cloudHeight - cameraPos.y);
-            float g = f + 4.0F;
-            CloudRenderer.ViewMode viewMode;
-            if (g < 0.0F) {
-                viewMode = CloudRenderer.ViewMode.ABOVE_CLOUDS;
-            } else if (f > 0.0F) {
-                viewMode = CloudRenderer.ViewMode.BELOW_CLOUDS;
-            } else {
-                viewMode = CloudRenderer.ViewMode.INSIDE_CLOUDS;
-            }
-
-            double d = cameraPos.x + ticks * 0.030000001F;
-            double e = cameraPos.z + 3.96F;
-            double h = this.cells.width() * 12.0;
-            double i = this.cells.height() * 12.0;
-            d -= MathHelper.floor(d / h) * h;
-            e -= MathHelper.floor(e / i) * i;
-            int j = MathHelper.floor(d / 12.0);
-            int k = MathHelper.floor(e / 12.0);
-            float l = (float) (d - j * 12.0F);
-            float m = (float) (e - k * 12.0F);
-            RenderLayer
-                renderLayer =
-                cloudRenderMode == CloudRenderMode.FANCY ? RenderLayer.getFastClouds()
-                    : RenderLayer.getNoCullingClouds();
-
-            if (this.field_53052 || j != this.centerX || k != this.centerZ
-                || viewMode != this.viewMode ||
-                cloudRenderMode != this.renderMode) {
-                this.field_53052 = false;
-                this.centerX = j;
-                this.centerZ = k;
-                this.viewMode = viewMode;
-                this.renderMode = cloudRenderMode;
-
-                this.tessellateClouds(color, j, k, cloudRenderMode, viewMode, renderLayer);
-            }
-
-            if (storageVertexConsumerProvider != null) {
-                for (EntityProxy.EntityRenderData data : entityRenderDataList) {
-                    data.setX((float) (cameraPos.x - l));
-                    data.setY(cloudHeight);
-                    data.setZ((float) (cameraPos.z - m));
+        if (storageVertexConsumerProvider != null) {
+            if (entityRenderDataList != null) {
+                for (EntityProxy.EntityRenderData entityRenderData : entityRenderDataList) {
+                    for (EntityProxy.EntityRenderLayer entityRenderLayer : entityRenderData) {
+                        BuiltBuffer vertexBuffer = entityRenderLayer.builtBuffer();
+                        vertexBuffer.close();
+                    }
                 }
-
-                EntityProxy.queueBuildWithoutClose(entityRenderDataList);
             }
-
+            storageVertexConsumerProvider.close();
+            storageVertexConsumerProvider = null;
+            entityRenderDataList = null;
         }
 
         ci.cancel();
