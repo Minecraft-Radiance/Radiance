@@ -1,6 +1,8 @@
 package com.radiance.client.texture;
 
 import com.radiance.client.constant.VulkanConstants;
+import com.radiance.client.proxy.vulkan.TextureProxy;
+import java.util.HashSet;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Map;
@@ -11,6 +13,7 @@ import net.minecraft.util.Identifier;
 
 public class TextureTracker {
 
+    public static final int MAX_TEXTURE_SLOTS = 4096;
     public static Map<Identifier, Integer> textureID2GLID = new ConcurrentHashMap<>();
     public static Map<Integer, Texture> GLID2Texture = new ConcurrentHashMap<>();
     public static Map<Integer, Integer> GLID2SpecularGLID = new ConcurrentHashMap<>();
@@ -32,6 +35,42 @@ public class TextureTracker {
     public static void invalidateRenderLayerTextureCache() {
         RENDER_LAYER_TEXTURE_CACHE_EPOCH.incrementAndGet();
         RENDER_LAYER_TEXTURES.clear();
+    }
+
+    public static void releaseTextureRegistration(int glId) {
+        releaseTextureRegistration(glId, new HashSet<>());
+    }
+
+    private static void releaseTextureRegistration(int glId, HashSet<Integer> released) {
+        if (glId < 0 || !released.add(glId)) {
+            return;
+        }
+
+        textureID2GLID.entrySet().removeIf(entry -> entry.getValue() != null && entry.getValue() == glId);
+
+        Integer specularId = GLID2SpecularGLID.remove(glId);
+        Integer normalId = GLID2NormalGLID.remove(glId);
+        Integer flagId = GLID2FlagGLID.remove(glId);
+
+        GLID2Texture.remove(glId);
+
+        GLID2SpecularGLID.entrySet().removeIf(entry -> entry.getValue() != null && entry.getValue() == glId);
+        GLID2NormalGLID.entrySet().removeIf(entry -> entry.getValue() != null && entry.getValue() == glId);
+        GLID2FlagGLID.entrySet().removeIf(entry -> entry.getValue() != null && entry.getValue() == glId);
+
+        invalidateRenderLayerTextureCache();
+
+        if (specularId != null) {
+            releaseTextureRegistration(specularId, released);
+        }
+        if (normalId != null) {
+            releaseTextureRegistration(normalId, released);
+        }
+        if (flagId != null) {
+            releaseTextureRegistration(flagId, released);
+        }
+
+        TextureProxy.releaseTextureId(glId);
     }
 
     public static int getTextureGlId(Identifier identifier, TextureManager textureManager) {
