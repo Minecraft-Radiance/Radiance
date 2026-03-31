@@ -83,6 +83,17 @@ Use `cmake` to build it and install it. Please refer to [this](https://github.co
 
 Finally, build with `./gradlew build`.
 
+# Opening the graphics/settings screen
+
+Radiance's in-game settings are currently opened from Minecraft's video settings:
+
+1. Open **Options**
+2. Open **Video Settings**
+3. Find the **Pipeline** category
+4. Click **Radiance Settings**
+
+This opens the unified Radiance settings screen for graphics, lighting, clouds, water, DLSS/HDR, materials, and post-processing.
+
 # Settings Reference
 
 A Chinese settings reference covering all current module options is available at:

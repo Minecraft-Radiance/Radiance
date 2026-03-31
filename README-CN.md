@@ -80,6 +80,17 @@ git clone https://github.com/Minecraft-Radiance/MCVR.git
 
 最后，用`./gradlew build`构建。
 
+# 画面 / 图形设置怎么打开
+
+Radiance 目前的游戏内设置入口在 Minecraft 的视频设置里：
+
+1. 打开 **选项**
+2. 打开 **视频设置**
+3. 找到 **Pipeline** 分类
+4. 点击 **Radiance Settings**
+
+进入后就是 Radiance 的统一设置界面，可以调整画面、光照、云、水体、DLSS/HDR、材质和后处理。
+
 # 设置文档
 
 当前所有模块设置的中文参考文档见：
