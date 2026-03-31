@@ -63,7 +63,7 @@ public class GameRendererMixins implements IGameRendererExt {
                     "[Lnet/minecraft/client/gl/ShaderProgramKey;)V"))
     public void cancelPreloadShader(ShaderLoader instance, ResourceFactory factory,
         ShaderProgramKey[] keys) {
-
+        // Intentionally empty: Radiance handles shader loading through its own pipeline
     }
 
     @Inject(method = "renderBlur()V", at = @At(value = "HEAD"), cancellable = true)
