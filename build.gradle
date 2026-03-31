@@ -15,15 +15,12 @@ def radianceRuntimeDirPath = providers.gradleProperty("radianceRuntimeDir")
     .orNull
 def radianceRuntimeDir = radianceRuntimeDirPath ? file(radianceRuntimeDirPath) : null
 def builtWindowsCoreDll = file("external/MCVR/build/src/core/Release/core.dll")
-def defaultRadianceWindowsJarPath = "C:/Users/Felix/Downloads/Radiance-0.1.3-alpha-fabric-1.21.4-windows.jar"
 def radianceWindowsJarPath = providers.gradleProperty("radianceWindowsJar")
     .orElse(providers.environmentVariable("RADIANCE_WINDOWS_JAR"))
-    .orElse(providers.provider {
-        file(defaultRadianceWindowsJarPath).exists() ? defaultRadianceWindowsJarPath : null
-    })
     .orNull
 def radianceWindowsJar = radianceWindowsJarPath ? file(radianceWindowsJarPath) : null
 def extractedRadianceWindowsRuntimeDir = layout.buildDirectory.dir("generated/radianceRuntime/windows")
+def syncedBuiltWindowsRuntimeDir = layout.buildDirectory.dir("generated/radianceRuntime/localBuild")
 def bundledXessRuntimeDir = file("external/MCVR/extern/xess/bin")
 def radianceAllowIncompleteRuntimePackaging = providers
     .gradleProperty("radianceAllowIncompleteRuntimePackaging")
@@ -79,32 +76,22 @@ tasks.register("extractRadianceWindowsRuntime") {
     }
 }
 
-tasks.register("syncBuiltWindowsCoreDll") {
+tasks.register("syncBuiltWindowsRuntime") {
     onlyIf {
         builtWindowsCoreDll.exists()
     }
     inputs.file(builtWindowsCoreDll)
-    outputs.file(file("src/main/resources/core.dll"))
+    outputs.dir(syncedBuiltWindowsRuntimeDir)
 
     doLast {
-        def destinationCoreDll = file("src/main/resources/core.dll")
-        if (destinationCoreDll.exists()
-            && destinationCoreDll.length() == builtWindowsCoreDll.length()
-            && destinationCoreDll.lastModified() == builtWindowsCoreDll.lastModified()) {
-            logger.lifecycle("core.dll already synchronized; skipping copy.")
-            return
-        }
+        def destinationDir = syncedBuiltWindowsRuntimeDir.get().asFile
+        delete(destinationDir)
+        destinationDir.mkdirs()
         copy {
             from(builtWindowsCoreDll)
-            into("src/main/resources")
+            into(destinationDir)
             rename { "core.dll" }
         }
-    }
-}
-
-tasks.matching { it.name == "sourcesJar" }.configureEach {
-    if (builtWindowsCoreDll.exists()) {
-        dependsOn(tasks.named("syncBuiltWindowsCoreDll"))
     }
 }
 
@@ -147,8 +134,8 @@ dependencies {
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
 
     // https://mvnrepository.com/artifact/org.yaml/snakeyaml
-    implementation "org.yaml:snakeyaml:2.5"
-    include "org.yaml:snakeyaml:2.5"
+    implementation "org.yaml:snakeyaml:2.6"
+    include "org.yaml:snakeyaml:2.6"
 }
 
 processResources {
@@ -158,21 +145,25 @@ processResources {
     filteringCharset "UTF-8"
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 
-    if (builtWindowsCoreDll.exists()) {
-        dependsOn(tasks.named("syncBuiltWindowsCoreDll"))
-    }
-
     def runtimeDirectorySource = null
+    def supplementalWindowsRuntimeSource = null
     def mainResourcesDir = file("src/main/resources")
     if (radianceRuntimeDir != null) {
         if (radianceRuntimeDir.exists()) {
             runtimeDirectorySource = radianceRuntimeDir
+            if (!new File(radianceRuntimeDir, "core.dll").exists() && builtWindowsCoreDll.exists()) {
+                dependsOn(tasks.named("syncBuiltWindowsRuntime"))
+                supplementalWindowsRuntimeSource = syncedBuiltWindowsRuntimeDir
+            }
         } else {
             logger.warn("Configured radiance runtime directory does not exist: ${radianceRuntimeDir}")
         }
     } else if (radianceWindowsJar != null && radianceWindowsJar.exists()) {
         dependsOn(tasks.named("extractRadianceWindowsRuntime"))
         runtimeDirectorySource = extractedRadianceWindowsRuntimeDir
+    } else if (builtWindowsCoreDll.exists()) {
+        dependsOn(tasks.named("syncBuiltWindowsRuntime"))
+        supplementalWindowsRuntimeSource = syncedBuiltWindowsRuntimeDir
     } else if (radianceWindowsJarExplicitlyConfigured && radianceWindowsJar != null
         && !radianceWindowsJar.exists()) {
         logger.warn("Configured Radiance Windows jar does not exist: ${radianceWindowsJar}")
@@ -219,6 +210,12 @@ processResources {
             include "libxell.dll"
             include "sl.*.dll"
             include "NvLowLatencyVk.dll"
+        }
+    }
+
+    if (supplementalWindowsRuntimeSource != null) {
+        from(supplementalWindowsRuntimeSource) {
+            include "core.dll"
         }
     }
 
