@@ -1,8 +1,8 @@
 package com.radiance.client.vertex;
 
 import it.unimi.dsi.fastutil.objects.Object2ObjectLinkedOpenHashMap;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.render.BufferBuilder;
@@ -15,8 +15,8 @@ import net.minecraft.client.util.BufferAllocator;
 @Environment(EnvType.CLIENT)
 public class StorageVertexConsumerProvider implements VertexConsumerProvider {
 
-    protected final Map<RenderLayer, VertexConsumer> pending = new HashMap<>();
-    protected final Map<RenderLayer, BufferAllocator> allocated = new HashMap<>();
+    protected final Map<RenderLayer, VertexConsumer> pending = new ConcurrentHashMap<>();
+    protected final Map<RenderLayer, BufferAllocator> allocated = new ConcurrentHashMap<>();
 
     private int size = 0;
 
