@@ -1,5 +1,6 @@
 package com.radiance.mixin_related;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import org.objectweb.asm.tree.ClassNode;
@@ -25,7 +26,7 @@ public class MixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public List<String> getMixins() {
-        return null;
+        return Collections.emptyList();
     }
 
     @Override

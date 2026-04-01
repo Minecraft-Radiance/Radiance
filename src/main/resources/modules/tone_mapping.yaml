@@ -4,7 +4,7 @@ inputImageConfigs:
     format: "R16G16B16A16_SFLOAT"
 outputImageConfigs:
   - name: "mapped_output"
-    format: "R8G8B8A8_UNORM"
+    format: "R16G16B16A16_SFLOAT"
 attributeConfigs:
   - name: "render_pipeline.module.tone_mapping.attribute.method"
     type: "enum:render_pipeline.module.tone_mapping.attribute.method.pbr_neutral-render_pipeline.module.tone_mapping.attribute.method.reinhard-render_pipeline.module.tone_mapping.attribute.method.reinhard_white_point-render_pipeline.module.tone_mapping.attribute.method.aces-render_pipeline.module.tone_mapping.attribute.method.aces_white_point-render_pipeline.module.tone_mapping.attribute.method.uncharted2"

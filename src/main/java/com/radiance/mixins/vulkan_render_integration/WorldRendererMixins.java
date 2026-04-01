@@ -44,7 +44,6 @@ import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.BlockBreakingInfo;
-import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.math.ColorHelper;
@@ -289,6 +288,14 @@ public abstract class WorldRendererMixins {
         int moonPhase = this.world.getMoonPhase();
 
         float rainGradient = this.world.getRainGradient(tickDelta);
+        CloudRenderMode cloudRenderMode = this.client.options.getCloudRenderModeValue();
+        float cloudLayerHeight = -16384.0F;
+        if (cloudRenderMode != CloudRenderMode.OFF) {
+            float cloudsHeight = this.world.getDimensionEffects().getCloudsHeight();
+            if (!Float.isNaN(cloudsHeight)) {
+                cloudLayerHeight = cloudsHeight + 0.33F;
+            }
+        }
 
         int sunTextureID = textureManager.getTexture(SkyRendering.SUN_TEXTURE).getGlId();
 
@@ -297,7 +304,7 @@ public abstract class WorldRendererMixins {
         BufferProxy.updateSkyUniform(baseColorR, baseColorG, baseColorB, horizontalColorR,
             horizontalColorG, horizontalColorB, horizontalColorA, sunDirection, skyType,
             sunRisingOrSetting, skyDark, hasBlindnessOrDarkness, submersionType, moonPhase,
-            rainGradient, sunTextureID, moonTextureID);
+            rainGradient, cloudLayerHeight, sunTextureID, moonTextureID);
 
         BufferProxy.updateMapping();
 
@@ -316,12 +323,11 @@ public abstract class WorldRendererMixins {
         EntityProxy.queueEntitiesBuild(camera, renderedEntities, this.entityRenderDispatcher,
             tickCounter, canDrawEntityOutlines());
 
-        Pair<List<StorageVertexConsumerProvider>, EntityProxy.EntityRenderDataList> crumblingRenderData = EntityProxy.queueBlockEntitiesRebuild(
-            chunks, this.noCullingBlockEntities, blockBreakingProgressions,
+        EntityProxy.BlockEntityQueueResult crumblingRenderData = EntityProxy.queueBlockEntitiesRebuild(
+            this.builtChunks, this.noCullingBlockEntities, blockBreakingProgressions,
             blockEntityRenderDispatcher, tickDelta);
         EntityProxy.queueCrumblingRebuild(camera, blockBreakingProgressions,
-            this.client.getBlockRenderManager(), this.world, crumblingRenderData.getLeft(),
-            crumblingRenderData.getRight());
+            this.client.getBlockRenderManager(), this.world, crumblingRenderData);
 
         EntityProxy.queueParticleRebuild(camera, tickDelta, frustum);
 
@@ -333,7 +339,6 @@ public abstract class WorldRendererMixins {
             camera, this.ticks, tickDelta);
 
         // clouds
-        CloudRenderMode cloudRenderMode = this.client.options.getCloudRenderModeValue();
         if (cloudRenderMode != CloudRenderMode.OFF) {
             float k = this.world.getDimensionEffects().getCloudsHeight();
             if (!Float.isNaN(k)) {
@@ -346,7 +351,8 @@ public abstract class WorldRendererMixins {
         }
 
         // Chunks
-        ChunkProxy.rebuild(camera);
+        ChunkProxy.rebuild(camera, this.builtChunks);
+        ChunkProxy.queueSpecialGeometry(this.builtChunks, camera);
 
         this.renderedEntities.clear();
 

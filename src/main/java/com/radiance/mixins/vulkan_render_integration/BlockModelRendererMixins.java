@@ -20,6 +20,11 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 @Mixin(BlockModelRenderer.class)
 public class BlockModelRendererMixins {
 
+    private static final ThreadLocal<float[]> BRIGHTNESS_BUFFER = ThreadLocal.withInitial(
+        () -> new float[4]);
+    private static final ThreadLocal<int[]> LIGHT_BUFFER = ThreadLocal.withInitial(
+        () -> new int[4]);
+
     @Final
     @Shadow
     private BlockColors colors;
@@ -51,36 +56,52 @@ public class BlockModelRendererMixins {
         float f;
         float g;
         float h;
-        float emission;
+        float emission = ((IBlockColorsExt) this.colors).radiance$getEmission(state, world, pos,
+            quad.getTintIndex());
         if (quad.hasTint()) {
             int i = this.colors.getColor(state, world, pos, quad.getTintIndex());
             f = (i >> 16 & 0xFF) / 255.0F;
             g = (i >> 8 & 0xFF) / 255.0F;
             h = (i & 0xFF) / 255.0F;
-
-            emission = ((IBlockColorsExt) this.colors).radiance$getEmission(state, world, pos,
-                quad.getTintIndex());
         } else {
             f = 1.0F;
             g = 1.0F;
             h = 1.0F;
-
-            emission = 0.0F;
         }
 
-        vertexConsumer.quad(matrixEntry,
-            quad,
-            new float[]{brightness0, brightness1, brightness2, brightness3},
-            f,
-            g,
-            h,
-            1.0F,
-            new int[]{light0, light1, light2, light3},
-            overlay,
-            true);
+        PBRVertexConsumer pbrVertexConsumer = null;
+        if (vertexConsumer instanceof PBRVertexConsumer pbr) {
+            pbrVertexConsumer = pbr;
+            pbrVertexConsumer.setPendingEmission(emission);
+        }
 
-        if (vertexConsumer instanceof PBRVertexConsumer pbrVertexConsumer) {
-            pbrVertexConsumer.albedoEmission(emission);
+        float[] brightness = BRIGHTNESS_BUFFER.get();
+        brightness[0] = brightness0;
+        brightness[1] = brightness1;
+        brightness[2] = brightness2;
+        brightness[3] = brightness3;
+
+        int[] lights = LIGHT_BUFFER.get();
+        lights[0] = light0;
+        lights[1] = light1;
+        lights[2] = light2;
+        lights[3] = light3;
+
+        try {
+            vertexConsumer.quad(matrixEntry,
+                quad,
+                brightness,
+                f,
+                g,
+                h,
+                1.0F,
+                lights,
+                overlay,
+                true);
+        } finally {
+            if (pbrVertexConsumer != null) {
+                pbrVertexConsumer.setPendingEmission(0.0F);
+            }
         }
 
         ci.cancel();

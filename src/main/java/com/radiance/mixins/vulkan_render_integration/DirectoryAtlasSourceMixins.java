@@ -1,5 +1,6 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.radiance.client.texture.PbrAtlasTextureFilter;
 import java.util.Map;
 import java.util.Map.Entry;
 import net.minecraft.client.texture.atlas.AtlasSource.SpriteRegions;
@@ -38,7 +39,7 @@ public class DirectoryAtlasSourceMixins {
 
             Identifier identifier2 = resourceFinder.toResourceId(identifier)
                 .withPrefixedPath(this.prefix);
-            if (identifier2.getPath().endsWith("_s") || identifier2.getPath().endsWith("_n")) {
+            if (PbrAtlasTextureFilter.shouldSkipAtlasEntry(identifier2)) {
                 continue;
             }
             regions.add(identifier2, resource);

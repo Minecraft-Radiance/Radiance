@@ -14,7 +14,7 @@ public abstract class TextureManagerMixins {
 
     @Inject(method = "registerTexture(Lnet/minecraft/util/Identifier;Lnet/minecraft/client/texture/AbstractTexture;)V", at = @At("HEAD"))
     private void profileTextureRegister(Identifier id, AbstractTexture texture, CallbackInfo ci) {
-        TextureTracker.textureID2GLID.put(id, texture.getGlId());
+        TextureTracker.trackTextureRegistration(id, texture.getGlId());
 //        System.out.println("Registered texture: " + id + " (GL_ID = " + texture.getGlId() + ")");
     }
 }

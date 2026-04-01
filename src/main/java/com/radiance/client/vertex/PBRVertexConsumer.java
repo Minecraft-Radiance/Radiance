@@ -18,7 +18,9 @@ import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_NORM;
 import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_OVERLAY;
 import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_TEXTURE;
 
+import com.radiance.client.texture.TextureTracker;
 import java.nio.ByteOrder;
+import java.util.Locale;
 import java.util.stream.Collectors;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BuiltBuffer;
@@ -30,7 +32,6 @@ import net.minecraft.client.render.VertexFormatElement;
 import net.minecraft.client.texture.MissingSprite;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.util.Identifier;
 import net.minecraft.util.math.Direction;
 import org.jetbrains.annotations.Nullable;
 import org.joml.Matrix3f;
@@ -44,6 +45,8 @@ public class PBRVertexConsumer implements VertexConsumer {
     private static final int ALPHA_MODE_OPAQUE = 0;
     private static final int ALPHA_MODE_CUTOUT = 1;
     private static final int ALPHA_MODE_TRANSPARENT = 2;
+    public static final int MATERIAL_HINT_FORCE_NO_PBR = 1 << 0;
+    public static final int MATERIAL_HINT_WIND_REACTIVE = 1 << 1;
 
     private final BufferAllocator allocator;
     private final VertexFormat format;
@@ -60,9 +63,12 @@ public class PBRVertexConsumer implements VertexConsumer {
     private boolean building = true;
     private int textureID;
     private final int alphaMode;
+    private final int defaultMaterialHints;
+    private int materialHints = 0;
     private float baseX = 0;
     private float baseY = 0;
     private float baseZ = 0;
+    private float pendingEmission = 0.0f;
 
     public PBRVertexConsumer(BufferAllocator allocator, RenderLayer renderLayer) {
         this(allocator, VertexFormat.DrawMode.QUADS, PBRVertexFormats.PBR_TRIANGLE, renderLayer);
@@ -88,17 +94,13 @@ public class PBRVertexConsumer implements VertexConsumer {
         }
 
         if (renderLayer instanceof RenderLayer.MultiPhase) {
-            Identifier
-                identifier =
-                ((RenderLayer.MultiPhase) renderLayer).phases.texture.getId()
-                    .orElse(MissingSprite.getMissingSpriteId());
-            textureID =
-                MinecraftClient.getInstance()
-                    .getTextureManager()
-                    .getTexture(identifier)
-                    .getGlId();
+            textureID = TextureTracker.getRenderLayerTextureGlId(renderLayer,
+                MinecraftClient.getInstance().getTextureManager(),
+                MissingSprite.getMissingSpriteId());
         }
         this.alphaMode = getAlphaMode(renderLayer);
+        this.defaultMaterialHints = getDefaultMaterialHints(renderLayer);
+        this.materialHints = this.defaultMaterialHints;
     }
 
     private static void putInt(long ptr, int v) {
@@ -119,6 +121,10 @@ public class PBRVertexConsumer implements VertexConsumer {
             return ALPHA_MODE_OPAQUE;
         }
 
+        if (multiPhase.name.contains("particle") || multiPhase.name.contains("weather")) {
+            return ALPHA_MODE_TRANSPARENT;
+        }
+
         if (multiPhase.name.contains("cutout")) {
             return ALPHA_MODE_CUTOUT;
         }
@@ -130,12 +136,36 @@ public class PBRVertexConsumer implements VertexConsumer {
         return ALPHA_MODE_TRANSPARENT;
     }
 
+    private static int getDefaultMaterialHints(RenderLayer renderLayer) {
+        if (!(renderLayer instanceof RenderLayer.MultiPhase multiPhase)) {
+            return 0;
+        }
+
+        String name = multiPhase.name.toLowerCase(Locale.ROOT);
+        boolean windReactive =
+            name.contains("cutout")
+                || name.contains("tripwire")
+                || name.contains("vine")
+                || name.contains("leaves")
+                || name.contains("grass")
+                || name.contains("plant")
+                || name.contains("crop")
+                || name.contains("sapling")
+                || name.contains("flower");
+        return windReactive ? MATERIAL_HINT_WIND_REACTIVE : 0;
+    }
+
     public VertexFormat getFormat() {
         return this.format;
     }
 
     public int getVertexCount() {
         return this.vertexCount;
+    }
+
+    public PBRVertexConsumer materialHints(int materialHints) {
+        this.materialHints = Math.max(materialHints, 0) | this.defaultMaterialHints;
+        return this;
     }
 
     public void setBase(float x, float y, float z) {
@@ -206,8 +236,8 @@ public class PBRVertexConsumer implements VertexConsumer {
             MemoryUtil.memPutFloat(ptr + offBase, baseX);
             MemoryUtil.memPutFloat(ptr + offBase + 4L, baseY);
             MemoryUtil.memPutFloat(ptr + offBase + 8L, baseZ);
-            // Reuse the trailing padding word after postBase for alpha mode.
-            putInt(ptr + offBase + 12L, this.alphaMode);
+            // Reuse the trailing padding word after postBase for alpha mode and material hints.
+            putInt(ptr + offBase + 12L, this.alphaMode | (this.materialHints << 8));
         }
 
         return ptr;
@@ -234,8 +264,8 @@ public class PBRVertexConsumer implements VertexConsumer {
             MemoryUtil.memPutFloat(ptr + offBase, baseX);
             MemoryUtil.memPutFloat(ptr + offBase + 4L, baseY);
             MemoryUtil.memPutFloat(ptr + offBase + 8L, baseZ);
-            // Reuse the trailing padding word after postBase for alpha mode.
-            putInt(ptr + offBase + 12L, this.alphaMode);
+            // Reuse the trailing padding word after postBase for alpha mode and material hints.
+            putInt(ptr + offBase + 12L, this.alphaMode | (this.materialHints << 8));
         }
 
         if (glintTextureID != 0) {
@@ -305,6 +335,10 @@ public class PBRVertexConsumer implements VertexConsumer {
             MemoryUtil.memPutFloat(p + 8L, z);
         }
 
+        if (pendingEmission > 0.0f) {
+            albedoEmission(pendingEmission);
+        }
+
         return this;
     }
 
@@ -323,6 +357,10 @@ public class PBRVertexConsumer implements VertexConsumer {
             MemoryUtil.memPutFloat(p, x);
             MemoryUtil.memPutFloat(p + 4L, y);
             MemoryUtil.memPutFloat(p + 8L, z);
+        }
+
+        if (pendingEmission > 0.0f) {
+            albedoEmission(pendingEmission);
         }
 
         return this;
@@ -414,6 +452,10 @@ public class PBRVertexConsumer implements VertexConsumer {
         return this;
     }
 
+    public void setPendingEmission(float emission) {
+        this.pendingEmission = Math.max(0.0f, emission);
+    }
+
     public static class GLint implements VertexConsumer {
 
         private final PBRVertexConsumer delegate;
@@ -422,15 +464,9 @@ public class PBRVertexConsumer implements VertexConsumer {
         public GLint(PBRVertexConsumer delegate, RenderLayer glintRenderLayer) {
             this.delegate = delegate;
             if (glintRenderLayer instanceof RenderLayer.MultiPhase) {
-                Identifier
-                    identifier =
-                    ((RenderLayer.MultiPhase) glintRenderLayer).phases.texture.getId()
-                        .orElse(MissingSprite.getMissingSpriteId());
-                glintTextureID =
-                    MinecraftClient.getInstance()
-                        .getTextureManager()
-                        .getTexture(identifier)
-                        .getGlId();
+                glintTextureID = TextureTracker.getRenderLayerTextureGlId(glintRenderLayer,
+                    MinecraftClient.getInstance().getTextureManager(),
+                    MissingSprite.getMissingSpriteId());
             }
         }
 
@@ -499,15 +535,9 @@ public class PBRVertexConsumer implements VertexConsumer {
             MatrixStack.Entry matrix, float textureScale) {
             this.delegate = delegate;
             if (glintRenderLayer instanceof RenderLayer.MultiPhase) {
-                Identifier
-                    identifier =
-                    ((RenderLayer.MultiPhase) glintRenderLayer).phases.texture.getId()
-                        .orElse(MissingSprite.getMissingSpriteId());
-                glintTextureID =
-                    MinecraftClient.getInstance()
-                        .getTextureManager()
-                        .getTexture(identifier)
-                        .getGlId();
+                glintTextureID = TextureTracker.getRenderLayerTextureGlId(glintRenderLayer,
+                    MinecraftClient.getInstance().getTextureManager(),
+                    MissingSprite.getMissingSpriteId());
             }
 
             this.inverseTextureMatrix = new Matrix4f(matrix.getPositionMatrix()).invert();

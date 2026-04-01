@@ -256,7 +256,7 @@ public class RenderPipelineScreen extends Screen {
             node.updateWidth(textRenderer);
         }
 
-        this.renderBackground(context, mouseX, mouseY, delta);
+        context.fill(0, 0, this.width, this.height, RadianceTheme.panelBg);
 
         context.getMatrices().push();
         context.getMatrices().scale(GLOBAL_SCALE, GLOBAL_SCALE, 1f);
@@ -268,8 +268,9 @@ public class RenderPipelineScreen extends Screen {
             drawable.render(context, scaledMouseX, scaledMouseY, delta);
         }
 
-        context.drawTextWithShadow(textRenderer,
-            Text.translatable(RENDER_PIPELINE_SCREEN_BACK_HINT), 10, HEADER_HEIGHT + 8, 0xFFEAEAEA);
+        RadianceTheme.drawOutlinedText(context, textRenderer,
+            Text.translatable(RENDER_PIPELINE_SCREEN_BACK_HINT), 10, HEADER_HEIGHT + 8,
+            RadianceTheme.textSecondary);
 
         if (mode == Mode.PIPELINE) {
             for (ModuleNode node : nodes) {
@@ -456,12 +457,12 @@ public class RenderPipelineScreen extends Screen {
         int w = moduleNode.width;
         int h = moduleNode.height();
 
-        context.fill(x, y, x + w, y + h, 0xFF20242C);
+        context.fill(x, y, x + w, y + h, RadianceTheme.widgetBg);
 
-        context.fill(x, y, x + w, y + moduleNode.headerH, 0xFF2B3240);
+        context.fill(x, y, x + w, y + moduleNode.headerH, RadianceTheme.headerBg);
 
-        context.drawTextWithShadow(textRenderer, Text.translatable(moduleNode.module.name), x + 6,
-            y + 5, 0xFFEAEAEA);
+        RadianceTheme.drawOutlinedText(context, textRenderer,
+            Text.translatable(moduleNode.module.name), x + 6, y + 5, RadianceTheme.textPrimary);
 
         int btnSize = 12;
         int deleteX = x + w - btnSize - 4;
@@ -471,7 +472,8 @@ public class RenderPipelineScreen extends Screen {
         context.drawTexture(RenderLayer::getGuiTextured, GEAR_TEX, gearX, btnY, 0, 0, btnSize,
             btnSize, btnSize, btnSize);
 
-        context.drawTextWithShadow(textRenderer, "×", deleteX + 3, btnY + 2, 0xFFFF5A5A);
+        context.drawTextWithShadow(textRenderer, "×", deleteX + 3, btnY + 2,
+            RadianceTheme.TEXT_ERROR);
 
         for (int i = 0; i < moduleNode.rows(); i++) {
             int ry = y + moduleNode.headerH + moduleNode.pad + i * moduleNode.rowH + 7;
@@ -485,7 +487,8 @@ public class RenderPipelineScreen extends Screen {
                 boolean isConnected = moduleConnections.stream().anyMatch(l -> l.dst == in);
                 drawPortDot(context, dotX, dotY, color, isConnected, false);
 
-                context.drawTextWithShadow(textRenderer, in.name, x + 18, ry + 2, 0xFFD0D0D0);
+                context.drawTextWithShadow(textRenderer, in.name, x + 18, ry + 2,
+                    RadianceTheme.textPrimary);
             }
 
             if (i < moduleNode.module.outputImageConfigs.size()) {
@@ -499,7 +502,7 @@ public class RenderPipelineScreen extends Screen {
 
                 int nameWidth = textRenderer.getWidth(out.name);
                 context.drawTextWithShadow(textRenderer, out.name, (dotX - 8) - nameWidth, ry + 2,
-                    0xFFD0D0D0);
+                    RadianceTheme.textPrimary);
             }
         }
     }
@@ -510,7 +513,7 @@ public class RenderPipelineScreen extends Screen {
         ctx.fill(cx - 3, cy - 3, cx + 4, cy + 4, 0xFF000000);
         ctx.fill(cx - 2, cy - 2, cx + 3, cy + 3, color);
         if (!filled) {
-            ctx.fill(cx - 1, cy - 1, cx + 2, cy + 2, 0xFF20242C);
+            ctx.fill(cx - 1, cy - 1, cx + 2, cy + 2, RadianceTheme.widgetBg);
         }
     }
 
@@ -836,15 +839,15 @@ public class RenderPipelineScreen extends Screen {
         public void render(DrawContext ctx, int mouseX, int mouseY) {
             int currentY = y;
             ctx.fill(x - 1, y - 1, x + width + 1, y + (options.size() * itemHeight) + 1,
-                0xFFFFFFFF);
+                RadianceTheme.borderDefault);
 
             for (ModuleEntry entry : options) {
                 boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= currentY
                     && mouseY <= currentY + itemHeight;
                 ctx.fill(x, currentY, x + width, currentY + itemHeight,
-                    hovered ? 0xFF444444 : 0xFF222222);
+                    hovered ? RadianceTheme.widgetBgHover : RadianceTheme.dropdownBg);
                 ctx.drawTextWithShadow(textRenderer, Text.translatable(entry.name), x + 5,
-                    currentY + 5, 0xFFE0E0E0);
+                    currentY + 5, RadianceTheme.textPrimary);
                 currentY += itemHeight;
             }
         }
@@ -948,7 +951,7 @@ public class RenderPipelineScreen extends Screen {
     }
 
     private List<ClickableWidget> buildPresetWidgets(AttributeConfig cfg) {
-        return AttributeWidgetUtil.buildWidgets(cfg, textRenderer, 200, 64);
+        return AttributeWidgetUtil.buildWidgets(cfg, this, textRenderer, 200, 64);
     }
 
     private class PresetSelector {

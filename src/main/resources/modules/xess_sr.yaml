@@ -19,7 +19,7 @@ attributeConfigs:
     value: "render_pipeline.true"
   - name: "render_pipeline.module.xess_sr.attribute.quality_mode"
     type: "enum:render_pipeline.module.xess_sr.attribute.quality_mode.native-render_pipeline.module.xess_sr.attribute.quality_mode.ultra_quality_plus-render_pipeline.module.xess_sr.attribute.quality_mode.ultra_quality-render_pipeline.module.xess_sr.attribute.quality_mode.quality-render_pipeline.module.xess_sr.attribute.quality_mode.balanced-render_pipeline.module.xess_sr.attribute.quality_mode.performance-render_pipeline.module.xess_sr.attribute.quality_mode.ultra_performance"
-    value: "render_pipeline.module.xess_sr.attribute.quality_mode.quality"
+    value: "render_pipeline.module.xess_sr.attribute.quality_mode.balanced"
   - name: "render_pipeline.module.xess_sr.attribute.pre_exposure"
     type: "float_range:0.0-16.0"
     value: "1.0"

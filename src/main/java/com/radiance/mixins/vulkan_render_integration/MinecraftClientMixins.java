@@ -6,6 +6,7 @@ import com.radiance.client.pipeline.Pipeline;
 import com.radiance.client.proxy.vulkan.RendererProxy;
 import com.radiance.client.proxy.vulkan.TextureProxy;
 import com.radiance.client.proxy.world.ChunkProxy;
+import com.radiance.client.proxy.world.EntityProxy;
 import java.util.Optional;
 import java.util.function.Consumer;
 import net.minecraft.client.MinecraftClient;
@@ -61,7 +62,6 @@ public class MinecraftClientMixins {
         }
 
         Pipeline.loadPipeline();
-        Pipeline.build();
     }
 
     @Redirect(method = "<init>(Lnet/minecraft/client/RunArgs;)V",
@@ -135,10 +135,18 @@ public class MinecraftClientMixins {
 
     @Redirect(method = "render(Z)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gl/Framebuffer;endWrite()V"))
     public void cancelFramebufferEndWrite(Framebuffer instance, boolean setViewport) {
+        if (RendererProxy.isShuttingDown()) {
+            return;
+        }
         ChunkProxy.waitImportantChunkRebuild();
         synchronized (TextureProxy.class) {
+            if (RendererProxy.isShuttingDown()) {
+                return;
+            }
             RendererProxy.submitCommandAndPresent();
-            RendererProxy.acquireContext();
+            if (!RendererProxy.isShuttingDown()) {
+                RendererProxy.acquireContext();
+            }
         }
     }
 
@@ -173,9 +181,14 @@ public class MinecraftClientMixins {
     //endregion
 
     // region <scheduleStop>
+    @Inject(method = "scheduleStop()V", at = @At(value = "HEAD"))
+    public void beginShutdown(CallbackInfo ci) {
+        RendererProxy.requestShutdown();
+    }
+
     @Inject(method = "scheduleStop()V", at = @At(value = "TAIL"))
     public void close(CallbackInfo ci) {
-        RendererProxy.close();
+        RendererProxy.closeRenderer();
     }
     // endregion
 
@@ -191,6 +204,7 @@ public class MinecraftClientMixins {
     public void resetBuiltChunkNum(Screen disconnectionScreen, boolean transferring,
         CallbackInfo ci) {
         ChunkProxy.builtChunkNum = 0;
+        EntityProxy.clearReplayCaches();
     }
     // endregion
 }

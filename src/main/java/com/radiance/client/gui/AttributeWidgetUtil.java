@@ -5,8 +5,10 @@ import com.radiance.client.pipeline.config.AttributeConfig;
 import java.util.List;
 import java.util.Locale;
 
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
+import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.ClickableWidget;
 import net.minecraft.client.gui.widget.SliderWidget;
@@ -61,28 +63,55 @@ final class AttributeWidgetUtil {
             ClickableWidget w = widgets.get(0);
             w.setX(x);
             w.setY(y);
-            w.setWidth(singleWidth);
+            if (w.getWidth() <= 0) {
+                w.setWidth(singleWidth);
+            }
             return;
         }
 
-        if (widgets.size() == 3) {
+        if (widgets.size() == 3 && widgets.stream().allMatch(
+            widget -> widget instanceof TextFieldWidget)) {
             for (int i = 0; i < 3; i++) {
                 ClickableWidget cw = widgets.get(i);
                 cw.setX(x + i * (tripleWidth + gap));
                 cw.setY(y);
                 cw.setWidth(tripleWidth);
             }
+            return;
+        }
+
+        int cursorX = x;
+        for (ClickableWidget widget : widgets) {
+            int preferredWidth = widget.getWidth() > 0 ? widget.getWidth() : singleWidth;
+            widget.setX(cursorX);
+            widget.setY(y);
+            widget.setWidth(preferredWidth);
+            cursorX += preferredWidth + gap;
         }
     }
 
     static int totalWidgetWidth(List<ClickableWidget> widgets, int singleWidth, int tripleWidth, int gap) {
-        if (widgets.size() == 3) {
+        if (widgets.size() == 3 && widgets.stream().allMatch(
+            widget -> widget instanceof TextFieldWidget)) {
             return (tripleWidth * 3) + (gap * 2);
         }
-        return singleWidth;
+        if (widgets.size() == 1) {
+            ClickableWidget widget = widgets.get(0);
+            return widget.getWidth() > 0 ? widget.getWidth() : singleWidth;
+        }
+
+        int total = 0;
+        for (int i = 0; i < widgets.size(); i++) {
+            ClickableWidget widget = widgets.get(i);
+            total += widget.getWidth() > 0 ? widget.getWidth() : singleWidth;
+            if (i + 1 < widgets.size()) {
+                total += gap;
+            }
+        }
+        return total;
     }
 
-    static List<ClickableWidget> buildWidgets(AttributeConfig cfg, TextRenderer textRenderer,
+    static List<ClickableWidget> buildWidgets(AttributeConfig cfg, Screen owner, TextRenderer textRenderer,
         int width,
         int vec3ComponentWidth) {
         String type = cfg.type == null ? "" : cfg.type.toLowerCase(Locale.ROOT);
@@ -92,11 +121,11 @@ final class AttributeWidgetUtil {
         }
 
         if (type.startsWith("int_range:")) {
-            return List.of(buildIntRange(cfg, cfg.type.substring(10), width));
+            return buildIntRange(cfg, owner, cfg.type.substring(10), width);
         }
 
         if (type.startsWith("float_range:")) {
-            return List.of(buildFloatRange(cfg, cfg.type.substring(12), width));
+            return buildFloatRange(cfg, owner, cfg.type.substring(12), width);
         }
 
         return switch (type) {
@@ -114,7 +143,7 @@ final class AttributeWidgetUtil {
         return ButtonWidget.builder(
             Text.translatable(b ? "render_pipeline.true" : "render_pipeline.false"), btn -> {
                 boolean nv = !"render_pipeline.true".equalsIgnoreCase(cfg.value);
-                cfg.value = nv ? "render_pipeline.true" : "render_pipeline.false";
+                setValue(cfg, nv ? "render_pipeline.true" : "render_pipeline.false");
                 btn.setMessage(Text.translatable(cfg.value));
             }).dimensions(0, 0, width, 20).build();
     }
@@ -136,7 +165,7 @@ final class AttributeWidgetUtil {
         int[] index = new int[]{idx};
         return ButtonWidget.builder(Text.translatable(values[index[0]]), btn -> {
             index[0] = (index[0] + 1) % values.length;
-            cfg.value = values[index[0]];
+            setValue(cfg, values[index[0]]);
             btn.setMessage(Text.translatable(cfg.value));
         }).dimensions(0, 0, width, 20).build();
     }
@@ -149,7 +178,7 @@ final class AttributeWidgetUtil {
         tf.setTextPredicate(s -> s.isEmpty() || s.equals("-") || s.matches("-?\\d+"));
         tf.setChangedListener(text -> {
             if (isStrictInt(text)) {
-                cfg.value = text;
+                setValue(cfg, text);
             }
         });
         return tf;
@@ -166,7 +195,7 @@ final class AttributeWidgetUtil {
                 || s.matches("-?\\d+\\.") || s.matches("-?\\d*\\.\\d+"));
         tf.setChangedListener(text -> {
             if (isStrictFloat(text)) {
-                cfg.value = text;
+                setValue(cfg, text);
             }
         });
         return tf;
@@ -177,7 +206,7 @@ final class AttributeWidgetUtil {
         TextFieldWidget tf = new TextFieldWidget(textRenderer, 0, 0, width, 20, Text.empty());
         tf.setMaxLength(128);
         tf.setText(cfg.value == null ? "" : cfg.value);
-        tf.setChangedListener(text -> cfg.value = text);
+        tf.setChangedListener(text -> setValue(cfg, text));
         return tf;
     }
 
@@ -199,7 +228,7 @@ final class AttributeWidgetUtil {
             String sz = z.getText();
 
             if (isStrictFloat(sx) && isStrictFloat(sy) && isStrictFloat(sz)) {
-                cfg.value = sx + "," + sy + "," + sz;
+                setValue(cfg, sx + "," + sy + "," + sz);
             }
         };
 
@@ -222,7 +251,8 @@ final class AttributeWidgetUtil {
         return tf;
     }
 
-    private static ClickableWidget buildIntRange(AttributeConfig cfg, String raw, int width) {
+    private static List<ClickableWidget> buildIntRange(AttributeConfig cfg, Screen owner, String raw,
+        int width) {
         Range r = parseRange(raw);
         int start = (int) r.start;
         int end = (int) r.end;
@@ -231,21 +261,39 @@ final class AttributeWidgetUtil {
             start = end;
             end = t;
         }
+        final int minInt = start;
+        final int maxInt = end;
 
-        int cur = start;
+        int cur = minInt;
         if (isInt(cfg.value)) {
             cur = Integer.parseInt(cfg.value);
         } else {
-            cfg.value = String.valueOf(start);
+            setValue(cfg, String.valueOf(minInt));
         }
-        cur = MathHelper.clamp(cur, start, end);
+        cur = MathHelper.clamp(cur, minInt, maxInt);
 
-        IntRangeSlider slider = new IntRangeSlider(0, 0, width, 20, start, end, cur, cfg);
+        int sliderWidth = Math.max(80, width - 24);
+        IntRangeSlider slider = new IntRangeSlider(0, 0, sliderWidth, 20, minInt, maxInt, cur, cfg,
+            cfg instanceof BoundAttributeConfig bound ? bound.defaultValue()
+                : Integer.toString(minInt));
         slider.updateMessage();
-        return slider;
+        ButtonWidget editButton = ButtonWidget.builder(Text.literal("#"), button -> {
+            if (owner == null) {
+                return;
+            }
+            MinecraftClient.getInstance().setScreen(new NumericSliderInputScreen(owner, cfg.name,
+                true, minInt, maxInt, cfg.value, cfg instanceof BoundAttributeConfig bound
+                    ? bound.defaultValue()
+                    : Integer.toString(minInt), value -> {
+                    setValue(cfg, value);
+                    slider.syncFromValueString(value);
+                }));
+        }).dimensions(0, 0, 20, 20).build();
+        return List.of(slider, editButton);
     }
 
-    private static ClickableWidget buildFloatRange(AttributeConfig cfg, String raw, int width) {
+    private static List<ClickableWidget> buildFloatRange(AttributeConfig cfg, Screen owner,
+        String raw, int width) {
         Range r = parseRange(raw);
         float start = (float) r.start;
         float end = (float) r.end;
@@ -254,18 +302,43 @@ final class AttributeWidgetUtil {
             start = end;
             end = t;
         }
+        final float minFloat = start;
+        final float maxFloat = end;
 
-        float cur = start;
+        float cur = minFloat;
         if (isFloat(cfg.value)) {
             cur = Float.parseFloat(cfg.value);
         } else {
-            cfg.value = formatTwoDecimals(start);
+            setValue(cfg, formatTwoDecimals(minFloat));
         }
-        cur = MathHelper.clamp(cur, start, end);
+        cur = MathHelper.clamp(cur, minFloat, maxFloat);
 
-        FloatRangeSlider slider = new FloatRangeSlider(0, 0, width, 20, start, end, cur, cfg);
+        int sliderWidth = Math.max(80, width - 24);
+        FloatRangeSlider slider = new FloatRangeSlider(0, 0, sliderWidth, 20, minFloat, maxFloat,
+            cur, cfg, cfg instanceof BoundAttributeConfig bound ? bound.defaultValue()
+            : formatTwoDecimals(minFloat));
         slider.updateMessage();
-        return slider;
+        ButtonWidget editButton = ButtonWidget.builder(Text.literal("#"), button -> {
+            if (owner == null) {
+                return;
+            }
+            MinecraftClient.getInstance().setScreen(new NumericSliderInputScreen(owner, cfg.name,
+                false, minFloat, maxFloat, cfg.value, cfg instanceof BoundAttributeConfig bound
+                    ? bound.defaultValue()
+                    : formatTwoDecimals(minFloat), value -> {
+                    setValue(cfg, value);
+                    slider.syncFromValueString(value);
+                }));
+        }).dimensions(0, 0, 20, 20).build();
+        return List.of(slider, editButton);
+    }
+
+    private static void setValue(AttributeConfig cfg, String value) {
+        if (cfg instanceof BoundAttributeConfig bound) {
+            bound.apply(value);
+            return;
+        }
+        cfg.value = value;
     }
 
     private static boolean isInt(String s) {
@@ -336,14 +409,16 @@ final class AttributeWidgetUtil {
         private final int start;
         private final int end;
         private final AttributeConfig cfg;
+        private final String defaultValue;
 
         public IntRangeSlider(int x, int y, int width, int height, int start, int end, int cur,
-            AttributeConfig cfg) {
+            AttributeConfig cfg, String defaultValue) {
             super(x, y, width, height, Text.empty(),
                 (cur - (double) start) / (double) (end - start));
             this.start = start;
             this.end = end;
             this.cfg = cfg;
+            this.defaultValue = defaultValue;
             this.value = (cur - (double) start) / (double) (end - start);
         }
 
@@ -362,7 +437,26 @@ final class AttributeWidgetUtil {
         @Override
         protected void applyValue() {
             int v = MathHelper.clamp(current(), start, end);
-            cfg.value = Integer.toString(v);
+            setValue(cfg, Integer.toString(v));
+        }
+
+        public void syncFromValueString(String valueString) {
+            if (!isInt(valueString)) {
+                return;
+            }
+            int value = MathHelper.clamp(Integer.parseInt(valueString), start, end);
+            this.value = (value - (double) start) / (double) (end - start);
+            updateMessage();
+        }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            if (button == 1 && this.isMouseOver(mouseX, mouseY)) {
+                syncFromValueString(defaultValue);
+                setValue(cfg, Integer.toString(current()));
+                return true;
+            }
+            return super.mouseClicked(mouseX, mouseY, button);
         }
     }
 
@@ -371,14 +465,16 @@ final class AttributeWidgetUtil {
         private final float start;
         private final float end;
         private final AttributeConfig cfg;
+        private final String defaultValue;
 
         public FloatRangeSlider(int x, int y, int width, int height, float start, float end,
             float cur,
-            AttributeConfig cfg) {
+            AttributeConfig cfg, String defaultValue) {
             super(x, y, width, height, Text.empty(), (cur - start) / (double) (end - start));
             this.start = start;
             this.end = end;
             this.cfg = cfg;
+            this.defaultValue = defaultValue;
             this.value = (cur - start) / (double) (end - start);
         }
 
@@ -397,7 +493,26 @@ final class AttributeWidgetUtil {
         @Override
         protected void applyValue() {
             float v = MathHelper.clamp(current(), start, end);
-            cfg.value = formatTwoDecimals(v);
+            setValue(cfg, formatTwoDecimals(v));
+        }
+
+        public void syncFromValueString(String valueString) {
+            if (!isFloat(valueString)) {
+                return;
+            }
+            float value = MathHelper.clamp(Float.parseFloat(valueString), start, end);
+            this.value = (value - start) / (double) (end - start);
+            updateMessage();
+        }
+
+        @Override
+        public boolean mouseClicked(double mouseX, double mouseY, int button) {
+            if (button == 1 && this.isMouseOver(mouseX, mouseY)) {
+                syncFromValueString(defaultValue);
+                setValue(cfg, formatTwoDecimals(current()));
+                return true;
+            }
+            return super.mouseClicked(mouseX, mouseY, button);
         }
     }
 }

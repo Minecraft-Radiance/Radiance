@@ -6,10 +6,12 @@ import static net.minecraft.client.option.InactivityFpsLimit.AFK;
 import com.google.common.collect.ImmutableList;
 import com.mojang.serialization.Codec;
 import com.radiance.client.gui.PotentialValuesBasedCallbacksNoValue;
-import com.radiance.client.gui.RenderPipelineScreen;
+import com.radiance.client.gui.RadianceSettingsScreen;
 import com.radiance.client.option.Options;
+import com.radiance.client.option.QualityLevel;
 import com.radiance.client.util.CategoryVideoOptionEntry;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.option.VideoOptionsScreen;
@@ -133,6 +135,67 @@ public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
                 }
             });
 
+        SimpleOption<Boolean> enableHdrOutput = SimpleOption.ofBoolean(Options.HDR_OUTPUT_KEY,
+            Options.hdrOutput, value -> {
+                if (MinecraftClient.getInstance().getWindow() != null) {
+                    Options.setHdrOutput(value, true);
+                }
+            });
+
+        SimpleOption<Boolean> enableDlssFrameGeneration = SimpleOption.ofBoolean(
+            Options.DLSS_FRAME_GENERATION_KEY,
+            Options.dlssFrameGeneration,
+            value -> {
+                if (MinecraftClient.getInstance().getWindow() != null) {
+                    Options.setDlssFrameGeneration(value, true);
+                }
+            });
+
+        SimpleOption<Boolean> enableOutputScale2x = SimpleOption.ofBoolean(
+            Options.OUTPUT_SCALE_2X_KEY,
+            Options.outputScale2x,
+            value -> {
+                if (MinecraftClient.getInstance().getWindow() != null) {
+                    Options.setOutputScale2x(value, true);
+                }
+            });
+
+        SimpleOption<Boolean> enableSimplifiedIndirect = SimpleOption.ofBoolean(
+            Options.SIMPLIFIED_INDIRECT_KEY,
+            Options.simplifiedIndirect,
+            value -> {
+                if (MinecraftClient.getInstance().getWindow() != null) {
+                    Options.setSimplifiedIndirect(value, true);
+                }
+            });
+
+        SimpleOption<Boolean> enableReflex = SimpleOption.ofBoolean(
+            Options.REFLEX_ENABLED_KEY,
+            Options.reflexEnabled,
+            value -> {
+                if (MinecraftClient.getInstance().getWindow() != null) {
+                    Options.setReflexEnabled(value, true);
+                }
+            });
+
+        SimpleOption<Boolean> enableReflexBoost = SimpleOption.ofBoolean(
+            Options.REFLEX_BOOST_KEY,
+            Options.reflexBoost,
+            value -> {
+                if (MinecraftClient.getInstance().getWindow() != null) {
+                    Options.setReflexBoost(value, true);
+                }
+            });
+
+        SimpleOption<Boolean> enableVrrMode = SimpleOption.ofBoolean(
+            Options.VRR_MODE_KEY,
+            Options.vrrMode,
+            value -> {
+                if (MinecraftClient.getInstance().getWindow() != null) {
+                    Options.setVrrMode(value, true);
+                }
+            });
+
         SimpleOption<Integer>
             chunkBuildingBatchSize =
             new SimpleOption<>(Options.CHUNK_BUILDING_BATCH_SIZE_KEY,
@@ -159,15 +222,28 @@ public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
                     Options.setChunkBuildingTotalBatches(value, true);
                 });
 
-        SimpleOption<Boolean> pipelineSettings = new SimpleOption<>(Options.PIPELINE_SETUP_KEY,
+        SimpleOption<Boolean> pipelineSettings = new SimpleOption<>("radiance.settings.title",
             SimpleOption.emptyTooltip(),
             (optionText, value) -> optionText,
             BOOLEAN_NO_KEY,
             false,
             value -> {
                 MinecraftClient.getInstance()
-                    .setScreen(new RenderPipelineScreen((VideoOptionsScreen) (Object) this));
+                    .setScreen(new RadianceSettingsScreen((VideoOptionsScreen) (Object) this));
             });
+
+        SimpleOption<QualityLevel> qualityLevel = new SimpleOption<>(Options.QUALITY_LEVEL_KEY,
+            SimpleOption.emptyTooltip(),
+            SimpleOption.enumValueText(),
+            new SimpleOption.PotentialValuesBasedCallbacks<>(List.of(
+                QualityLevel.FLUENT,
+                QualityLevel.PERFORMANCE,
+                QualityLevel.BALANCED,
+                QualityLevel.HIGH,
+                QualityLevel.ULTRA,
+                QualityLevel.EXTREME), QualityLevel.Codec),
+            QualityLevel.fromId(Options.qualityLevel),
+            value -> Options.setQualityLevel(value, true));
 
         // Adding categories and options
         this.body.addEntry(
@@ -200,6 +276,7 @@ public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
             maxFps, //
             inactivityFpsLimit, //
             enableVsync, //
+            enableHdrOutput, //
             gameOptions.getFullscreen(), //
         };
         this.body.addAll(optionsWindow);
@@ -212,6 +289,13 @@ public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
 
         this.body.addEntry(
             new CategoryVideoOptionEntry(Text.translatable(Options.CATEGORY_PIPELINE), body));
+        this.body.addSingleOptionEntry(qualityLevel);
+        this.body.addSingleOptionEntry(enableDlssFrameGeneration);
+        this.body.addSingleOptionEntry(enableOutputScale2x);
+        this.body.addSingleOptionEntry(enableSimplifiedIndirect);
+        this.body.addSingleOptionEntry(enableReflex);
+        this.body.addSingleOptionEntry(enableReflexBoost);
+        this.body.addSingleOptionEntry(enableVrrMode);
         this.body.addSingleOptionEntry(pipelineSettings);
 
         ci.cancel();

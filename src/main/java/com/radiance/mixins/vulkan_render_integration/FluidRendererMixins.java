@@ -2,6 +2,8 @@ package com.radiance.mixins.vulkan_render_integration;
 
 import static net.minecraft.client.render.block.FluidRenderer.shouldRenderSide;
 
+import com.radiance.client.option.EnvironmentRenderStyles;
+import com.radiance.client.vertex.PBRVertexConsumer;
 import net.minecraft.block.Block;
 import net.minecraft.block.BlockState;
 import net.minecraft.block.LeavesBlock;
@@ -125,6 +127,13 @@ public abstract class FluidRendererMixins {
         FluidState fluidState,
         CallbackInfo ci) {
         boolean isLava = fluidState.isIn(FluidTags.LAVA);
+        PBRVertexConsumer pbrVertexConsumer =
+            vertexConsumer instanceof PBRVertexConsumer pbr ? pbr : null;
+        if (pbrVertexConsumer != null) {
+            pbrVertexConsumer.setPendingEmission(isLava ? 0.0F
+                : EnvironmentRenderStyles.WATER_SURFACE_SENTINEL);
+        }
+        try {
         Sprite[] fluidSprites = isLava ? this.lavaSprites : this.waterSprites;
         int tintColor = isLava ? 16777215 : BiomeColors.getWaterColor(world, pos);
         float red = (tintColor >> 16 & 0xFF) / 255.0F;
@@ -672,5 +681,10 @@ public abstract class FluidRendererMixins {
         }
 
         ci.cancel();
+        } finally {
+            if (pbrVertexConsumer != null) {
+                pbrVertexConsumer.setPendingEmission(0.0F);
+            }
+        }
     }
 }

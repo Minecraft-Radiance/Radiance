@@ -53,20 +53,30 @@ public class VulkanConstants {
             return name;
         }
 
+        public VkFormat toUnorm() {
+            return switch (this) {
+                case VK_FORMAT_R8_SRGB -> VK_FORMAT_R8_UNORM;
+                case VK_FORMAT_R8G8_SRGB -> VK_FORMAT_R8G8_UNORM;
+                case VK_FORMAT_R8G8B8_SRGB -> VK_FORMAT_R8G8B8_UNORM;
+                case VK_FORMAT_R8G8B8A8_SRGB -> VK_FORMAT_R8G8B8A8_UNORM;
+                default -> this;
+            };
+        }
+
         public NativeImage.InternalFormat getNativeImageInternalFormat() {
             return switch (this) {
-                case VK_FORMAT_R8_UNORM -> NativeImage.InternalFormat.RED;
-                case VK_FORMAT_R8G8_UNORM -> NativeImage.InternalFormat.RG;
-                case VK_FORMAT_R8G8B8_UNORM -> NativeImage.InternalFormat.RGB;
-                case VK_FORMAT_R8G8B8A8_UNORM -> NativeImage.InternalFormat.RGBA;
+                case VK_FORMAT_R8_UNORM, VK_FORMAT_R8_SRGB -> NativeImage.InternalFormat.RED;
+                case VK_FORMAT_R8G8_UNORM, VK_FORMAT_R8G8_SRGB -> NativeImage.InternalFormat.RG;
+                case VK_FORMAT_R8G8B8_UNORM, VK_FORMAT_R8G8B8_SRGB -> NativeImage.InternalFormat.RGB;
+                case VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB -> NativeImage.InternalFormat.RGBA;
                 default -> throw new IllegalStateException("Unexpected value: " + this.value);
             };
         }
 
         public NativeImage.Format getNativeImageFormat() {
             return switch (this) {
-                case VK_FORMAT_R8G8B8_UNORM -> NativeImage.Format.RGB;
-                case VK_FORMAT_R8G8B8A8_UNORM -> NativeImage.Format.RGBA;
+                case VK_FORMAT_R8G8B8_UNORM, VK_FORMAT_R8G8B8_SRGB -> NativeImage.Format.RGB;
+                case VK_FORMAT_R8G8B8A8_UNORM, VK_FORMAT_R8G8B8A8_SRGB -> NativeImage.Format.RGBA;
                 default -> throw new IllegalStateException("Unexpected value: " + this.value);
             };
         }

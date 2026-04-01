@@ -7,6 +7,8 @@ public class TextureProxy {
 
     public synchronized static native int generateTextureId();
 
+    public synchronized static native void releaseTextureId(int id);
+
     public synchronized static native void prepareImage(int id, int mipLevels, int width,
         int height, int format);
 
@@ -31,24 +33,26 @@ public class TextureProxy {
         int height,
         int level);
 
+    public synchronized static native void setTextureAlphaClass(int id, int alphaClass);
+
     public static void prepareImage(NativeImage.InternalFormat internalFormat, int id,
         int mipLevels, int width, int height) {
         switch (internalFormat) {
             case RGBA:
                 prepareImage(id, mipLevels, width, height,
-                    VulkanConstants.VkFormat.VK_FORMAT_R8G8B8A8_UNORM);
+                    VulkanConstants.VkFormat.VK_FORMAT_R8G8B8A8_SRGB);
                 break;
             case RGB:
                 prepareImage(id, mipLevels, width, height,
-                    VulkanConstants.VkFormat.VK_FORMAT_R8G8B8_UNORM);
+                    VulkanConstants.VkFormat.VK_FORMAT_R8G8B8_SRGB);
                 break;
             case RG:
                 prepareImage(id, mipLevels, width, height,
-                    VulkanConstants.VkFormat.VK_FORMAT_R8G8_UNORM);
+                    VulkanConstants.VkFormat.VK_FORMAT_R8G8_SRGB);
                 break;
             case RED:
                 prepareImage(id, mipLevels, width, height,
-                    VulkanConstants.VkFormat.VK_FORMAT_R8_UNORM);
+                    VulkanConstants.VkFormat.VK_FORMAT_R8_SRGB);
                 break;
         }
     }

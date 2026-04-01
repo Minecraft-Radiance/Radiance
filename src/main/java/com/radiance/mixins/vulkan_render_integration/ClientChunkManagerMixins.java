@@ -1,5 +1,6 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.radiance.client.proxy.world.ChunkProxy;
 import net.minecraft.client.world.ClientChunkManager;
 import net.minecraft.util.math.ChunkSectionPos;
 import net.minecraft.world.LightType;
@@ -14,6 +15,7 @@ public class ClientChunkManagerMixins {
     @Inject(method = "onLightUpdate(Lnet/minecraft/world/LightType;Lnet/minecraft/util/math/ChunkSectionPos;)V", at = @At(value = "HEAD"),
         cancellable = true)
     public void cancelLightUpdate(LightType type, ChunkSectionPos pos, CallbackInfo ci) {
+        ChunkProxy.markLightDirtySection(pos, type.ordinal());
         ci.cancel();
     }
 }

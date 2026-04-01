@@ -1,7 +1,8 @@
 package com.radiance.client.texture;
 
-import com.mojang.blaze3d.platform.TextureUtil;
+import com.radiance.client.constant.VulkanConstants;
 import com.radiance.client.proxy.vulkan.TextureProxy;
+import com.radiance.client.util.MaterialToolkit;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import java.io.IOException;
 import java.util.Arrays;
@@ -108,14 +109,18 @@ public enum AuxiliaryTextures {
 
                 // ensure the texture exists
                 TextureTracker.Texture texture = TextureTracker.GLID2Texture.get(targetId);
+                VulkanConstants.VkFormat auxiliaryFormat = texture.format().toUnorm();
                 if (!auxiliaryTexture.GLIDMapping.containsKey(targetId)) {
                     auxiliaryTargetId = TextureProxy.generateTextureId();
 //                    System.out.println(
 //                        "generate " + auxiliaryTexture.name + " texture for " + targetId + ": "
 //                            + auxiliaryTargetId);
 
-                    TextureUtil.prepareImage(texture.format().getNativeImageInternalFormat(),
-                        auxiliaryTargetId, texture.maxLayer(), texture.width(), texture.height());
+                    TextureProxy.prepareImage(auxiliaryTargetId, texture.maxLayer() + 1,
+                        texture.width(), texture.height(), auxiliaryFormat);
+                    TextureTracker.GLID2Texture.put(auxiliaryTargetId,
+                        new TextureTracker.Texture(texture.width(), texture.height(),
+                            texture.channel(), auxiliaryFormat, texture.maxLayer()));
                     auxiliaryTexture.GLIDMapping.put(targetId, auxiliaryTargetId);
                 } else {
                     auxiliaryTargetId = auxiliaryTexture.GLIDMapping.get(targetId);
@@ -124,10 +129,12 @@ public enum AuxiliaryTextures {
                         auxiliaryTargetId);
                     if (texture.width() != auxiliaryTrackerTexture.width()
                         || texture.height() != auxiliaryTrackerTexture.height()
-                        || texture.format() != auxiliaryTrackerTexture.format()) {
-                        TextureUtil.prepareImage(texture.format().getNativeImageInternalFormat(),
-                            auxiliaryTargetId, texture.maxLayer(), texture.width(),
-                            texture.height());
+                        || auxiliaryTrackerTexture.format() != auxiliaryFormat) {
+                        TextureProxy.prepareImage(auxiliaryTargetId, texture.maxLayer() + 1,
+                            texture.width(), texture.height(), auxiliaryFormat);
+                        TextureTracker.GLID2Texture.put(auxiliaryTargetId,
+                            new TextureTracker.Texture(texture.width(), texture.height(),
+                                texture.channel(), auxiliaryFormat, texture.maxLayer()));
                     }
                 }
 
@@ -157,7 +164,9 @@ public enum AuxiliaryTextures {
                     }
 
                     if (!success) {
-                        auxiliaryTemplateImage = source.applyToCopy(i -> 0);
+                        auxiliaryTemplateImage = MaterialToolkit.isAutoPbrEnabled()
+                            ? AutoPBRGenerator.generate(auxiliaryTexture, identifier, source)
+                            : source.applyToCopy(i -> 0);
                     }
                 }
 

@@ -141,4 +141,9 @@ public class WindowMixins {
     public void framebufferSizeChanged(long window, int width, int height, CallbackInfo ci) {
         WindowProxy.onFramebufferSizeChanged();
     }
+
+    @Inject(method = "setVsync(Z)V", at = @At("HEAD"), cancellable = true)
+    public void cancelSetVsync(boolean vsync, CallbackInfo ci) {
+        ci.cancel();
+    }
 }

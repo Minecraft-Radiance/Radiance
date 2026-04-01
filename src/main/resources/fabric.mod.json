@@ -6,7 +6,8 @@
   "description": "A Minecraft mod that uses modern Vulkan C++ as backend renderer.",
   "authors": [
     "LJIONG",
-    "Interstellarss"
+    "Interstellarss",
+    "Felix3322"
   ],
   "contact": {
     "homepage": "https://www.minecraft-radiance.com/",

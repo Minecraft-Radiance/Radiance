@@ -1,12 +1,12 @@
 name: "render_pipeline.module.post_render.name"
 inputImageConfigs:
   - name: "ldr_input"
-    format: "R8G8B8A8_UNORM"
+    format: "R16G16B16A16_SFLOAT"
   - name: "first_hit_depth"
     format: "R16_SFLOAT"
 outputImageConfigs:
   - name: "post_rendered"
-    format: "R8G8B8A8_UNORM"
+    format: "R16G16B16A16_SFLOAT"
 attributeConfigs:
   - name: "render_pipeline.module.post_render.attribute.star_count"
     type: "int_range:1-20000"
