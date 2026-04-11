@@ -23,5 +23,5 @@ outputImageConfigs:
     format: "R16_SFLOAT"
 attributeConfigs:
   - name: "render_pipeline.module.dlss.attribute.mode"
-    type: "enum:render_pipeline.module.dlss.attribute.mode.performance-render_pipeline.module.dlss.attribute.mode.balanced-render_pipeline.module.dlss.attribute.mode.quality-render_pipeline.module.dlss.attribute.mode.dlaa"
+    type: "enum:render_pipeline.module.dlss.attribute.mode.ultra_performance-render_pipeline.module.dlss.attribute.mode.performance-render_pipeline.module.dlss.attribute.mode.balanced-render_pipeline.module.dlss.attribute.mode.quality-render_pipeline.module.dlss.attribute.mode.dlaa"
     value: "render_pipeline.module.dlss.attribute.mode.balanced"

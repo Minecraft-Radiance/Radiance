@@ -20,11 +20,13 @@ public class Options {
     public static final String CATEGORY_TERRAIN = "options.video.category.terrain";
     public static final String CATEGORY_PIPELINE = "options.video.category.pipeline";
 
+    public static final String DLSS_MODE_ULTRA_PERFORMANCE_TOOLTIP = "options.video.dlss_mode.ultra_performance.tooltip";
     public static final String DLSS_MODE_PERFORMANCE_TOOLTIP = "options.video.dlss_mode.performance.tooltip";
     public static final String DLSS_MODE_BALANCED_TOOLTIP = "options.video.dlss_mode.balanced.tooltip";
     public static final String DLSS_MODE_QUALITY_TOOLTIP = "options.video.dlss_mode.quality.tooltip";
     public static final String DLSS_MODE_DLAA_TOOLTIP = "options.video.dlss_mode.dlaa.tooltip";
 
+    public static final String DLSS_MODE_ULTRA_PERFORMANCE = "options.video.dlss_mode.ultra_performance";
     public static final String DLSS_MODE_PERFORMANCE = "options.video.dlss_mode.performance";
     public static final String DLSS_MODE_BALANCED = "options.video.dlss_mode.balanced";
     public static final String DLSS_MODE_QUALITY = "options.video.dlss_mode.quality";

@@ -57,7 +57,7 @@ public class ModuleAttributeScreen extends Screen {
 
         for (AttributeConfig cfg : list) {
             List<ClickableWidget> ws = AttributeWidgetUtil.buildWidgets(cfg, textRenderer, WIDGET_WIDTH,
-                VEC3_COMPONENT_WIDTH);
+                VEC3_COMPONENT_WIDTH, () -> {});
             for (ClickableWidget w : ws) {
                 addDrawableChild(w);
             }
