@@ -85,10 +85,16 @@ final class AttributeWidgetUtil {
     static List<ClickableWidget> buildWidgets(AttributeConfig cfg, TextRenderer textRenderer,
         int width,
         int vec3ComponentWidth) {
+        return buildWidgets(cfg, textRenderer, width, vec3ComponentWidth, () -> {});
+    }
+
+    static List<ClickableWidget> buildWidgets(AttributeConfig cfg, TextRenderer textRenderer,
+        int width,
+        int vec3ComponentWidth, Runnable onChanged) {
         String type = cfg.type == null ? "" : cfg.type.toLowerCase(Locale.ROOT);
 
         if (type.startsWith("enum:")) {
-            return List.of(buildEnumWidget(cfg, cfg.type.substring(5), width));
+            return List.of(buildEnumWidget(cfg, cfg.type.substring(5), width, onChanged));
         }
 
         if (type.startsWith("int_range:")) {
@@ -100,26 +106,29 @@ final class AttributeWidgetUtil {
         }
 
         return switch (type) {
-            case "bool" -> List.of(buildBoolWidget(cfg, width));
-            case "int" -> List.of(buildIntWidget(cfg, textRenderer, width));
-            case "float" -> List.of(buildFloatWidget(cfg, textRenderer, width));
-            case "string" -> List.of(buildStringWidget(cfg, textRenderer, width));
-            case "vec3" -> buildVec3Widget(cfg, textRenderer, vec3ComponentWidth);
-            default -> List.of(buildStringWidget(cfg, textRenderer, width));
+            case "bool" -> List.of(buildBoolWidget(cfg, width, onChanged));
+            case "int" -> List.of(buildIntWidget(cfg, textRenderer, width, onChanged));
+            case "float" -> List.of(buildFloatWidget(cfg, textRenderer, width, onChanged));
+            case "string" -> List.of(buildStringWidget(cfg, textRenderer, width, onChanged));
+            case "vec3" -> buildVec3Widget(cfg, textRenderer, vec3ComponentWidth, onChanged);
+            default -> List.of(buildStringWidget(cfg, textRenderer, width, onChanged));
         };
     }
 
-    private static ClickableWidget buildBoolWidget(AttributeConfig cfg, int width) {
+    private static ClickableWidget buildBoolWidget(AttributeConfig cfg, int width,
+        Runnable onChanged) {
         boolean b = "render_pipeline.true".equalsIgnoreCase(cfg.value);
         return ButtonWidget.builder(
             Text.translatable(b ? "render_pipeline.true" : "render_pipeline.false"), btn -> {
                 boolean nv = !"render_pipeline.true".equalsIgnoreCase(cfg.value);
                 cfg.value = nv ? "render_pipeline.true" : "render_pipeline.false";
                 btn.setMessage(Text.translatable(cfg.value));
+                onChanged.run();
             }).dimensions(0, 0, width, 20).build();
     }
 
-    private static ClickableWidget buildEnumWidget(AttributeConfig cfg, String raw, int width) {
+    private static ClickableWidget buildEnumWidget(AttributeConfig cfg, String raw, int width,
+        Runnable onChanged) {
         String[] values = raw.isEmpty() ? new String[]{"<empty>"} : raw.split("-");
         int idx = 0;
         if (cfg.value != null) {
@@ -138,11 +147,12 @@ final class AttributeWidgetUtil {
             index[0] = (index[0] + 1) % values.length;
             cfg.value = values[index[0]];
             btn.setMessage(Text.translatable(cfg.value));
+            onChanged.run();
         }).dimensions(0, 0, width, 20).build();
     }
 
     private static ClickableWidget buildIntWidget(AttributeConfig cfg, TextRenderer textRenderer,
-        int width) {
+        int width, Runnable onChanged) {
         TextFieldWidget tf = new TextFieldWidget(textRenderer, 0, 0, width, 20, Text.empty());
         tf.setMaxLength(64);
         tf.setText(cfg.value == null ? "" : cfg.value);
@@ -150,13 +160,14 @@ final class AttributeWidgetUtil {
         tf.setChangedListener(text -> {
             if (isStrictInt(text)) {
                 cfg.value = text;
+                onChanged.run();
             }
         });
         return tf;
     }
 
     private static ClickableWidget buildFloatWidget(AttributeConfig cfg, TextRenderer textRenderer,
-        int width) {
+        int width, Runnable onChanged) {
         TextFieldWidget tf = new TextFieldWidget(textRenderer, 0, 0, width, 20, Text.empty());
         tf.setMaxLength(64);
         tf.setText(cfg.value == null ? "" : cfg.value);
@@ -167,23 +178,28 @@ final class AttributeWidgetUtil {
         tf.setChangedListener(text -> {
             if (isStrictFloat(text)) {
                 cfg.value = text;
+                onChanged.run();
             }
         });
         return tf;
     }
 
-    private static ClickableWidget buildStringWidget(AttributeConfig cfg, TextRenderer textRenderer,
-        int width) {
+    private static ClickableWidget buildStringWidget(AttributeConfig cfg,
+        TextRenderer textRenderer,
+        int width, Runnable onChanged) {
         TextFieldWidget tf = new TextFieldWidget(textRenderer, 0, 0, width, 20, Text.empty());
         tf.setMaxLength(128);
         tf.setText(cfg.value == null ? "" : cfg.value);
-        tf.setChangedListener(text -> cfg.value = text);
+        tf.setChangedListener(text -> {
+            cfg.value = text;
+            onChanged.run();
+        });
         return tf;
     }
 
     private static List<ClickableWidget> buildVec3Widget(AttributeConfig cfg,
         TextRenderer textRenderer,
-        int componentWidth) {
+        int componentWidth, Runnable onChanged) {
         if (cfg.value == null || cfg.value.isEmpty()) {
             cfg.value = "0,0,0";
         }
@@ -200,6 +216,7 @@ final class AttributeWidgetUtil {
 
             if (isStrictFloat(sx) && isStrictFloat(sy) && isStrictFloat(sz)) {
                 cfg.value = sx + "," + sy + "," + sz;
+                onChanged.run();
             }
         };
 
@@ -207,7 +224,11 @@ final class AttributeWidgetUtil {
         y.setChangedListener(s -> syncIfValid.run());
         z.setChangedListener(s -> syncIfValid.run());
 
-        syncIfValid.run();
+        // Normalize initial value without firing onChanged
+        String sx0 = x.getText(), sy0 = y.getText(), sz0 = z.getText();
+        if (isStrictFloat(sx0) && isStrictFloat(sy0) && isStrictFloat(sz0)) {
+            cfg.value = sx0 + "," + sy0 + "," + sz0;
+        }
         return List.of(x, y, z);
     }
 

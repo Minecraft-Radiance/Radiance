@@ -55,15 +55,17 @@ Note for AMD Users: If the DLSS runtime is missing, download the DLSS runtime li
 
 Download the files listed below from [here](https://github.com/NVIDIA/DLSS/tree/v310.5.3/lib/Windows_x86_64/rel) to the `.minecraft/radiance` folder (if the folder not exist, create one).
 
-* `nvngx_dlss.dll`
-* `nvngx_dlssd.dll`
+* `nvngx_dlss.dll` (DLSS Super Resolution / Denoising)
+* `nvngx_dlssd.dll` (DLSS Ray Reconstruction)
+* `nvngx_dlssg.dll` (DLSS Frame Generation)
 
 #### Linux
 
 Download the files listed below from [here](https://github.com/NVIDIA/DLSS/tree/v310.5.3/lib/Linux_x86_64/rel) to the `.minecraft/radiance` folder (if the folder not exist, create one).
 
-* `libnvidia-ngx-dlss.so.310.5.3`
-* `libnvidia-ngx-dlssd.so.310.5.3`
+* `libnvidia-ngx-dlss.so.310.5.3` (DLSS Super Resolution / Denoising)
+* `libnvidia-ngx-dlssd.so.310.5.3` (DLSS Ray Reconstruction)
+* `libnvidia-ngx-dlssg.so.310.5.3` (DLSS Frame Generation)
 
 # Build
 
@@ -87,7 +89,9 @@ Finally, build with `./gradlew build`.
 
 - [ ] port to more versions and mod loaders (WIP, first priority)
 - [x] XESS support
-- [ ] Frame Generation
+- [x] DLSS Frame Generation
+- [ ] FSR Frame Generation
+- [ ] XeSS-FG
 - [ ] HDR
 
 And more...

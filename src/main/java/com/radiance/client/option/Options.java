@@ -20,17 +20,27 @@ public class Options {
     public static final String CATEGORY_TERRAIN = "options.video.category.terrain";
     public static final String CATEGORY_PIPELINE = "options.video.category.pipeline";
 
+    public static final String DLSS_MODE_ULTRA_PERFORMANCE_TOOLTIP = "options.video.dlss_mode.ultra_performance.tooltip";
     public static final String DLSS_MODE_PERFORMANCE_TOOLTIP = "options.video.dlss_mode.performance.tooltip";
     public static final String DLSS_MODE_BALANCED_TOOLTIP = "options.video.dlss_mode.balanced.tooltip";
     public static final String DLSS_MODE_QUALITY_TOOLTIP = "options.video.dlss_mode.quality.tooltip";
     public static final String DLSS_MODE_DLAA_TOOLTIP = "options.video.dlss_mode.dlaa.tooltip";
 
+    public static final String DLSS_MODE_ULTRA_PERFORMANCE = "options.video.dlss_mode.ultra_performance";
     public static final String DLSS_MODE_PERFORMANCE = "options.video.dlss_mode.performance";
     public static final String DLSS_MODE_BALANCED = "options.video.dlss_mode.balanced";
     public static final String DLSS_MODE_QUALITY = "options.video.dlss_mode.quality";
     public static final String DLSS_MODE_DLAA = "options.video.dlss_mode.dlaa";
 
     public static final String DLSS_MODE_KEY = "options.video.dlss_mode";
+    public static final String DLSS_FRAME_GEN_KEY = "options.video.dlss_frame_gen";
+    public static final String DLSS_FRAME_GEN_OFF = "options.video.dlss_frame_gen.off";
+    public static final String DLSS_FRAME_GEN_X2 = "options.video.dlss_frame_gen.x2";
+    public static final String DLSS_FRAME_GEN_X3 = "options.video.dlss_frame_gen.x3";
+    public static final String DLSS_FRAME_GEN_X4 = "options.video.dlss_frame_gen.x4";
+    public static final String DLSS_FRAME_GEN_X5 = "options.video.dlss_frame_gen.x5";
+    public static final String DLSS_FRAME_GEN_X6 = "options.video.dlss_frame_gen.x6";
+    public static final String DLSS_FRAME_GEN_DYNAMIC = "options.video.dlss_frame_gen.dynamic";
     public static final String UPSCALER_TYPE_KEY = "options.video.upscaler_type";
     public static final String UPSCALER_QUALITY_KEY = "options.video.upscaler_quality";
     public static final String DENOISER_MODE_KEY = "options.video.denoiser_mode";

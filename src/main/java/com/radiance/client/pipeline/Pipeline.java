@@ -864,10 +864,15 @@ public class Pipeline {
     }
 
     public static void switchToPresetMode(String presetName) {
+        String processedPresetName = processPresetName(presetName);
+        if (INSTANCE.mode == PipelineMode.PRESET
+                && Objects.equals(INSTANCE.activePresetName, processedPresetName)) {
+            return;
+        }
+
         List<PresetStoredModule> carryOverModules = capturePresetModules();
 
         INSTANCE.mode = PipelineMode.PRESET;
-        String processedPresetName = processPresetName(presetName);
 
         // should set preset name properly
         assemblePreset(processedPresetName);
