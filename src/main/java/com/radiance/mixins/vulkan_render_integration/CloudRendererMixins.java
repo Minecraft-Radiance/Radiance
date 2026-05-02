@@ -2,9 +2,11 @@ package com.radiance.mixins.vulkan_render_integration;
 
 import com.radiance.client.UnsafeManager;
 import com.radiance.client.constant.Constants;
+import com.radiance.client.proxy.vulkan.BufferProxy;
 import com.radiance.client.proxy.world.EntityProxy;
 import com.radiance.client.vertex.PBRVertexConsumer;
 import com.radiance.client.vertex.StorageVertexConsumerProvider;
+import java.nio.ByteBuffer;
 import net.minecraft.client.gl.GlUsage;
 import net.minecraft.client.gl.VertexBuffer;
 import net.minecraft.client.option.CloudRenderMode;
@@ -16,6 +18,7 @@ import net.minecraft.util.math.ColorHelper;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.math.Vec3d;
 import org.joml.Matrix4f;
+import org.lwjgl.system.MemoryUtil;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -123,6 +126,9 @@ public class CloudRendererMixins {
                 cloudRenderMode == CloudRenderMode.FANCY ? RenderLayer.getFastClouds()
                     : RenderLayer.getNoCullingClouds();
 
+            BufferProxy.cloudWindOffsetX = ticks * 0.030000001F;
+            BufferProxy.cloudWindOffsetZ = 3.96F;
+
             if (this.field_53052 || j != this.centerX || k != this.centerZ
                 || viewMode != this.viewMode ||
                 cloudRenderMode != this.renderMode) {
@@ -133,6 +139,7 @@ public class CloudRendererMixins {
                 this.renderMode = cloudRenderMode;
 
                 this.tessellateClouds(color, j, k, cloudRenderMode, viewMode, renderLayer);
+                this.uploadCloudCoverage();
             }
 
             if (storageVertexConsumerProvider != null) {
@@ -148,6 +155,27 @@ public class CloudRendererMixins {
         }
 
         ci.cancel();
+    }
+
+    @Unique
+    private void uploadCloudCoverage() {
+        if (this.cells == null) {
+            return;
+        }
+        long[] packedCells = this.cells.cells();
+        int width = this.cells.width();
+        int height = this.cells.height();
+        int totalSize = width * height;
+
+        ByteBuffer buffer = MemoryUtil.memAlloc(totalSize);
+        try {
+            for (int index = 0; index < totalSize; index++) {
+                buffer.put(index, packedCells[index] != 0L ? (byte) 255 : (byte) 0);
+            }
+            BufferProxy.updateCloudCoverage(MemoryUtil.memAddress(buffer), width, height);
+        } finally {
+            MemoryUtil.memFree(buffer);
+        }
     }
 
     @Unique

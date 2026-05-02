@@ -222,6 +222,7 @@ public class Constants {
         PLAYER(0b00000010),
         FISHING_BOBBER(0b00000100),
         HAND(0b00001000),
+        WEATHER(0b00010000),
         PARTICLE(0b00100000),
         CLOUD(0b01000000),
         BOAT_WATER_MASK(0b10000000);

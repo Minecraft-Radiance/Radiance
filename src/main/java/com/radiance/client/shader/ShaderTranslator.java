@@ -15,6 +15,8 @@ public final class ShaderTranslator {
         "^\\s*(?:layout\\s*\\([^)]*\\)\\s*)?uniform\\s+[\\w\\d_]+(?:\\s*\\[[^]]*])?\\s+(\\w+)\\s*;\\s*$");
     private static final Pattern INPUT_OUTPUT_PATTERN = Pattern.compile(
         "^\\s*(in|out)\\s+([\\w\\d_]+)\\s+(\\w+)\\s*;\\s*$");
+    private static final Pattern OUTPUT_ASSIGNMENT_PATTERN = Pattern.compile(
+        "^(\\s*)(\\w+)\\s*=\\s*(.+);\\s*$");
 
     private ShaderTranslator() {
     }
@@ -46,6 +48,7 @@ public final class ShaderTranslator {
             .max()
             .orElse(0);
         uniformBufferSize = Math.ceilDiv(uniformBufferSize, 16) * 16;
+        uniformBufferSize += 16;
 
         String header = buildHeader(fields);
         return new Result(header + vertex.source(), header + fragment.source(), uniformBufferSize);
@@ -119,6 +122,18 @@ public final class ShaderTranslator {
                 }
             }
 
+            if (!vertexStage) {
+                Matcher assignmentMatcher = OUTPUT_ASSIGNMENT_PATTERN.matcher(line);
+                if (assignmentMatcher.matches() && outputLocations.containsKey(assignmentMatcher.group(2))) {
+                    builder.append(assignmentMatcher.group(1))
+                        .append(assignmentMatcher.group(2))
+                        .append(" = radianceConvertOverlaySdrToHdr((")
+                        .append(assignmentMatcher.group(3))
+                        .append("), radianceSdrBrightnessNits);\n");
+                    continue;
+                }
+            }
+
             builder.append(line)
                 .append('\n');
         }
@@ -139,6 +154,8 @@ public final class ShaderTranslator {
                 .append(field.fieldName())
                 .append(";\n");
         }
+        builder.append("    float radianceSdrBrightnessNits;\n");
+        builder.append("    vec3 radianceSdrPadding;\n");
         builder.append("} uniforms;\n\n");
         for (ShaderField field : fields) {
             if (field.isSampler()) {
@@ -155,6 +172,18 @@ public final class ShaderTranslator {
                     .append(")\n");
             }
         }
+        builder.append("#define radianceSdrBrightnessNits (uniforms.radianceSdrBrightnessNits)\n");
+        builder.append("vec3 radianceSrgbToLinear(vec3 color) {\n");
+        builder.append("    bvec3 useLinearSegment = lessThanEqual(color, vec3(0.04045));\n");
+        builder.append("    vec3 linearSegment = color / 12.92;\n");
+        builder.append("    vec3 exponentialSegment = pow((color + 0.055) / 1.055, vec3(2.4));\n");
+        builder.append("    return mix(exponentialSegment, linearSegment, useLinearSegment);\n");
+        builder.append("}\n");
+        builder.append("vec4 radianceConvertOverlaySdrToHdr(vec4 color, float sdrBrightnessNits) {\n");
+        builder.append("    if (sdrBrightnessNits <= 0.0) { return color; }\n");
+        builder.append("    float multiplier = sdrBrightnessNits / 80.0;\n");
+        builder.append("    return vec4(radianceSrgbToLinear(max(color.rgb, vec3(0.0))) * multiplier, color.a);\n");
+        builder.append("}\n");
         builder.append('\n');
         return builder.toString();
     }

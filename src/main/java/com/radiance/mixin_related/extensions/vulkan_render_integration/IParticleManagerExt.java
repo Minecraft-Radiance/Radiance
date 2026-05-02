@@ -11,4 +11,6 @@ public interface IParticleManagerExt {
     List<ParticleTextureSheet> radiance$getTextureSheets();
 
     Map<ParticleTextureSheet, Queue<Particle>> radiance$getParticles();
+
+    Queue<Particle> radiance$getNewParticles();
 }

@@ -217,8 +217,9 @@ public class Pipeline {
     }
 
     public static void connectOutput(ImageConfig src) {
-        if (!Objects.equals(src.format, "R8G8B8A8_UNORM")) {
-            throw new RuntimeException("Invalid output format.");
+        if (!Objects.equals(src.format, "R8G8B8A8_UNORM") && !Objects.equals(src.format,
+                "R16G16B16A16_SFLOAT")) {
+            throw new RuntimeException("Invalid output format: " + src.format);
         }
         src.finalOutput = true;
     }

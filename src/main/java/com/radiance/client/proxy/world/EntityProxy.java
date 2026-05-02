@@ -38,6 +38,8 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.particle.Particle;
 import net.minecraft.client.particle.ParticleManager;
 import net.minecraft.client.particle.ParticleTextureSheet;
+import net.minecraft.client.particle.RainSplashParticle;
+import net.minecraft.client.particle.WaterSplashParticle;
 import net.minecraft.client.render.BufferBuilder;
 import net.minecraft.client.render.BufferBuilderStorage;
 import net.minecraft.client.render.BuiltBuffer;
@@ -637,7 +639,12 @@ public class EntityProxy {
         List<StorageVertexConsumerProvider> storageVertexConsumerProviders = new ArrayList<>();
         EntityRenderDataList renderDataList = new EntityRenderDataList();
 
-        Map<String, StorageVertexConsumerProvider> postStorageVertexConsumerProviders = new LinkedHashMap<>();
+        StorageVertexConsumerProvider particleStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
+            0);
+        storageVertexConsumerProviders.add(particleStorageVertexConsumerProvider);
+        StorageVertexConsumerProvider splashStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
+            0);
+        storageVertexConsumerProviders.add(splashStorageVertexConsumerProvider);
 
         ParticleManager particleManager = MinecraftClient.getInstance().particleManager;
         IParticleManagerExt particleManagerExt = (IParticleManagerExt) particleManager;
@@ -647,40 +654,34 @@ public class EntityProxy {
             Queue<Particle> particleQueue = particles.get(particleTextureSheet);
             if (particleQueue != null && !particleQueue.isEmpty()) {
                 for (Particle particle : particleQueue) {
-                    String contentName = normalizeParticleContentName(
-                        ((IParticleExt) particle).radiance$getContentName());
-                    StorageVertexConsumerProvider postStorageVertexConsumerProvider =
-                        postStorageVertexConsumerProviders.computeIfAbsent(contentName, key -> {
-                            StorageVertexConsumerProvider provider = new StorageVertexConsumerProvider(
-                                0);
-                            storageVertexConsumerProviders.add(provider);
-                            return provider;
-                        });
-
-                    VertexConsumer
-                        vertexConsumer =
-                        postStorageVertexConsumerProvider.getBuffer(
-                            Objects.requireNonNull(
-                                particleTextureSheet.renderType()));
-
-                    try {
-                        particle.render(vertexConsumer, camera, tickDelta);
-                    } catch (Throwable var11) {
-                        CrashReport crashReport = CrashReport.create(var11, "Rendering Particle");
-                        CrashReportSection crashReportSection = crashReport.addElement(
-                            "Particle being rendered");
-                        crashReportSection.add("Particle", particle);
-                        crashReportSection.add("Particle Type", particleTextureSheet);
-                        throw new CrashException(crashReport);
-                    }
+                    renderParticle(particleStorageVertexConsumerProvider, splashStorageVertexConsumerProvider,
+                        particleTextureSheet, particle, camera, tickDelta);
                 }
             }
         }
 
-        for (Map.Entry<String, StorageVertexConsumerProvider> entry : postStorageVertexConsumerProviders.entrySet()) {
-            processPostEntityRenderData(entry.getValue(), 0, 0, 0, 0,
-                PostRenderFlags.PARTICLE, entry.getKey(), renderDataList);
+        Queue<Particle> pendingParticles = particleManagerExt.radiance$getNewParticles();
+        if (pendingParticles != null && !pendingParticles.isEmpty()) {
+            for (Particle particle : pendingParticles) {
+                if (!isRainSplashParticle(particle)) {
+                    continue;
+                }
+
+                ParticleTextureSheet particleTextureSheet = particle.getType();
+                if (particleTextureSheet == ParticleTextureSheet.CUSTOM
+                    || particleTextureSheet == ParticleTextureSheet.NO_RENDER) {
+                    continue;
+                }
+
+                renderParticle(particleStorageVertexConsumerProvider, splashStorageVertexConsumerProvider,
+                    particleTextureSheet, particle, camera, tickDelta);
+            }
         }
+
+        processWorldEntityRenderData(particleStorageVertexConsumerProvider, 0, 0, 0, 0,
+            Constants.RayTracingFlags.PARTICLE, true, renderDataList);
+        processWorldEntityRenderData(splashStorageVertexConsumerProvider, 0, 0, 0, 0,
+            Constants.RayTracingFlags.WEATHER, true, renderDataList);
 
         StorageVertexConsumerProvider storageVertexConsumerProvider = new StorageVertexConsumerProvider(
             0);
@@ -711,6 +712,56 @@ public class EntityProxy {
 
         queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,
             Constants.Coordinates.CAMERA_SHIFT, false);
+    }
+
+    private static boolean isRainSplashParticle(Particle particle) {
+        return particle instanceof RainSplashParticle || particle instanceof WaterSplashParticle;
+    }
+
+    private static void renderParticle(
+        StorageVertexConsumerProvider particleStorageVertexConsumerProvider,
+        StorageVertexConsumerProvider splashStorageVertexConsumerProvider,
+        ParticleTextureSheet particleTextureSheet,
+        Particle particle,
+        Camera camera,
+        float tickDelta) {
+        StorageVertexConsumerProvider targetStorageVertexConsumerProvider;
+        if (isRainSplashParticle(particle)) {
+            targetStorageVertexConsumerProvider = splashStorageVertexConsumerProvider;
+        } else {
+            targetStorageVertexConsumerProvider = particleStorageVertexConsumerProvider;
+        }
+
+        targetStorageVertexConsumerProvider.setMaterialFlags(getParticleMaterialFlags(particle));
+        VertexConsumer vertexConsumer = targetStorageVertexConsumerProvider.getBuffer(
+            Objects.requireNonNull(getParticleRenderLayer(particle, particleTextureSheet)));
+
+        try {
+            particle.render(vertexConsumer, camera, tickDelta);
+        } catch (Throwable throwable) {
+            CrashReport crashReport = CrashReport.create(throwable, "Rendering Particle");
+            CrashReportSection crashReportSection = crashReport.addElement(
+                "Particle being rendered");
+            crashReportSection.add("Particle", particle);
+            crashReportSection.add("Particle Type", particleTextureSheet);
+            throw new CrashException(crashReport);
+        }
+    }
+
+    private static int getParticleMaterialFlags(Particle particle) {
+        if (isRainSplashParticle(particle)) {
+            return PBRVertexConsumer.MATERIAL_FLAG_RAIN_SPLASH;
+        }
+        return 0;
+    }
+
+    private static RenderLayer getParticleRenderLayer(Particle particle,
+        ParticleTextureSheet particleTextureSheet) {
+        if (isRainSplashParticle(particle)) {
+            return Objects.requireNonNull(
+                ParticleTextureSheet.PARTICLE_SHEET_TRANSLUCENT.renderType());
+        }
+        return Objects.requireNonNull(particleTextureSheet.renderType());
     }
 
     public static void queueTargetBlockOutlineRebuild(Camera camera, ClientWorld world) {
@@ -787,12 +838,21 @@ public class EntityProxy {
         List<StorageVertexConsumerProvider> storageVertexConsumerProviders = new ArrayList<>();
         EntityRenderDataList renderDataList = new EntityRenderDataList();
 
-        StorageVertexConsumerProvider storageVertexConsumerProvider = new StorageVertexConsumerProvider(
+        StorageVertexConsumerProvider weatherStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
             0);
-        storageVertexConsumerProviders.add(storageVertexConsumerProvider);
+        storageVertexConsumerProviders.add(weatherStorageVertexConsumerProvider);
 
-        weatherRendering.renderPrecipitation(world, storageVertexConsumerProvider, ticks, tickDelta,
+        weatherStorageVertexConsumerProvider.setMaterialFlags(
+            PBRVertexConsumer.MATERIAL_FLAG_RAIN_PRECIPITATION);
+        weatherRendering.renderPrecipitation(world, weatherStorageVertexConsumerProvider, ticks, tickDelta,
             camera.getPos());
+        weatherStorageVertexConsumerProvider.setMaterialFlags(0);
+        processWorldEntityRenderData(weatherStorageVertexConsumerProvider, 0, 0, 0, 0,
+            Constants.RayTracingFlags.WEATHER, true, renderDataList);
+
+        StorageVertexConsumerProvider postStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
+            0);
+        storageVertexConsumerProviders.add(postStorageVertexConsumerProvider);
 
         MinecraftClient client = MinecraftClient.getInstance();
         int clampedViewDistance = client.options.getClampedViewDistance() * 16;
@@ -800,7 +860,7 @@ public class EntityProxy {
         worldBorderRendering.render(world.getWorldBorder(), camera.getPos(), clampedViewDistance,
             farPlaneDistance);
 
-        processPostEntityRenderData(storageVertexConsumerProvider, 0, 0, 0, 0,
+        processPostEntityRenderData(postStorageVertexConsumerProvider, 0, 0, 0, 0,
             PostRenderFlags.WEATHER, EntityProxy::resolveWeatherContentName, renderDataList);
 
         queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,

@@ -19,6 +19,7 @@ public class StorageVertexConsumerProvider implements VertexConsumerProvider {
     protected final Map<RenderLayer, BufferAllocator> allocated = new HashMap<>();
 
     private int size = 0;
+    private int materialFlags = 0;
 
     public StorageVertexConsumerProvider(int size) {
         this.size = size;
@@ -43,6 +44,7 @@ public class StorageVertexConsumerProvider implements VertexConsumerProvider {
 
             if (drawMode == VertexFormat.DrawMode.QUADS) {
                 vertexConsumer = new PBRVertexConsumer(bufferAllocator, renderLayer);
+                ((PBRVertexConsumer) vertexConsumer).setMaterialFlags(this.materialFlags);
             } else {
                 vertexConsumer = new BufferBuilder(bufferAllocator, drawMode, vertexFormat);
             }
@@ -53,6 +55,15 @@ public class StorageVertexConsumerProvider implements VertexConsumerProvider {
 
     public Map<RenderLayer, VertexConsumer> getLayers() {
         return this.pending;
+    }
+
+    public void setMaterialFlags(int materialFlags) {
+        this.materialFlags = materialFlags;
+        for (VertexConsumer vertexConsumer : this.pending.values()) {
+            if (vertexConsumer instanceof PBRVertexConsumer pbrVertexConsumer) {
+                pbrVertexConsumer.setMaterialFlags(materialFlags);
+            }
+        }
     }
 
     public void close() {

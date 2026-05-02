@@ -7,6 +7,7 @@ import com.google.common.collect.ImmutableList;
 import com.mojang.serialization.Codec;
 import com.radiance.client.gui.PotentialValuesBasedCallbacksNoValue;
 import com.radiance.client.gui.RenderPipelineScreen;
+import com.radiance.client.gui.ScenarioColorGradingScreen;
 import com.radiance.client.option.Options;
 import com.radiance.client.util.CategoryVideoOptionEntry;
 import java.util.Arrays;
@@ -133,6 +134,51 @@ public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
                 }
             });
 
+        SimpleOption<Boolean> enableHdr = SimpleOption.ofBoolean(Options.HDR_ENABLED_KEY,
+            Options.hdrEnabled,
+            value -> {
+                if (MinecraftClient.getInstance()
+                    .getWindow() != null) {
+                    Options.setHdrEnabled(value, true);
+                }
+            });
+
+        SimpleOption<Integer> hdrMinLuminance = new SimpleOption<>(Options.HDR_MIN_LUMINANCE_KEY,
+            SimpleOption.emptyTooltip(),
+            (optionText, value) -> getGenericValueText(optionText,
+                Text.literal(String.format("%.2f nits", value / 100.0f))),
+            new SimpleOption.ValidatingIntSliderCallbacks(0, 1000),
+            Codec.intRange(0, 1000),
+            Math.round(Options.hdrMinLuminance * 100.0f),
+            value -> Options.setHdrMinLuminance(value / 100.0f, true));
+
+        SimpleOption<Integer> hdrMaxLuminance = new SimpleOption<>(Options.HDR_MAX_LUMINANCE_KEY,
+            SimpleOption.emptyTooltip(),
+            (optionText, value) -> getGenericValueText(optionText,
+                Text.literal(value + " nits")),
+            new SimpleOption.ValidatingIntSliderCallbacks(100, 4000),
+            Codec.intRange(100, 4000),
+            Math.round(Options.hdrMaxLuminance),
+            value -> Options.setHdrMaxLuminance(value, true));
+
+        SimpleOption<Integer> hdrRollOff = new SimpleOption<>(Options.HDR_ROLL_OFF_KEY,
+            SimpleOption.emptyTooltip(),
+            (optionText, value) -> getGenericValueText(optionText,
+                Text.literal(String.format("%.2f", value / 100.0f))),
+            new SimpleOption.ValidatingIntSliderCallbacks(25, 400),
+            Codec.intRange(25, 400),
+            Math.round(Options.hdrRollOff * 100.0f),
+            value -> Options.setHdrRollOff(value / 100.0f, true));
+
+        SimpleOption<Integer> sdrBrightness = new SimpleOption<>(Options.SDR_BRIGHTNESS_KEY,
+            SimpleOption.emptyTooltip(),
+            (optionText, value) -> getGenericValueText(optionText,
+                Text.literal(value + " nits")),
+            new SimpleOption.ValidatingIntSliderCallbacks(80, 500),
+            Codec.intRange(80, 500),
+            Math.round(Options.sdrBrightness),
+            value -> Options.setSdrBrightness(value, true));
+
         SimpleOption<Integer>
             chunkBuildingBatchSize =
             new SimpleOption<>(Options.CHUNK_BUILDING_BATCH_SIZE_KEY,
@@ -175,6 +221,26 @@ public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
             Options.collectChunkEmission,
             value -> Options.setCollectChunkEmission(value, true));
 
+        SimpleOption<Integer> sunPathTilt = new SimpleOption<>(
+            Options.SUN_PATH_TILT_KEY,
+            SimpleOption.emptyTooltip(),
+            (optionText, value) -> getGenericValueText(optionText,
+                Text.literal(value + "°")),
+            new SimpleOption.ValidatingIntSliderCallbacks(0, 45),
+            Codec.intRange(0, 45),
+            Options.sunPathTilt,
+            value -> Options.setSunPathTilt(value, true));
+
+        SimpleOption<Integer> sunSize = new SimpleOption<>(
+            Options.SUN_SIZE_KEY,
+            SimpleOption.emptyTooltip(),
+            (optionText, value) -> getGenericValueText(optionText,
+                Text.literal(value + "%")),
+            new SimpleOption.ValidatingIntSliderCallbacks(1, 100),
+            Codec.intRange(1, 100),
+            Options.sunSize,
+            value -> Options.setSunSize(value, true));
+
         SimpleOption<Boolean> pipelineSettings = new SimpleOption<>(Options.PIPELINE_SETUP_KEY,
             SimpleOption.emptyTooltip(),
             (optionText, value) -> optionText,
@@ -183,6 +249,16 @@ public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
             value -> {
                 MinecraftClient.getInstance()
                     .setScreen(new RenderPipelineScreen((VideoOptionsScreen) (Object) this));
+            });
+
+        SimpleOption<Boolean> scenarioColorGrading = new SimpleOption<>("options.video.scenario_color_grading",
+            SimpleOption.emptyTooltip(),
+            (optionText, value) -> optionText,
+            BOOLEAN_NO_KEY,
+            false,
+            value -> {
+                MinecraftClient.getInstance()
+                    .setScreen(new ScenarioColorGradingScreen((VideoOptionsScreen) (Object) this));
             });
 
         // Adding categories and options
@@ -222,11 +298,25 @@ public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
         this.body.addSingleOptionEntry(fullScreenResolutionOption);
 
         this.body.addEntry(
+            new CategoryVideoOptionEntry(Text.translatable(Options.CATEGORY_HDR), body));
+        this.body.addSingleOptionEntry(enableHdr);
+        this.body.addSingleOptionEntry(hdrMinLuminance);
+        this.body.addSingleOptionEntry(hdrMaxLuminance);
+        this.body.addSingleOptionEntry(hdrRollOff);
+        this.body.addSingleOptionEntry(sdrBrightness);
+        this.body.addSingleOptionEntry(scenarioColorGrading);
+
+        this.body.addEntry(
             new CategoryVideoOptionEntry(Text.translatable(Options.CATEGORY_TERRAIN), body));
         this.body.addSingleOptionEntry(chunkBuildingBatchSize);
         this.body.addSingleOptionEntry(chunkBuildingTotalBatches);
         this.body.addSingleOptionEntry(chunkBuildingThreads);
         this.body.addSingleOptionEntry(collectChunkEmission);
+
+        this.body.addEntry(
+            new CategoryVideoOptionEntry(Text.translatable(Options.CATEGORY_SUN), body));
+        this.body.addSingleOptionEntry(sunSize);
+        this.body.addSingleOptionEntry(sunPathTilt);
 
         this.body.addEntry(
             new CategoryVideoOptionEntry(Text.translatable(Options.CATEGORY_PIPELINE), body));

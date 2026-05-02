@@ -42,6 +42,23 @@ public class RendererProxy {
 
     public static native void shouldRenderWorld(boolean renderWorld);
 
+    public static native void updateScenarioSceneContext(String dimensionKey, String biomeKey, long timeOfDay,
+        boolean raining, boolean thundering, String submersion, boolean indoors, boolean cave);
+
+    public static native boolean saveScenarioColorGrading(String scenarioName, int priority, boolean saveWorld,
+        boolean saveTime, boolean saveWeather, boolean saveBiome, boolean saveSubmersion, boolean saveIndoor,
+        boolean saveCave, int timeStart, int timeEnd, String[] attributePairs);
+
+    public static native String getActiveScenarioColorGradingName();
+
+    public static native String[] getActiveScenarioColorGradingValues(String[] attributeKeys);
+
+    public static native void applyPreviewScenarioColorGrading(String[] attributePairs);
+
+    public static native void clearPreviewScenarioColorGrading();
+
+    public static native void setScenarioGradingIsolation(boolean enabled);
+
     public static native void takeScreenshot(boolean withUI, int width, int height, int channel,
         long pointer);
 

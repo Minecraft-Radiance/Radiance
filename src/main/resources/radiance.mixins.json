@@ -60,6 +60,7 @@
     "vulkan_render_integration.PalettedPermutationsAtlasSourceMixins",
     "vulkan_render_integration.ParticleManagerMixins",
     "vulkan_render_integration.ParticleMixins",
+    "vulkan_render_integration.RainSplashParticleMixins",
     "vulkan_render_integration.RenderLayerMixins",
     "vulkan_render_integration.RenderPhaseLightmapMixins",
     "vulkan_render_integration.RenderPhaseMixins",

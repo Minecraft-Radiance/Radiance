@@ -3,7 +3,9 @@ package com.radiance.mixins.vulkan_render_integration;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.radiance.client.UnsafeManager;
+import com.radiance.client.option.Options;
 import com.radiance.client.proxy.vulkan.BufferProxy;
+import com.radiance.client.proxy.vulkan.RendererProxy;
 import com.radiance.client.proxy.world.ChunkProxy;
 import com.radiance.client.proxy.world.EntityProxy;
 import com.radiance.client.proxy.world.PlayerProxy;
@@ -44,6 +46,7 @@ import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.client.world.ClientWorld;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.player.BlockBreakingInfo;
+import net.minecraft.world.LightType;
 import net.minecraft.util.Pair;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ColorHelper;
@@ -263,6 +266,7 @@ public abstract class WorldRendererMixins {
         MatrixStack matrixStack = new MatrixStack();
         matrixStack.push();
         matrixStack.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(-90.0F));
+        matrixStack.multiply(RotationAxis.POSITIVE_Z.rotationDegrees((float) Options.sunPathTilt));
         matrixStack.multiply(RotationAxis.POSITIVE_X.rotationDegrees(skyAngle * 360.0F));
         Matrix4f rotationMatrix = matrixStack.peek().getPositionMatrix();
         Vector3f sunDirection = rotationMatrix.transformPosition(0, 1, 0, new Vector3f())
@@ -288,6 +292,27 @@ public abstract class WorldRendererMixins {
             dimensionEffects.getSkyType().ordinal(), dimensionEffects.isSunRisingOrSetting(skyAngle),
             this.isSkyDark(tickDelta), hasBlindnessOrDarkness, submersionType, moonPhase,
             rainGradient, sunTextureID, moonTextureID);
+
+        BlockPos cameraBlockPos = BlockPos.ofFloored(camera.getPos());
+        String biomeKey = world.getBiome(cameraBlockPos)
+            .getKey()
+            .map(key -> key.getValue().toString())
+            .orElse("");
+        boolean skyVisible = world.isSkyVisible(cameraBlockPos);
+        int skyLight = world.getLightLevel(LightType.SKY, cameraBlockPos);
+        int surfaceY = world.getTopY(net.minecraft.world.Heightmap.Type.MOTION_BLOCKING,
+            cameraBlockPos.getX(), cameraBlockPos.getZ());
+        boolean indoors = !skyVisible;
+        boolean cave = !skyVisible && skyLight <= 0 && (surfaceY - cameraBlockPos.getY()) >= 8;
+        String submersion = switch (camera.getSubmersionType()) {
+            case WATER -> "water";
+            case LAVA -> "lava";
+            case POWDER_SNOW -> "powder_snow";
+            default -> "air";
+        };
+        RendererProxy.updateScenarioSceneContext(world.getRegistryKey().getValue().toString(),
+            biomeKey, world.getTimeOfDay(), world.isRaining(), world.isThundering(), submersion,
+            indoors, cave);
 
         BufferProxy.updateMapping();
 

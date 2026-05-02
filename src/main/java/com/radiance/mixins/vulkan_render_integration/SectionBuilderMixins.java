@@ -3,10 +3,15 @@ package com.radiance.mixins.vulkan_render_integration;
 import com.mojang.blaze3d.systems.VertexSorter;
 import com.radiance.client.vertex.PBRVertexConsumer;
 import it.unimi.dsi.fastutil.objects.Reference2ObjectArrayMap;
+import java.util.Arrays;
 import java.util.Map;
 import net.minecraft.block.BlockRenderType;
 import net.minecraft.block.BlockState;
+import net.minecraft.block.LeavesBlock;
+import net.minecraft.block.TransparentBlock;
+import net.minecraft.block.TranslucentBlock;
 import net.minecraft.block.entity.BlockEntity;
+import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.RenderLayers;
@@ -19,9 +24,12 @@ import net.minecraft.client.render.chunk.ChunkRendererRegion;
 import net.minecraft.client.render.chunk.SectionBuilder;
 import net.minecraft.client.util.BufferAllocator;
 import net.minecraft.client.util.math.MatrixStack;
+import net.minecraft.client.world.ClientWorld;
 import net.minecraft.fluid.FluidState;
+import net.minecraft.registry.tag.FluidTags;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkSectionPos;
+import net.minecraft.util.math.Direction;
 import net.minecraft.util.math.random.Random;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -68,6 +76,8 @@ public abstract class SectionBuilderMixins {
             new Reference2ObjectArrayMap<>(RenderLayer.getBlockLayers()
                 .size());
         Random random = Random.create();
+        ClientWorld clientWorld = MinecraftClient.getInstance().world;
+        int[] topOpaqueYByColumn = this.computeTopOpaqueYByColumn(clientWorld, blockPos);
 
         for (BlockPos blockPos3 : BlockPos.iterate(blockPos, blockPos2)) {
             BlockState blockState = renderRegion.getBlockState(blockPos3);
@@ -87,6 +97,8 @@ public abstract class SectionBuilderMixins {
                 RenderLayer renderLayer = RenderLayers.getFluidLayer(fluidState);
                 PBRVertexConsumer bufferBuilder = this.beginBufferBuilding(map, allocatorStorage,
                     renderLayer);
+                bufferBuilder.setMaterialFlags(
+                    fluidState.isIn(FluidTags.WATER) ? PBRVertexConsumer.MATERIAL_FLAG_WATER : 0);
                 this.blockRenderManager.renderFluid(blockPos3, renderRegion, bufferBuilder,
                     blockState, fluidState);
             }
@@ -95,6 +107,9 @@ public abstract class SectionBuilderMixins {
                 RenderLayer renderLayer = RenderLayers.getBlockLayer(blockState);
                 PBRVertexConsumer bufferBuilder = this.beginBufferBuilding(map, allocatorStorage,
                     renderLayer);
+                bufferBuilder.setMaterialFlags(
+                    this.getRainMaterialFlags(blockState, renderRegion, blockPos3, blockPos,
+                        topOpaqueYByColumn));
                 matrixStack.push();
                 matrixStack.translate((float) ChunkSectionPos.getLocalCoord(blockPos3.getX()),
                     (float) ChunkSectionPos.getLocalCoord(blockPos3.getY()),
@@ -133,5 +148,64 @@ public abstract class SectionBuilderMixins {
         }
 
         return pbrVertexConsumer;
+    }
+
+    @Unique
+    private int[] computeTopOpaqueYByColumn(ClientWorld world, BlockPos minPos) {
+        int[] topOpaqueYByColumn = new int[16 * 16];
+        Arrays.fill(topOpaqueYByColumn, minPos.getY() - 1);
+        if (world == null) {
+            return topOpaqueYByColumn;
+        }
+
+        BlockPos.Mutable mutable = new BlockPos.Mutable();
+        int topY = world.getTopYInclusive();
+        for (int localZ = 0; localZ < 16; localZ++) {
+            for (int localX = 0; localX < 16; localX++) {
+                int worldX = minPos.getX() + localX;
+                int worldZ = minPos.getZ() + localZ;
+                int topOpaqueY = minPos.getY() - 1;
+                for (int worldY = topY; worldY >= minPos.getY(); worldY--) {
+                    if (world.getBlockState(mutable.set(worldX, worldY, worldZ))
+                        .isOpaqueFullCube()) {
+                        topOpaqueY = worldY;
+                        break;
+                    }
+                }
+                topOpaqueYByColumn[(localZ << 4) | localX] = topOpaqueY;
+            }
+        }
+        return topOpaqueYByColumn;
+    }
+
+    @Unique
+    private int getRainMaterialFlags(BlockState blockState,
+        ChunkRendererRegion renderRegion,
+        BlockPos pos,
+        BlockPos minPos,
+        int[] topOpaqueYByColumn) {
+        if (!this.isRainWettable(blockState, renderRegion, pos)) {
+            return 0;
+        }
+
+        int localX = pos.getX() - minPos.getX();
+        int localZ = pos.getZ() - minPos.getZ();
+        int topOpaqueY = topOpaqueYByColumn[(localZ << 4) | localX];
+        return pos.getY() >= topOpaqueY ? PBRVertexConsumer.MATERIAL_FLAG_RAIN_EXPOSED : 0;
+    }
+
+    @Unique
+    private boolean isRainWettable(BlockState blockState,
+        ChunkRendererRegion renderRegion,
+        BlockPos pos) {
+        if (blockState.getBlock() instanceof LeavesBlock) {
+            return true;
+        }
+        if (blockState.getBlock() instanceof TransparentBlock
+            || blockState.getBlock() instanceof TranslucentBlock) {
+            return false;
+        }
+        return blockState.isOpaqueFullCube()
+            || blockState.isSideSolidFullSquare(renderRegion, pos, Direction.UP);
     }
 }

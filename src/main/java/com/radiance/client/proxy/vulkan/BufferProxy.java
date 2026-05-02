@@ -8,6 +8,7 @@ import static org.lwjgl.system.MemoryUtil.memSet;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.radiance.client.constant.Constants;
+import com.radiance.client.option.Options;
 import com.radiance.client.texture.TextureTracker;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -24,6 +25,8 @@ import org.joml.Vector3f;
 import org.lwjgl.system.MemoryStack;
 
 public class BufferProxy {
+    public static volatile float cloudWindOffsetX = 0.0f;
+    public static volatile float cloudWindOffsetZ = 3.96f;
 
     public static native int allocateBuffer();
 
@@ -201,13 +204,15 @@ public class BufferProxy {
 
     public static native void updateSkyUniform(long ptr);
 
+    public static native void updateCloudCoverage(long ptr, int width, int height);
+
     public static void updateSkyUniform(float baseColorR, float baseColorG, float baseColorB,
         float horizonColorR, float horizonColorG, float horizonColorB, float horizonColorA,
         Vector3f sunDirection, int skyType, boolean sunRisingOrSetting, boolean skyDark,
         boolean hasBlindnessOrDarkness, int submersionType, int moonPhase, float rainGradient,
         int sunTextureID, int moonTextureID) {
         try (MemoryStack stack = stackPush()) {
-            int size = 80;
+            int size = 112;
             ByteBuffer bb = stack.malloc(size);
             long addr = memAddress(bb);
             int baseAddr = 0;
@@ -249,9 +254,26 @@ public class BufferProxy {
             baseAddr += Integer.BYTES;
             bb.putFloat(baseAddr, rainGradient);
             baseAddr += Float.BYTES;
+            bb.putFloat(baseAddr, Options.cloudDensityGradient / 100.0f);
+            baseAddr += Float.BYTES;
+            bb.putFloat(baseAddr, Options.cloudOpacity / 100.0f);
+            baseAddr += Float.BYTES;
+            bb.putFloat(baseAddr, Options.cloudAnisotropy / 100.0f);
+            baseAddr += Float.BYTES;
+
             bb.putInt(baseAddr, sunTextureID);
             baseAddr += Integer.BYTES;
             bb.putInt(baseAddr, moonTextureID);
+            baseAddr += Integer.BYTES;
+            bb.putFloat(baseAddr, cloudWindOffsetX);
+            baseAddr += Float.BYTES;
+            bb.putFloat(baseAddr, cloudWindOffsetZ);
+            baseAddr += Float.BYTES;
+            bb.putFloat(baseAddr, Options.cloudEdgeSoftness / 100.0f);
+            baseAddr += Float.BYTES;
+            bb.putFloat(baseAddr, Options.sunSize * 0.001f);
+            baseAddr += Integer.BYTES;
+            bb.putInt(baseAddr, 0);
             baseAddr += Integer.BYTES;
             bb.putInt(baseAddr, 0);
 
