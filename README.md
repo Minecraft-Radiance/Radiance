@@ -112,6 +112,29 @@ Download the files listed below from [here](https://github.com/NVIDIA/DLSS/tree/
 * `libnvidia-ngx-dlss.so.310.5.3`
 * `libnvidia-ngx-dlssd.so.310.5.3`
 
+##### Additional instructions for NixOS
+
+Because of how NixOS works, **the mod, won't work by default** on NixOS.
+The following instructions will show you how to tweak NixOS to expose the additional libs required by Radiance  to your launcher (**PrismLauncher will serve as an example here**):
+
+1. Edit your `configuration.nix` file or your `Nix flake` (depending on what you use - if you don't know what a `flake` is, then you should be using `configuration.nix`).
+
+2. Locate the part of your configuration that contains installed packages (by default, it is `environment.systemPackages`, but if you use Home-Manager it is `home-manager.users.<username>.home.packages`).
+3. In said part, you should see `prismlauncher` (or `pkgs.prismlauncher`)
+4. If the name was only `prismlauncher`, replace it with the following code block:
+```nix
+(prismlauncher.override {
+  additionalLibs = [
+    pkgs.bzip2
+    pkgs.xz
+    pkgs.openssl
+  ];
+})
+```
+*Note: If the name was `pkgs.prismlauncher`, just append `pkgs.` before `prismlauncher.override` (e.g: `pkgs.prismlauncher.override { <restOfTheCodeHere> }`)*
+
+5. After this, run `nixos-rebuild switch` as root, close and re-open PrismLauncher, and you should be good to go.
+
 # Build
 
 First, compile Java with `gradle` to generate the JNI native headers.
