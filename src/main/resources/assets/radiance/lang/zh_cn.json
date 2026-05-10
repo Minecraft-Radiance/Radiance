@@ -100,6 +100,7 @@
   "render_pipeline.module.ray_tracing.attribute.emissive_volume_light_strength": "发光体积光强度",
   "render_pipeline.module.ray_tracing.attribute.emissive_volume_light_fade_distance": "发光体积光衰减距离",
   "render_pipeline.module.ray_tracing.attribute.volumetric_restir_grid_depth": "体积 ReSTIR 网格深度",
+  "render_pipeline.module.ray_tracing.attribute.volumetric_restir_downsample_factor": "体积 ReSTIR 降采样倍率",
   "render_pipeline.module.ray_tracing.attribute.volumetric_restir_initial_samples": "体积 ReSTIR 初始采样数",
   "render_pipeline.module.ray_tracing.attribute.volumetric_restir_spatial_samples": "体积 ReSTIR 空间复用采样数",
   "render_pipeline.module.ray_tracing.attribute.volumetric_restir_spatial_radius": "体积 ReSTIR 空间复用半径",
