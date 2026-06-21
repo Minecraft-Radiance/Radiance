@@ -2675,3 +2675,56 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
   - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
   - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all built-in Deferred compute shaders under
     `vanilla-deferred-rt/world/deferred_rt/` with the shaderpack root, `src`, shader and shader include roots.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target core mcvr_tests --config Release -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe --test-dir build-radiance-custom -C Release --output-on-failure` completed successfully: 14/14 tests passed.
+  - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing
+    `sun.misc.Unsafe` and deprecation warnings.
+
+### Step 51: Deferred Active-Graph Compose and Barrier Optimization
+
+- Status: completed.
+- Milestone: M8 of the eight-part Deferred RT runtime continuation.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_graph_plan.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_graph_plan.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/compose.comp`
+  - `MCVR-custom/tests/deferred_rt_graph_plan_test.cpp`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - Active graph culling removed disabled passes, but the fixed compose shader still declared and read many potential
+    lighting/default outputs even when the selected graph could not write them.
+  - G-buffer render-pass pre/post image transitions still touched every public Deferred output, even though only seven
+    public outputs are color attachments in the G-buffer render pass.
+- Implemented:
+  - Added `DeferredRtComposeFeaturePlan` to the generated graph plan.
+  - Compose feature flags are derived from active, non-no-op output writers for direct light, GI/indirect diffuse,
+    specular/reflection, clear, base emission, fog and refraction.
+  - Graph-plan compose input resources are pruned before descriptor/barrier summary accumulation, so disabled or absent
+    GI/reflection/direct/fog/refraction/clear writers no longer contribute compose read intent.
+  - Built-in `compose.comp` now receives `RADIANCE_DEFERRED_COMPOSE_*` definitions and compiles out image loads for
+    inactive compose features, using deterministic zero/sentinel defaults instead.
+  - Graph-plan summaries now include `compose_features`.
+  - G-buffer render-pass pre/post image barriers now transition only `kGBufferAttachments` outputs instead of all public
+    output images.
+- Deliberately retained:
+  - `direct_light` remains a full-screen fixed semantic in this milestone. Queue/tile scheduling for direct light needs
+    a separate shader and semantic validation change so it can preserve direct-light output coverage correctly.
+  - The descriptor set layout ABI remains fixed.
+  - Barrier merging, delayed public-output export and explicit scaled-output upsample ownership remain future work.
+- Tests added:
+  - Graph-plan coverage that full lighting compose keeps direct/GI/specular/emission reads but prunes absent fog and
+    refraction reads.
+  - Graph-plan coverage that a G-buffer-only compose prunes direct/GI/specular/clear/fog/refraction reads and emits the
+    expected compose feature count.
+  - Compose definition coverage for inactive direct/GI/specular/clear/fog/refraction and active base emission.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_graph_plan_test deferred_rt_shaderpack_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_graph_plan_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all built-in Deferred compute shaders under
+    `vanilla-deferred-rt/world/deferred_rt/` with the shaderpack root, `src`, shader and shader include roots.
+  - `Debug core` compiled modified translation units and then failed only at the known existing link step where Release
+    `shaderc_combined.lib` conflicts with Debug CRT settings.

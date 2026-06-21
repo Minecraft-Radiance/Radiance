@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults, generated graph/barrier/descriptor plans, compact diagnostics transport and explicit Deferred compute/ray VR execution modes are implemented
+Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults, generated graph/barrier/descriptor plans, compact diagnostics transport, explicit Deferred compute/ray VR execution modes and first active-graph compose/barrier optimizations are implemented
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -1184,14 +1184,17 @@ Current issue:
 
 Required direction:
 
-- Generate compose definitions from active graph features.
-- Do not read GI, reflection, fog, refraction or clear-layer outputs when the active graph cannot write them.
+- Generate compose definitions from active graph features. The first fixed compose-feature implementation is complete in
+  M8.
+- Do not read GI, reflection, fog, refraction or clear-layer outputs when the active graph cannot write them. M8 prunes
+  those graph inputs and compiles the built-in compose shader with matching feature macros.
 - Provide a lightweight direct-only or ambient-only compose path.
 - Keep output defaults compatible with the selected compose variant.
 
 Completion standard:
 
-- Disabling GI/reflection removes their compose reads as well as their pass dispatches.
+- Disabling GI/reflection removes their compose reads as well as their pass dispatches. Covered for the fixed compose
+  path in M8 graph-plan tests.
 
 ### 8.11 Delay public output export when possible
 
@@ -1469,6 +1472,14 @@ Implementation status:
   ABI per active graph.
 - G-buffer render pass layout transitions remain dedicated render-pass pre/post barriers. Compute and full-screen
   compute passes use the generated graph pass barrier path.
+- Milestone M8 adds the first deeper active-graph optimization pass:
+  - graph-plan analysis derives compose feature flags from active output writers,
+  - the built-in compose shader receives compile definitions for direct light, GI, specular, clear, emission, fog and
+    refraction feature reads,
+  - disabled or absent lighting/fog/refraction/clear writers are pruned from compose input resource intent before
+    descriptor/barrier summaries are accumulated,
+  - G-buffer render-pass pre/post image barriers now touch only the actual G-buffer attachment outputs instead of every
+    public Deferred output.
 
 Tasks:
 
@@ -1483,7 +1494,7 @@ Tasks:
 - review G-buffer internal formats separately from public output formats,
 - add direct-light queue/tile scheduling support,
 - build only active lighting queues,
-- generate compose variants from active graph feature flags,
+- generate compose variants from active graph feature flags, first fixed compose-feature version completed in M8,
 - delay public output export where downstream graph allows it,
 - prefer layered/multiview VR execution and report per-eye fallback.
 
@@ -1496,7 +1507,8 @@ Tests:
   descriptor intent,
 - disabling scene render content removes provider draw-stream requirement,
 - direct-light queue profile dispatches less work than full-screen profile on sparse scenes,
-- compose variant omits disabled effect reads,
+- compose variant omits disabled effect reads, covered in M8 graph-plan tests for direct/GI/specular/fog/refraction
+  feature pruning,
 - VR fallback mode appears in diagnostics.
 
 ### Step G: Diagnostics transport
@@ -1639,8 +1651,9 @@ Still planned after these milestones:
   full-resolution G-buffer sampling contract, queue dispatch/full pixel mapping and compact full-resolution diagnostics
   dimensions are complete; upsample ownership, rich history policy and motion-vector reprojection remain.
 - Zero-image aliasing, explicit scaled-output upsample ownership and delayed public-output export.
-- Generated barrier and descriptor plans for all active compute/full-screen graph resources; render-pass G-buffer
-  barriers, barrier merging and descriptor-layout ABI generation remain planned.
+- Generated barrier and descriptor plans for all active compute/full-screen graph resources; M8 narrows render-pass
+  G-buffer image barriers to actual G-buffer attachments, while barrier merging and descriptor-layout ABI generation
+  remain planned.
 - More detailed named/per-pass timing and VR fallback report exports beyond the current compact fixed-slot pass timing
   fields.
-- Compose variants and delayed public-output export.
+- Direct-light queue/tile scheduling, scaled public-output upsample ownership and delayed public-output export.

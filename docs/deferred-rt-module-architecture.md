@@ -3786,6 +3786,11 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   classification/visibility/queue/G-buffer resource initialization, fixed lighting uniform uploads, TLAS bindings,
   pass stats bindings, compute/full-screen barriers and no-op fixed-pass pipelines/dispatches. The descriptor layout ABI
   remains fixed.
+- The generated graph plan now derives built-in compose feature flags from active output writers. Disabled or absent
+  direct/GI/specular/clear/fog/refraction writers are removed from compose resource intent, and the built-in compose
+  shader is compiled with matching feature definitions so those image loads are not part of the active variant.
+- Dedicated G-buffer render-pass pre/post barriers are still separate from generated compute/full-screen barriers, but
+  they now transition only the actual G-buffer attachment outputs instead of every public Deferred output.
 - Scaled passes are rejected if they directly write public full-resolution outputs without an explicit future upsample
   path.
 - Acceleration/provider scene-runtime requirements are derived from the active plan instead of forced for every
@@ -3803,8 +3808,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   unless `diagnostics_gpu_timing` is enabled; when enabled, the snapshot carries a frame timing plus fixed compact pass
   timing slots.
 
-The next architecture work is compose variants, history/upsample policy, barrier merging and deeper scene/runtime
-optimization.
+The next architecture work is direct-light queue/tile scheduling, history/upsample policy, barrier merging, delayed
+public-output export and deeper scene/runtime optimization.
 
 ---
 
