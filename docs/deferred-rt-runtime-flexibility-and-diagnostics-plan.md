@@ -1651,17 +1651,31 @@ Implemented in the current native milestone:
   passes can declare `scaled_output: shader_footprint` or `scaled_output: upsample_pass` with `upsample_pass`, plus
   `history_resolution: dispatch|full` and `motion_reprojection: full_resolution|dispatch_to_full`.
 - Active runtime-plan validation rejects scaled public-output writers without `scaled_output`, rejects inactive/missing
-  upsample owners, rejects scaled history readers without `history_resolution`, and rejects scaled motion-vector readers
-  without `motion_reprojection`.
+  upsample owners, rejects `upsample_pass` handoffs without a real producer-output to upsample-input dependency, rejects
+  handoffs where the resource type does not match, rejects upsample passes that execute before their scaled producer,
+  rejects producer/upsample dependency cycles, rejects upsample passes that do not write the complete public-output set
+  the producer would have owned, rejects multiple final owners for one public output, rejects scaled history readers
+  without `history_resolution`, and rejects scaled motion-vector readers without `motion_reprojection`.
+- `scaled_output: shader_footprint` is writer ownership, not full coverage. It remains allowed for shaders that write a
+  full-resolution public image through their dispatch footprint, but runtime output defaults treat it as partial coverage
+  unless a later full-resolution owner completes the output.
 - Pack-owned scaled history images must declare `history_resolution`; `full` history is allocated at the full domain even
   when the owning effect dispatches at half/quarter resolution, while `dispatch` history stays in the pass/resource
   domain.
-- Shader definitions and resolution push-constant flags expose scaled-output, history and motion policies. GLSL helpers
-  provide dispatch footprint bounds and motion-vector conversion between full-resolution and dispatch-resolution history
-  coordinates.
+- Shader definitions and resolution push-constant flags expose scaled-output, history and motion policies. The resolution
+  push constants also expose `historyValid`, `historyAge` and `historyResetReason`. GLSL helpers provide dispatch
+  footprint bounds, history validity queries and motion-vector conversion between full-resolution and
+  dispatch-resolution history coordinates.
+- The native G-buffer motion ABI is fixed as `previousPixel - currentPixel` in full-resolution pixels, with origin and Y
+  direction matching Vulkan framebuffer coordinates. The current pixel comes from jittered `gl_FragCoord`; the previous
+  pixel comes from the previous view/projection/object transforms, so temporal shaders must not apply jitter deltas a
+  second time.
 - Generated graph plans treat `scaled_output: upsample_pass` as an ownership handoff: the scaled pass no longer owns the
   public output write; the named active full-resolution upsample pass owns the public writer for barriers and compose
   feature detection.
+- Runtime history invalidation now resets history on first use, render extent or active-plan/history signature changes,
+  shaderpack rebuild/reload, backend/semantic contract changes, Java-provided world/dimension serial changes, and camera
+  cuts/teleports detected from camera position and direction jumps.
 - Direct light can now use `schedule: { "mode": "lighting_queue", "queue": "direct" }`. The built-in pack uses that
   schedule by default, the queue builder emits direct tiles from the classification mask, and direct-light shaders map
   queued dispatch pixels back to full-resolution G-buffer pixels before evaluating lighting or ray-query occlusion.
@@ -1684,3 +1698,6 @@ Still planned after these milestones:
   fields.
 - Sparse-scene GPU profiling and quality tuning for direct-light queue thresholds. M10 implements the queue/tile runtime
   path; it does not yet add scene-driven heuristics beyond classification-mask tile eligibility.
+- More precise Java world-state compatibility keys for temporal history. M11 wires a world/dimension serial through the
+  client world object, `setWorld` changes and core dimension/effects fields; future work can include server/dimension
+  registry identifiers directly when that data is exposed in the render bridge.

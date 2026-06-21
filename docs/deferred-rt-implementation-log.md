@@ -2880,3 +2880,80 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
     introduce half-resolution direct-light quality presets or upsample shaders.
   - Queue tile size is still the shared 16x16 lighting-queue tile size. Runtime heuristics for direct-light queue
     thresholds and sparse-scene GPU profiling remain future optimization work.
+
+### Step 54: Deferred Scaled Output, Upsample and History Contract Hardening
+
+- Status: completed.
+- Milestone: M11, added after M10 as M9 contract hardening.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_output_defaults.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.cpp`
+  - `MCVR-custom/src/core/render/world.hpp`
+  - `MCVR-custom/src/core/render/world.cpp`
+  - `MCVR-custom/src/core/middleware/com_radiance_client_proxy_world_PlayerProxy.cpp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/deferred_resolution.glsl`
+  - `MCVR-custom/tests/deferred_rt_output_defaults_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_resolution_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `Radiance-custom/src/main/java/com/radiance/client/proxy/world/PlayerProxy.java`
+  - `Radiance-custom/src/main/java/com/radiance/mixins/vulkan_render_integration/WorldRendererMixins.java`
+  - `Radiance-custom/src/main/native/include/com_radiance_client_proxy_world_PlayerProxy.h`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - `scaled_output: shader_footprint` was too easy to treat as a complete public output writer even though low-resolution
+    dispatches can leave full-resolution pixels untouched.
+  - `scaled_output: upsample_pass` previously proved that a full-resolution pass existed, but not that the pass actually
+    consumed the scaled producer's data or wrote the matching public output.
+  - Temporal contracts needed runtime validity metadata so shaders can reject previous-frame history after cuts, reloads
+    and active-contract changes.
+- Implemented:
+  - Output-default coverage now treats `shader_footprint` public-output writers as partial coverage. They still own the
+    writer path for graph/compose purposes, but native defaults clear untouched public-output pixels before the pass runs.
+  - Runtime-plan validation now separates final public-output ownership from scaled producer handoff ownership. A public
+    output can have only one final active owner.
+  - `upsample_pass` validation now requires the scaled producer and upsample pass to both appear in top-level execution,
+    producer before upsample. The producer must write a non-public handoff resource, the upsample pass must read that
+    resource with the same resource type, the producer cannot read resources written by the upsample pass, and the
+    upsample pass must write the complete public-output set the producer would have owned.
+  - Resolution push constants now include `historyValid`, `historyAge` and `historyResetReason`; GLSL exposes
+    `deferredHistoryValid()`, `deferredHistoryAge()` and `deferredHistoryResetReason()`.
+  - ShaderPack history resources now track per-swapchain-frame history age and expose native validity/age queries.
+  - Deferred runtime invalidates history on first use, render extent/eye count/active plan or history resource signature
+    changes, shaderpack rebuild/reload, backend/semantic contract changes, Java-provided world/dimension serial changes
+    and camera cut/teleport detection from camera position/direction jumps.
+  - Java now advances a native world serial on `WorldRenderer.setWorld`, client-world identity changes and dimension or
+    dimension-effects compatibility changes. Native `World` stores the serial and Deferred compares it every frame before
+    history slots are advanced.
+  - The motion ABI is documented as `previousPixel - currentPixel` in full-resolution pixels with Vulkan framebuffer
+    coordinates. Current G-buffer motion already follows that ABI.
+- Tests added:
+  - Output-default coverage that `shader_footprint` direct-light output keeps the default clear.
+  - Resolution push-constant coverage for history validity, age and reset reason fields.
+  - Runtime-plan coverage rejecting upsample passes that do not read the producer output, execute before the producer or
+    write the wrong public output.
+  - Runtime-plan coverage rejecting mismatched image/buffer handoff types, producer/upsample dependency cycles and
+    upsample passes that miss one output from a multi-public-output producer.
+  - Runtime-plan coverage rejecting multiple final owners for one public output.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_shaderpack_test deferred_rt_output_defaults_test deferred_rt_resolution_test shader_pack_deferred_schema_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_output_defaults_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_resolution_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all built-in Deferred compute shaders.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target core mcvr_tests --config Release -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe --test-dir build-radiance-custom -C Release --output-on-failure` completed successfully: 14/14 tests passed.
+  - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing
+    `sun.misc.Unsafe` and deprecation warnings.
+- Deliberately retained:
+  - Java now provides a world/dimension compatibility serial, but the key is intentionally conservative and based on the
+    client-world object, `setWorld` changes and core dimension/effects fields. Future bridge work can pass explicit
+    registry identifiers when needed.

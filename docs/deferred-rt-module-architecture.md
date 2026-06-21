@@ -3778,14 +3778,29 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   `scaled_output`, `upsample_pass`, `history_resolution` and `motion_reprojection`. Active runtime plans record these
   contracts, shader definitions compile variants from them, and push-constant flags expose them to shared GLSL helpers.
 - Scaled public-output writers must either use `shader_footprint` ownership or name an active full-resolution
-  `upsample_pass`. For `upsample_pass`, the generated graph plan transfers public-output ownership to the upsample pass
-  so compose features, barriers and default clears do not treat the scaled producer as the final public writer.
+  `upsample_pass`. Writer ownership and coverage completeness are separate: `shader_footprint` can own the write path,
+  but runtime output defaults treat it as partial coverage by default so untouched full-resolution pixels are cleared
+  instead of reusing previous-frame data.
+- `upsample_pass` is now validated as a real data-flow handoff, not just a pass name. The scaled producer must execute
+  before the upsample pass, write a non-public handoff resource, the upsample pass must read that resource, and the
+  upsample pass must write the complete public-output set the scaled producer would have owned. Image handoffs must be
+  read as images, buffer handoffs as buffers, producer/upsample cycles are rejected, and one public output can have only
+  one final owner in the active graph.
 - Scaled history images must declare whether history is stored at `dispatch` or `full` resolution. `history_resolution:
   full` allocates the history image in the full domain even when the pass/resource declares a scaled domain; `dispatch`
   keeps the history at the scaled domain. Scaled passes reading history must declare the matching pass contract.
 - Scaled passes reading `gbuffer.motion`, `gbuffer.motion_vector`, `out:motion_vector` or `primary_motion_vector` must
   declare `motion_reprojection`. Shared GLSL helpers provide full-to-dispatch and dispatch-to-full motion conversion for
   history reprojection.
+- The native motion-vector ABI is `previousPixel - currentPixel`, measured in full-resolution pixels with Vulkan
+  framebuffer origin/Y direction. Current pixels are jittered `gl_FragCoord`; previous pixels are produced by previous
+  view/projection/object transforms, so temporal passes should use the shared helpers and not apply jitter correction a
+  second time. VR views compute motion independently per layer.
+- Resolution push constants expose `historyValid`, `historyAge` and `historyResetReason`. Runtime history is invalidated
+  on first use, render extent or actual domain/signature changes, active backend/semantic contract changes, shaderpack
+  reload/rebuild, Java world/dimension serial changes, and camera cut/teleport detection from camera position/direction
+  jumps. The Java serial is advanced by `WorldRenderer.setWorld`, client-world object changes and dimension/effects
+  compatibility fields.
 - Lighting queue schedules can now choose a queue domain independently from the pass output policy:
   `full_resolution`, `pass_resolution` or a named resolution domain. Active queue headers, record capacity and the
   queue-builder tile dispatch use that domain, and queued reflection/GI shaders map queue dispatch pixels back to
@@ -3825,8 +3840,9 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   unless `diagnostics_gpu_timing` is enabled; when enabled, the snapshot carries a frame timing plus fixed compact pass
   timing slots.
 
-The next architecture work is concrete built-in upsample passes, barrier merging, delayed public-output export,
-direct-light queue profiling/threshold tuning and deeper scene/runtime optimization.
+The next architecture work is concrete built-in upsample passes, more precise Java world/dimension compatibility keys,
+barrier merging, delayed public-output export, direct-light queue profiling/threshold tuning and deeper scene/runtime
+optimization.
 
 ---
 

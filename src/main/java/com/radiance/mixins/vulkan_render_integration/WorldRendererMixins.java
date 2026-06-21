@@ -126,7 +126,33 @@ public abstract class WorldRendererMixins {
     @Shadow
     @Final
     private CloudRenderer cloudRenderer;
+
+    private static int radiance$lastWorldIdentity = 0;
+    private static int radiance$lastWorldKey = 0;
+    private static long radiance$worldSerial = 1;
     // endregion
+
+    private static int radiance$worldKey(ClientWorld world) {
+        if (world == null) {
+            return 0;
+        }
+        int key = System.identityHashCode(world);
+        key = 31 * key + world.getDimensionEffects().getSkyType().ordinal();
+        key = 31 * key + (world.getDimensionEffects().shouldBrightenLighting() ? 1 : 0);
+        key = 31 * key + Float.floatToIntBits(world.getDimension().ambientLight());
+        return key;
+    }
+
+    private static void radiance$updateWorldSerial(ClientWorld world, boolean forceIncrement) {
+        int identity = world == null ? 0 : System.identityHashCode(world);
+        int key = radiance$worldKey(world);
+        if (forceIncrement || identity != radiance$lastWorldIdentity || key != radiance$lastWorldKey) {
+            radiance$worldSerial++;
+            radiance$lastWorldIdentity = identity;
+            radiance$lastWorldKey = key;
+        }
+        PlayerProxy.setWorldSerial(radiance$worldSerial);
+    }
 
     // region <init>
     @Redirect(method = "<init>", at = @At(value = "NEW", target = "net/minecraft/client/render/SkyRendering"))
@@ -203,6 +229,7 @@ public abstract class WorldRendererMixins {
     public void redirectRender(ObjectAllocator allocator, RenderTickCounter tickCounter,
         boolean renderBlockOutline, Camera camera, GameRenderer gameRenderer,
         Matrix4f effectedRotationMatrix, Matrix4f projectionMatrix, CallbackInfo ci) {
+        radiance$updateWorldSerial(this.world, false);
         PlayerProxy.setCameraPos(camera.getPos());
 
         float f = tickCounter.getTickDelta(false);
@@ -340,7 +367,7 @@ public abstract class WorldRendererMixins {
             + "(Lnet/minecraft/client/render/BuiltChunkStorage;)V"))
     public void cancelSetWorldChunkRenderingDataPreparerSetStorage(
         ChunkRenderingDataPreparer instance, BuiltChunkStorage storage) {
-
+        radiance$updateWorldSerial(this.world, true);
     }
     // endregion
 
