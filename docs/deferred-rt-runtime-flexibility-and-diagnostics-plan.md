@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults and the first generated graph/barrier/descriptor plan are implemented
+Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults, generated graph/barrier/descriptor plans and compact diagnostics transport are implemented
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -821,6 +821,15 @@ Add explicit diagnostic sinks:
 
 Console output should be used only for exceptional startup errors or developer builds, not per-frame runtime diagnostics.
 
+Implementation status:
+
+- Milestone M6 adds explicit module attributes for `diagnostics_graph_report`, `diagnostics_stats`,
+  `diagnostics_gpu_timing`, `diagnostics_trace_file` and `diagnostics_log_interval`.
+- The legacy `diagnostics_log` switch now enables graph-report compatibility only. It no longer implicitly enables
+  shader atomic statistics.
+- File trace writes compact snapshot lines only when `diagnostics_trace_file` is non-empty. The sink is off by default
+  and does not collect the string-heavy graph report.
+
 ### 7.3 Native snapshot model
 
 Diagnostics must be split into two layers:
@@ -885,6 +894,17 @@ Frame snapshots must not contain:
 
 String-heavy data belongs in the graph report.
 
+Implementation status:
+
+- Milestone M6 exposes the latest native snapshot to Java as a fixed-order `long[]`.
+- The snapshot contains only numeric fields: validity, sequence, flags, frame index, dimensions, view/draw counts,
+  active graph counts, descriptor/barrier/resource counts, requirement flags, provider counters, visibility counters,
+  optional stats counters, frame GPU time and up to eight compact pass timing slots.
+- The pass timing slots store stable hashed pass ids and microseconds. Pass names remain in graph reports rather than
+  per-frame snapshots.
+- The Java debug text path formats this compact array directly. It calls the old string-heavy native overlay only when
+  the snapshot reports that a graph report is available.
+
 ### 7.4 Graph report model
 
 The graph report is generated on pack load/reload, attribute change or explicit developer request. It is not generated or formatted every frame.
@@ -907,6 +927,13 @@ The graph report should include:
 - unused resources or passes.
 
 The graph report can be exported to file or exposed through a developer UI. It should not be part of the default frame loop.
+
+Implementation status:
+
+- Milestone M6 makes runtime-plan graph report collection optional. It is collected only when
+  `diagnostics_graph_report` or the legacy `diagnostics_log` compatibility flag is enabled.
+- The active graph still builds its CPU graph plan for correctness and command recording, but selected/skipped-candidate
+  strings, graph report lines and formatted native overlays are not produced on the default path.
 
 ### 7.5 Java handoff
 
@@ -936,6 +963,13 @@ Add GPU timestamp support behind a diagnostics flag:
 
 Do not mix required rendering resources with timing resources. Timing allocation should happen only when enabled.
 
+Implementation status:
+
+- Milestone M6 adds a lazy Vulkan timestamp query pool behind `diagnostics_gpu_timing`.
+- When disabled, no query pool is allocated and no reset/timestamp/result commands run.
+- When enabled, the runtime records a frame timing scope plus up to eight active Deferred pass timing scopes per frame
+  and exposes the completed results in the compact snapshot.
+
 ### 7.7 Statistics implementation
 
 Existing shader atomic counters should become optional:
@@ -950,6 +984,13 @@ Preferred first step:
 - stats shader code compiles out when disabled,
 - stats buffers are not allocated when disabled,
 - stats download commands are not recorded when disabled.
+
+Implementation status:
+
+- Milestone M6 separates graph report, stats and timing controls. `diagnostics_stats` is the only public switch that
+  enables stats buffers, stats descriptors, shader atomics, clears and readbacks.
+- Compact snapshots are still maintained without stats enabled, but stats fields are marked valid only after stats
+  readback has completed for a frame.
 
 ---
 
@@ -1440,21 +1481,30 @@ Tests:
 
 ### Step G: Diagnostics transport
 
+Implementation status:
+
+- Milestone M6 implements compact native diagnostics snapshots and a Java-visible `long[]` pull path.
+- The old string overlay is retained as the graph-report path and is skipped unless graph reporting is enabled.
+- Optional file trace, optional stats and optional GPU timestamp timing scopes are controlled independently.
+- The default diagnostics path does not allocate timestamp/stat buffers, record stats readbacks, perform file IO, or
+  build per-frame graph-report strings.
+
 Tasks:
 
-- replace console-oriented per-frame logging with native diagnostics snapshots,
-- add Java pull path or reuse existing diagnostics text bridge,
-- keep file trace optional,
-- add GPU timestamp infrastructure behind a flag,
-- compile out or skip stats when disabled.
+- replace console-oriented per-frame logging with native diagnostics snapshots, completed in M6,
+- add Java pull path or reuse existing diagnostics text bridge, completed in M6,
+- keep file trace optional, completed in M6,
+- add GPU timestamp infrastructure behind a flag, completed in M6 for frame and fixed-slot pass timings,
+- compile out or skip stats when disabled, completed in M6.
 
 Tests:
 
 - diagnostics disabled allocates no timestamp/stat buffers,
 - diagnostics disabled records no readbacks,
-- diagnostics enabled produces latest snapshot,
-- file sink off performs no file IO,
-- F3 text can obtain selected backend/resolution/pass summary.
+- diagnostics enabled produces latest snapshot, covered by diagnostics tests and Java pull-path build coverage,
+- file sink off performs no file IO, covered by the explicit trace-path gate,
+- F3 text can obtain selected backend/resolution/pass summary, implemented through compact Java formatting and optional
+  graph report text.
 
 ### Step H: Built-in pack migration
 
@@ -1547,19 +1597,24 @@ Implemented in the current native milestone:
 - `clear_contract` is now a compatibility/output-default marker instead of a normal compute dispatch in the active
   runtime path. Native targeted clears initialize only outputs that are unwritten or only partially written by active
   fixed semantics, with G-buffer coverage checked against the current frame's draw availability.
-- Per-frame console diagnostics output has been removed from Deferred RT. The JVM-facing diagnostics overlay pulls
-  module-owned native state instead.
-- Stats buffers, stats descriptor binding, atomics, clears and readbacks are gated behind the diagnostics stats/log
-  switch and compile-time shader definition.
+- Per-frame console diagnostics output has been removed from Deferred RT. The JVM-facing diagnostics path now pulls a
+  compact native `long[]` snapshot and formats it in Java.
+- Graph-report strings are collected only when the graph-report compatibility switch is enabled. The old string overlay
+  is a heavy report path, not the default frame snapshot.
+- Stats buffers, stats descriptor binding, atomics, clears and readbacks are gated behind `diagnostics_stats` and the
+  compile-time shader definition `RADIANCE_DEFERRED_ENABLE_STATS`.
+- Optional file trace writes compact snapshot lines only when `diagnostics_trace_file` is configured.
+- Optional GPU timestamp timing records a frame scope plus fixed compact pass scopes only when
+  `diagnostics_gpu_timing` is enabled.
 
 Still planned after these milestones:
 
 - Unified resolution-coordinate push constants, depth/normal sampling policy, upsample ownership, history-resolution
   policy, motion-vector reprojection coordinates and queue coordinate rules. The push constant ABI, initial nearest
-  full-resolution G-buffer sampling contract and queue dispatch/full pixel mapping are complete; upsample ownership,
-  rich history policy, motion-vector reprojection and compact diagnostics dimensions remain.
+  full-resolution G-buffer sampling contract, queue dispatch/full pixel mapping and compact full-resolution diagnostics
+  dimensions are complete; upsample ownership, rich history policy and motion-vector reprojection remain.
 - Zero-image aliasing, explicit scaled-output upsample ownership and delayed public-output export.
 - Generated barrier and descriptor plans for all active compute/full-screen graph resources; render-pass G-buffer
   barriers, barrier merging and descriptor-layout ABI generation remain planned.
-- GPU timestamp timing scopes.
+- More detailed named/per-pass timing report exports beyond the current compact fixed-slot pass timing fields.
 - Compose variants and delayed public-output export.

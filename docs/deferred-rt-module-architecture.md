@@ -3792,11 +3792,16 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   Deferred configuration.
 - Deferred compute/ray `vr: view_agnostic` means layer-aware single dispatch; it does not mean mono. `per_view` and
   `mono_replicate` are reserved until explicit command-recording modes are implemented.
-- Deferred diagnostics no longer depend on console IO; compact overlay text is pulled from native state, while stats
-  buffers/readbacks/atomics are disabled unless diagnostics stats are enabled.
+- Deferred diagnostics no longer depend on console IO. Native stores a compact fixed-field snapshot, Java pulls it as a
+  `long[]` and formats the normal debug text without native string construction.
+- String-heavy graph reports are collected and exposed only when graph-report diagnostics are enabled. File tracing is a
+  separate optional compact snapshot sink and does not force graph-report collection.
+- Stats buffers/readbacks/atomics are disabled unless `diagnostics_stats` is enabled. GPU timestamp queries are disabled
+  unless `diagnostics_gpu_timing` is enabled; when enabled, the snapshot carries a frame timing plus fixed compact pass
+  timing slots.
 
-The next architecture work is diagnostics snapshots/file traces/timestamps, explicit non-layered VR execution modes,
-compose variants, history/upsample policy, barrier merging and deeper scene/runtime optimization.
+The next architecture work is explicit non-layered VR execution modes, compose variants, history/upsample policy, barrier
+merging and deeper scene/runtime optimization.
 
 ---
 

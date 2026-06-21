@@ -2553,3 +2553,63 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
   - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing
     `sun.misc.Unsafe` and deprecation warnings.
   - MSVC reported existing C4819 code-page warnings while compiling `as.hpp`; no new build failure was introduced.
+
+### Step 49: Deferred Diagnostics Transport
+
+- Status: completed.
+- Milestone: M6 of the eight-part Deferred RT runtime continuation.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_diagnostics.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_diagnostics.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/src/core/middleware/com_radiance_client_pipeline_Pipeline.cpp`
+  - `MCVR-custom/tests/deferred_rt_diagnostics_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `Radiance-custom/src/main/java/com/radiance/client/pipeline/Pipeline.java`
+  - `Radiance-custom/src/main/resources/modules/deferred_rt.yaml`
+  - `Radiance-custom/src/main/resources/assets/radiance/lang/en_us.json`
+  - `Radiance-custom/src/main/resources/assets/radiance/lang/zh_cn.json`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - Deferred diagnostics needed a JVM-safe transport that does not depend on console output or build heavy strings on the
+    normal frame path.
+  - Stats, file trace and GPU timing needed independent switches so the default runtime does not allocate, dispatch,
+    atomically count, read back or write files for diagnostics.
+- Implemented:
+  - Expanded `DeferredRtDiagnosticsSnapshot` into a compact fixed-field snapshot with frame id, dimensions, graph counts,
+    descriptor/resource/barrier counts, scene/runtime requirement flags, provider counters, visibility counters, optional
+    stats counters, frame GPU timing and up to eight compact pass timing slots.
+  - Added fixed-order field export to `std::array<int64_t>` and a JNI bridge that returns a Java `long[]`.
+  - Updated Java `Pipeline.getDeferredRtDiagnosticsDebugText()` to format the compact array directly. It only calls the
+    old native string overlay when the snapshot reports that a graph report is available.
+  - Separated diagnostics controls:
+    - `diagnostics_graph_report` controls string-heavy runtime graph reports,
+    - `diagnostics_stats` controls stats buffers, descriptors, shader atomics, clears and readbacks,
+    - `diagnostics_gpu_timing` controls Vulkan timestamp query allocation and timestamp commands,
+    - `diagnostics_trace_file` controls optional compact file trace output.
+  - Kept legacy `diagnostics_log` as a graph-report compatibility switch, but stopped using it to enable shader stats.
+  - Made runtime-plan graph-report collection optional. The active graph plan still drives correctness and command
+    recording; selected/skipped-candidate strings are not collected on the default path.
+  - Added optional file trace lines based on the compact snapshot. Trace file configuration does not force graph-report
+    collection.
+  - Added a lazy timestamp query pool behind `diagnostics_gpu_timing`. When enabled, command recording writes one frame
+    timing scope and up to eight active Deferred pass timing scopes per frame. When disabled, no query pool is allocated
+    and no timestamp/reset/result commands run.
+  - Stats validity is now marked only after stats readback data has been attached to a completed snapshot.
+- Tests added:
+  - Diagnostics snapshot field-array coverage, including graph counts, GPU timing and pass timing slots.
+  - Trace-line formatting coverage for valid and invalid snapshots.
+  - Runtime-plan coverage that `buildDeferredShaderPackRuntimePlan(..., collectGraphReport=false)` still produces a valid
+    active plan while leaving `graphReport` empty.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_diagnostics_test deferred_rt_shaderpack_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_diagnostics_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+- Deliberately deferred:
+  - Rich named timing export beyond the compact fixed-slot pass id/microsecond fields.
+  - RenderDoc/Nsight debug markers and a dedicated developer UI for graph reports.
