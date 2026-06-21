@@ -3759,6 +3759,10 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
 - Deferred compute/ray pass push constants now expose `fullResolution`, `dispatchResolution`, `scale`, `invScale`,
   `fullToDispatch`, `dispatchToFull`, `layerCount` and `flags`. Shader helpers use pixel-center mapping between
   dispatch and full-resolution pixels, with nearest full-resolution G-buffer sampling as the first scaled-pass policy.
+- Lighting queue schedules can now choose a queue domain independently from the pass output policy:
+  `full_resolution`, `pass_resolution` or a named resolution domain. Active queue headers, record capacity and the
+  queue-builder tile dispatch use that domain, and queued reflection/GI shaders map queue dispatch pixels back to
+  full-resolution G-buffer pixels before sampling.
 - Scaled passes are rejected if they directly write public full-resolution outputs without an explicit future upsample
   path.
 - Acceleration/provider scene-runtime requirements are derived from the active plan instead of forced for every
@@ -3768,8 +3772,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
 - Deferred diagnostics no longer depend on console IO; compact overlay text is pulled from native state, while stats
   buffers/readbacks/atomics are disabled unless diagnostics stats are enabled.
 
-The next architecture work is scaled queue domains, output default policy, generated barriers, compose variants,
-history/upsample policy and GPU timing scopes.
+The next architecture work is output default policy, generated barriers, compose variants, history/upsample policy and
+GPU timing scopes.
 
 ---
 

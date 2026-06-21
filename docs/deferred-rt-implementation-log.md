@@ -2355,3 +2355,70 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
   - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe --test-dir build-radiance-custom -C Release --output-on-failure` completed successfully: 12/12 tests passed.
   - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing `sun.misc.Unsafe` and deprecation warnings.
   - MSVC reported existing C4819 code-page warnings while compiling headers such as `as.hpp`; no new build failure was introduced.
+
+### Step 46: Deferred Scaled Lighting Queue Domains
+
+- Status: completed.
+- Milestone: M3 of the eight-part Deferred RT runtime continuation.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_lighting_queue.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_lighting_queue.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - built-in Deferred RT queue, reflection and GI shaders under `vanilla-deferred-rt/world/deferred_rt/`
+  - `MCVR-custom/tests/deferred_rt_lighting_queue_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `MCVR-custom/tests/shader_pack_deferred_schema_test.cpp`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - M1/M2 made pass/resource dispatch domains real, but lighting queue builders and indirect dispatch still had the old
+    full-resolution queue assumption.
+  - Reflection/GI queue work must be able to shrink independently from unsafe scaled public-output writes.
+- Implemented:
+  - `schedule.queue` now accepts the legacy string form or an object with `name` and `domain`.
+  - Queue domains support:
+    - `full_resolution`, normalized to `full`,
+    - `pass_resolution`, normalized to the active concrete pass resolution domain,
+    - any shaderpack-defined named resolution domain.
+  - The active runtime plan records `queueDomainByKind`, includes queue domains in the formatted plan summary, rejects
+    unknown queue domains, and rejects conflicting active domains for the same queue kind.
+  - Unselected backend candidates do not contribute queue domains, queue resource capacity or indirect work.
+  - Lighting queue headers are now 64 bytes and include full resolution, dispatch resolution, full/dispatch scale
+    factors and enabled flags.
+  - Queue record buffer capacity is computed only from active queues and their active dispatch domains.
+  - Inactive queues receive zero capacity and disabled header flags.
+  - The `build_lighting_queues` dispatch now uses the maximum active queue dispatch extent instead of the full pass
+    extent, so half/quarter queue domains reduce queue-builder workgroups.
+  - The built-in queue builder samples classification and visibility masks by mapping each queue dispatch pixel back to
+    a full-resolution G-buffer pixel.
+  - Queued reflection/GI shaders now treat queued invocation pixels as full-resolution G-buffer coordinates for bounds
+    checks, while non-queued dispatches still use dispatch-resolution bounds.
+- Deliberately deferred:
+  - Built-in reflection and GI public output passes still default to full pass resolution. M3 scales queue/indirect work
+    but does not enable half-resolution public-output writes without an explicit upsample/default-output policy.
+  - Output default policy and removal of blanket full-contract clears are M4.
+  - Rich history, motion-vector reprojection and compose/upsample ownership remain later milestones.
+- Tests added:
+  - Queue header size, domain-aware capacity/offset/dispatch extent/scale and disabled queue flag coverage.
+  - Runtime-plan coverage for `pass_resolution`, unknown queue domains, conflicting active domains and inactive backend
+    queue domains.
+  - Schema coverage for queue object parsing and unsupported queue object keys.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_lighting_queue_test deferred_rt_shaderpack_test shader_pack_deferred_schema_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_lighting_queue_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all 10 built-in Deferred compute shaders under
+    `vanilla-deferred-rt/world/deferred_rt/`.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target core mcvr_tests --config Release -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe --test-dir build-radiance-custom -C Release --output-on-failure` completed successfully: 12/12 tests passed.
+  - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing
+    `sun.misc.Unsafe` and deprecation warnings.
+  - MSVC reported existing C4819 code-page warnings while compiling headers such as `as.hpp` and `vr_system.hpp`; no
+    new build failure was introduced.

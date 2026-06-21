@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/C/G foundation partially implemented; named resolution domains and the first coordinate contract are implemented; scaled queues, output-default optimization and generated barrier plans remain planned
+Status: Step A/B/C/D/G foundation partially implemented; named resolution domains, the first coordinate contract and scaled queue domains are implemented; output-default optimization and generated barrier plans remain planned
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -12,7 +12,8 @@ The current Deferred RT implementation proves the renderer shape, but several co
 
 - fixed slots are generally present once declared by the pack,
 - `direct_light` is currently a full-resolution screen dispatch,
-- `reflection` and `gi` use lighting-queue indirect dispatch, but their queue domain is still fixed and full-resolution tile based,
+- `reflection` and `gi` use lighting-queue indirect dispatch, and M3 lets packs bind those queues to full, pass or named
+  resolution domains instead of a fixed full-resolution tile domain,
 - ray-query passes only fall back to compute when ray query is unavailable or TLAS is missing,
 - there is no first-class pass/resource resolution domain for half-resolution or quarter-resolution ray work,
 - diagnostics currently rely too much on console output, which is not reliable when running inside the JVM/Minecraft process,
@@ -526,7 +527,8 @@ Scaled effects must also declare or inherit these policies:
 - output upsample policy, initially explicit compose or a named upsample pass; still planned for M4/M8.
 - history resolution, either `dispatch` or `full`; M2 blocks unsafe scaled public writes until explicit history and
   upsample ownership are available.
-- queue domain, either the pass resolution domain or an explicitly named domain; planned for M3.
+- queue domain, either the pass resolution domain, full resolution or an explicitly named resolution domain; implemented
+  in M3 for lighting queues.
 
 Open-ended shader-side guessing is not allowed. A half-resolution GI shader must know how to map its dispatch pixel to full-resolution depth/normal, where its history lives and who upsamples the result.
 
@@ -540,14 +542,16 @@ Example:
 {
   "schedule": {
     "mode": "lighting_queue",
-    "queue": "gi",
-    "resolution": "gi",
-    "tile_size": 16
+    "queue": {
+      "name": "gi",
+      "domain": "pass_resolution"
+    }
   }
 }
 ```
 
 This must reduce launched workgroups. It must not be implemented as full-resolution dispatch with shader early returns.
+The legacy string form, such as `"queue": "gi"`, remains valid and defaults to `full_resolution`.
 
 ### 4.8 Output default policy
 
@@ -1282,20 +1286,40 @@ Tests:
 
 ### Step D: Scaled queues
 
+Implementation status:
+
+- Milestone M3 implements scaled lighting queue domains:
+  - `schedule.queue` now accepts either the legacy string form or an object with `name` and `domain`,
+  - `domain: "full_resolution"` maps to the full-resolution G-buffer domain,
+  - `domain: "pass_resolution"` maps to the selected concrete pass resolution domain,
+  - any other valid domain name is resolved against the shaderpack `resolutions` table,
+  - active runtime plans record one active domain per queue kind and reject unknown or conflicting domains,
+  - inactive or unselected backend candidates do not contribute queue domains, resource capacity or indirect work,
+  - lighting queue headers carry full/dispatch extents, full/dispatch scale factors and enabled flags,
+  - queue record buffer capacity is computed only for active queues and their selected dispatch domains,
+  - the `build_lighting_queues` dispatch uses the maximum active queue dispatch extent instead of the full-resolution
+    pass extent,
+  - disabled queue headers have zero capacity and the build shader skips emission for them,
+  - queued reflection/GI shaders map queued dispatch pixels back to full-resolution G-buffer pixels before sampling.
+- Built-in reflection/GI public output passes still default to full pass resolution because explicit upsample/default
+  ownership is not implemented yet. M3 enables scaled queue and indirect work; it does not enable unsafe scaled public
+  output writes.
+
 Tasks:
 
-- extend lighting queue metadata to include resolution domain,
-- build queue headers/records for selected domain,
-- make indirect args reflect scaled dispatch count,
-- update built-in queue shader or add variants for scaled queue generation,
-- pass full-to-dispatch coordinate mapping to shaders.
+- extend lighting queue metadata to include resolution domain, completed in M3,
+- build queue headers/records for selected domain, completed in M3,
+- make indirect args reflect scaled dispatch count, completed in M3,
+- update built-in queue shader or add variants for scaled queue generation, completed in M3,
+- pass full-to-dispatch coordinate mapping to shaders, completed in M3.
 
 Tests:
 
-- full-res queue emits expected tile count,
-- half-res queue emits fewer records,
-- disabled queue emits zero records and no indirect dispatch,
-- indirect dispatch offset remains correct.
+- full-res queue emits expected tile count, covered by existing queue tests,
+- half/quarter queue domains have smaller record capacity, covered in M3,
+- inactive queues have zero capacity and disabled flags, covered in M3,
+- indirect dispatch offsets remain correct, covered by existing queue tests,
+- queue object schema, unknown queue domains and conflicting active queue domains are covered in M3 runtime/schema tests.
 
 ### Step E: Output default policy and clear optimization
 
@@ -1447,6 +1471,9 @@ Implemented in the current native milestone:
   launches.
 - Deferred compute/ray shaders receive a unified resolution push constant block with full and dispatch dimensions plus
   deterministic pixel-center mapping helpers.
+- Lighting queue schedules can bind queue work to `full_resolution`, `pass_resolution` or a named resolution domain.
+  Active queue headers, record capacity, the queue-builder tile dispatch and queued reflection/GI full-resolution
+  G-buffer pixel mapping are derived from that active queue domain.
 - Per-frame console diagnostics output has been removed from Deferred RT. The JVM-facing diagnostics overlay pulls
   module-owned native state instead.
 - Stats buffers, stats descriptor binding, atomics, clears and readbacks are gated behind the diagnostics stats/log
@@ -1455,10 +1482,9 @@ Implemented in the current native milestone:
 Still planned after these milestones:
 
 - Unified resolution-coordinate push constants, depth/normal sampling policy, upsample ownership, history-resolution
-  policy, motion-vector reprojection coordinates and queue coordinate rules. The push constant ABI and initial nearest
-  full-resolution G-buffer sampling contract are complete; upsample ownership, rich history policy, motion-vector
-  reprojection, compact diagnostics dimensions and queue coordinate rules remain.
-- Scaled lighting queue domains.
+  policy, motion-vector reprojection coordinates and queue coordinate rules. The push constant ABI, initial nearest
+  full-resolution G-buffer sampling contract and queue dispatch/full pixel mapping are complete; upsample ownership,
+  rich history policy, motion-vector reprojection and compact diagnostics dimensions remain.
 - Output default policy that removes the blanket full-contract clear from the normal path.
 - Generated barrier and descriptor plans for all active graph resources.
 - GPU timestamp timing scopes.
