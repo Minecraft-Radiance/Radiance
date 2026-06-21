@@ -29,6 +29,17 @@ Status: in progress
 
 ## Current Plan
 
+The original contract-shell plan below is complete enough for bring-up, but it is not the final runtime shape.
+The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md` and covers:
+
+- pack-defined backend selection profiles instead of hidden engine `auto` priority,
+- first-class `ray_query`, `compute_3d` and `disabled` backends,
+- static `enabled_if` graph selection,
+- named resolution and queue domains,
+- precise scene/runtime requirements,
+- JVM-safe diagnostics without per-frame console IO,
+- baseline pipeline optimization for clears, barriers, descriptors, G-buffer work, queue scheduling, compose variants and VR fallback reporting.
+
 1. Add a Deferred RT contract shell native module.
 2. Add the Java-side module YAML so the existing pipeline can instantiate it manually.
 3. Allocate all public output images with `layerCount = eyeCount`.
@@ -2131,3 +2142,80 @@ Status: in progress
   - `cmake --build G:\cpp\radiance\MCVR-custom\build-radiance-custom --config Release --target mcvr_tests -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully.
   - `ctest --test-dir G:\cpp\radiance\MCVR-custom\build-radiance-custom -C Release --output-on-failure` completed successfully: 11/11 tests passed.
   - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing `sun.misc.Unsafe` warnings only.
+
+### Step 43: Deferred Runtime Graph Selection and Diagnostics Gating
+
+- Status: completed for the graph-culling and diagnostics-foundation milestone.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/configs.json`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/classify.comp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/pass_stats_common.glsl`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `MCVR-custom/tests/shader_pack_deferred_schema_test.cpp`
+  - `Radiance-custom/src/main/resources/modules/deferred_rt.yaml`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - Shaderpack authors need to choose `ray_query`, compute-only or disabled paths without editing native C++.
+  - Disabled or inactive paths must disappear from pipeline creation and dispatch rather than relying on shader early
+    returns.
+  - Deferred RT must not request TLAS/provider work when the active pack profile does not use those scene subsystems.
+  - JVM/Minecraft integration cannot rely on console IO for Deferred runtime diagnostics.
+- Implemented:
+  - Added `enabled_if` to Deferred full-screen, render, compute and ray-query pass configs.
+  - Added `DeferredBackendKind` with `compute_3d`, `ray_query` and `disabled`.
+  - Added Deferred selection groups and `selection_profiles`; profile rule order is evaluated at runtime-plan build time.
+  - Kept `auto` as only a pack-defined/default selector name. Selecting an undefined profile now fails explicitly.
+  - Implemented a small static expression evaluator for graph selection:
+    - bool attributes,
+    - enum equality/inequality,
+    - numeric comparisons,
+    - `&&`, `||`, `!` and parentheses,
+    - static capability and VR booleans,
+    - unknown static tokens fail the plan.
+  - Built active runtime plans with:
+    - selected concrete pass names,
+    - logical-to-concrete pass aliases,
+    - disabled logical pass names,
+    - graph report entries for selected, skipped and disabled backends,
+    - active provider/acceleration/material/history/lighting-queue flags.
+  - Deferred runtime now builds pipelines only for active concrete passes and skips disabled logical commands during
+    execution.
+  - ShaderPack runtime resources can be scoped to active pass names before Deferred descriptor layouts and runtime
+    resources are created, so unselected candidates do not force runtime resource descriptors or allocations.
+  - `sceneRuntimeRequirements()` now derives acceleration/provider needs from the active plan and fails early if the
+    plan is invalid while module attributes are applied.
+  - Deferred compute/ray passes parse `vr`; `view_agnostic` means the existing layer-aware single dispatch path,
+    `unsupported` is rejected for stereo, and unimplemented `per_view` / `mono_replicate` policies fail instead of
+    silently running as layered.
+  - Removed Deferred RT startup/runtime plan `std::cout` logging and per-frame diagnostics console output.
+  - Gated classification/pass/queue stats allocation, descriptor binding, clears, readbacks and shader atomics behind
+    diagnostics stats enablement.
+  - Updated built-in `vanilla-deferred-rt` with backend attributes for direct light, reflection and GI:
+    - `auto`,
+    - `ray_query`,
+    - `compute_3d`,
+    - `disabled`.
+  - Updated the Radiance module YAML so those backend attributes are visible to the Java/UI side.
+- Deliberately deferred:
+  - Named resolution domains, half/quarter dispatch domains and scaled queue builders.
+  - Output default policy and removal of the blanket full-contract clear from the normal path.
+  - Generated barrier/descriptor plans beyond active-pass resource scoping.
+  - GPU timestamp timing scopes and file trace sinks.
+  - True `per_view` and `mono_replicate` Deferred compute execution modes.
+- Verification:
+  - `cmake --build G:\cpp\radiance\MCVR-custom\build-radiance-custom --target deferred_rt_shaderpack_test shader_pack_deferred_schema_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `cmake --build G:\cpp\radiance\MCVR-custom\build-radiance-custom --target core mcvr_tests --config Release -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully.
+  - `ctest --test-dir G:\cpp\radiance\MCVR-custom\build-radiance-custom -C Release --output-on-failure` completed successfully: 11/11 tests passed.
+  - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing `sun.misc.Unsafe` and deprecation warnings.
+  - Debug `core` link was not used for final verification because the existing build tree links Release `shaderc_combined.lib`
+    into Debug `core`, producing MSVC `_ITERATOR_DEBUG_LEVEL` / runtime-library mismatch errors unrelated to this step.

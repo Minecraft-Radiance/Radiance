@@ -5,6 +5,9 @@
 > Goal: add a new rasterized deferred module with ray-traced shading/GI/reflection, running in parallel with the existing path tracing module.  
 > Non-goal: depend on Blaze3D today. Blaze3D is a future compatibility target for the scene/input boundary, not a shaderpack dependency.
 
+Follow-up runtime flexibility, backend selection, diagnostics and baseline performance work is tracked in
+[`deferred-rt-runtime-flexibility-and-diagnostics-plan.md`](deferred-rt-runtime-flexibility-and-diagnostics-plan.md).
+
 ---
 
 ## 1. Problem Statement
@@ -3736,6 +3739,29 @@ deferred_rt_offline --scene MCVR/tests/fixtures/scenes/single_triangle.json --wi
 10. Do not change NRD/PostRender contracts until the new module is stable.
 11. Keep all pass/resource declarations backend-neutral before Vulkan pipeline creation.
 12. Keep offline tests runnable without Minecraft.
+
+---
+
+## 17.1 Current Runtime Flexibility Baseline
+
+The current Deferred RT native runtime now builds an active shaderpack plan before module build:
+
+- `enabled_if` and selection profiles are static graph-selection inputs. They are evaluated on pack load, pack reload or
+  attribute/native pipeline rebuild, not per frame.
+- Shaderpack profiles can choose `ray_query`, `compute_3d` or `disabled` backends for direct light, reflection and GI.
+- `auto` has no hidden engine priority beyond being the default selector string when no selector is specified.
+- Disabled and unselected backends do not create Deferred runtime pipelines or dispatch work.
+- Runtime resources declared by the shaderpack are scoped to active concrete pass names before descriptor layouts and
+  resource allocation.
+- Acceleration/provider scene-runtime requirements are derived from the active plan instead of forced for every
+  Deferred configuration.
+- Deferred compute/ray `vr: view_agnostic` means layer-aware single dispatch; it does not mean mono. `per_view` and
+  `mono_replicate` are reserved until explicit command-recording modes are implemented.
+- Deferred diagnostics no longer depend on console IO; compact overlay text is pulled from native state, while stats
+  buffers/readbacks/atomics are disabled unless diagnostics stats are enabled.
+
+The next architecture work is still resolution domains, scaled queue domains, output default policy, generated barriers,
+compose variants and GPU timing scopes.
 
 ---
 
