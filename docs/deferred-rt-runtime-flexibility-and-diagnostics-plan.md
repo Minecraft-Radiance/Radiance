@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/C/D/G foundation partially implemented; named resolution domains, the first coordinate contract and scaled queue domains are implemented; output-default optimization and generated barrier plans remain planned
+Status: Step A/B/C/D/E/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains and native output defaults are implemented; generated barrier plans remain planned
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -67,7 +67,7 @@ Missing behavior:
 - scaled dispatch dimensions,
 - scaled queue generation,
 - scaled intermediate resources,
-- upsample/compose handoff,
+- targeted output defaults and a future upsample/compose handoff for scaled public outputs,
 - diagnostics that report actual dispatch resolution and ray-query pixel count.
 
 ### 3.3 Backend and VR selection should reuse PostRender concepts, but not hard-code `auto`
@@ -575,15 +575,30 @@ Add an output policy layer:
 
 Runtime requirement:
 
-- defaults are applied only for outputs not written by an active pass,
-- defaults must avoid full-screen work when possible,
+- defaults are applied only for outputs not fully written by an active pass,
+- defaults must avoid full-screen shader work when possible,
 - options may include:
   - lazy clear,
   - alias to a zero image,
   - targeted clear,
   - preserved value for history resources when valid.
 
-The first implementation can be conservative and use targeted clears, but it should stop clearing all public outputs unconditionally.
+Implementation status:
+
+- Milestone M4 replaces the `clear_contract` compute pass in the normal runtime graph with native targeted
+  `vkCmdClearColorImage` clears derived from the active Deferred fixed semantics.
+- `clear_contract` remains a compatibility marker in the built-in pack, but it is recorded as an output-default marker;
+  the runtime does not build a pipeline for it and does not dispatch it.
+- Active full writers can suppress their default clear. Direct light is treated as a full writer for
+  `first_hit_diffuse_direct_light`; reflection, GI and compose remain partial writers and keep defaults where their
+  shaders can early-return or only write queued/eligible pixels.
+- G-buffer outputs are treated as fully covered only when the current frame actually has a G-buffer view and opaque or
+  cutout draw packets. Empty-scene frames still default-clear G-buffer outputs so stale previous-frame contents cannot
+  leak downstream.
+- Defaults are layer-count aware and use the same public-output default values as the old clear contract, including
+  `normal_roughness = (0, 0, 0, 1)` and `fog_image = (0, 0, 0, -1)`.
+- This is a conservative targeted-clear implementation. Zero-image aliasing, explicit scaled-output upsample ownership
+  and public-output export pruning remain later optimization work.
 
 ---
 
@@ -1323,21 +1338,37 @@ Tests:
 
 ### Step E: Output default policy and clear optimization
 
+Implementation status:
+
+- Milestone M4 implements the first native output-default plan:
+  - active fixed Deferred semantics are recorded in the runtime plan,
+  - `clear_contract` is lowered to an output-default marker instead of a runtime dispatch pass,
+  - selected logical aliases that point at `clear_contract` are skipped during pipeline registration and execution,
+  - a CPU-testable output-coverage helper classifies fixed semantics as full, partial or no writer,
+  - the module records native targeted clears before runtime passes for outputs that are unwritten or only partially
+    written,
+  - the default plan is frame-aware for G-buffer outputs, so an active G-buffer semantic only suppresses G-buffer
+    defaults when the current frame actually records G-buffer draws,
+  - `compose` is intentionally partial because it returns without writing `radiance` when primary depth is invalid.
+
 Tasks:
 
-- identify active writers for public outputs,
-- apply defaults only for unwritten outputs,
-- stop running blanket `clear_contract` for all outputs by default,
-- skip clears for active pass outputs that are fully overwritten,
-- prefer safe zero/default image aliasing where valid,
+- identify active writers for public outputs, completed in M4 for fixed Deferred semantics,
+- apply defaults only for unwritten or partial-writer outputs, completed in M4,
+- stop running blanket `clear_contract` for all outputs by default, completed in M4,
+- skip clears for active pass outputs that are fully overwritten, completed in M4 for direct-light and active
+  G-buffer frames,
+- prefer safe zero/default image aliasing where valid, planned,
 - keep compatibility with downstream ToneMapping/PostRender/NRD/upscalers.
 
 Tests:
 
-- disabled GI writes or clears `gi_hit_distance` and indirect diffuse to valid defaults,
-- disabled reflection writes or clears specular outputs,
-- active pass output is not overwritten by default clear,
-- outputs remain layer-count correct.
+- disabled GI writes or clears `gi_hit_distance` and indirect diffuse to valid defaults, covered by output-default
+  coverage tests,
+- disabled reflection writes or clears specular outputs, covered by output-default coverage tests,
+- active full-writer output is not overwritten by default clear, covered for direct light and G-buffer coverage,
+- outputs remain layer-count correct, covered in command recording through active-layer clear ranges; GPU validation
+  remains a later offline/runtime test item.
 
 ### Step F: Pipeline baseline optimization
 
@@ -1474,6 +1505,9 @@ Implemented in the current native milestone:
 - Lighting queue schedules can bind queue work to `full_resolution`, `pass_resolution` or a named resolution domain.
   Active queue headers, record capacity, the queue-builder tile dispatch and queued reflection/GI full-resolution
   G-buffer pixel mapping are derived from that active queue domain.
+- `clear_contract` is now a compatibility/output-default marker instead of a normal compute dispatch in the active
+  runtime path. Native targeted clears initialize only outputs that are unwritten or only partially written by active
+  fixed semantics, with G-buffer coverage checked against the current frame's draw availability.
 - Per-frame console diagnostics output has been removed from Deferred RT. The JVM-facing diagnostics overlay pulls
   module-owned native state instead.
 - Stats buffers, stats descriptor binding, atomics, clears and readbacks are gated behind the diagnostics stats/log
@@ -1485,7 +1519,7 @@ Still planned after these milestones:
   policy, motion-vector reprojection coordinates and queue coordinate rules. The push constant ABI, initial nearest
   full-resolution G-buffer sampling contract and queue dispatch/full pixel mapping are complete; upsample ownership,
   rich history policy, motion-vector reprojection and compact diagnostics dimensions remain.
-- Output default policy that removes the blanket full-contract clear from the normal path.
+- Zero-image aliasing, explicit scaled-output upsample ownership and delayed public-output export.
 - Generated barrier and descriptor plans for all active graph resources.
 - GPU timestamp timing scopes.
 - Compose variants and delayed public-output export.

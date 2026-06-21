@@ -2422,3 +2422,68 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
     `sun.misc.Unsafe` and deprecation warnings.
   - MSVC reported existing C4819 code-page warnings while compiling headers such as `as.hpp` and `vr_system.hpp`; no
     new build failure was introduced.
+
+### Step 47: Deferred Output Default Policy
+
+- Status: completed.
+- Milestone: M4 of the eight-part Deferred RT runtime continuation.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_output_defaults.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_output_defaults.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/tests/deferred_rt_output_defaults_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `MCVR-custom/tests/CMakeLists.txt`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - Disabled or inactive Deferred effects still need deterministic public outputs, but the old `clear_contract` compute
+    pass cleared every public output through a full-screen shader dispatch even when active passes fully overwrote some
+    resources.
+  - Output defaults must be owned by the native graph so disabled paths remove pass, pipeline and dispatch work instead
+    of relying on shader early returns.
+- Implemented:
+  - Added a CPU-testable output-default helper that maps fixed Deferred semantics to public-output coverage:
+    `None`, `Partial` or `Full`.
+  - Lowered `clear_contract` to an output-default marker in the active runtime plan. It remains valid in the built-in
+    pack and graph report, but no runtime pipeline is built for it and command execution skips it.
+  - Runtime plans now record active fixed semantics and output-default marker pass names.
+  - The module records native targeted `vkCmdClearColorImage` clears before runtime passes only for outputs that are
+    unwritten or partially written by active fixed semantics.
+  - Direct light is treated as a full writer for `first_hit_diffuse_direct_light`; reflection and GI are partial because
+    they only write queued/eligible pixels.
+  - `compose` is intentionally partial for `radiance` because the shader returns without writing when primary depth or
+    linear depth is invalid.
+  - G-buffer outputs are considered full only when the current frame has active G-buffer views and opaque/cutout draw
+    packets. Empty-scene frames still default-clear G-buffer outputs to prevent stale previous-frame contents.
+  - Default clear values preserve the old clear contract: zero for most outputs, `(0, 0, 0, 1)` for
+    `normal_roughness`, and `(0, 0, 0, -1)` for `fog_image`.
+  - Clear ranges use the active layer count per target image, so mono/stereo layers remain deterministic.
+- Deliberately deferred:
+  - Zero/default image aliasing and preserved-value history policies.
+  - Explicit upsample ownership for scaled public outputs.
+  - Delayed public-output export and compose variants that remove reads for disabled graph features.
+  - A generated barrier plan; M4 still uses existing module barrier recording plus the targeted clear barriers.
+- Tests added:
+  - Default clear value coverage.
+  - Full-writer output suppression for active direct light and active G-buffer frames.
+  - Partial-writer defaults for reflection, GI and compose.
+  - Frame-aware G-buffer defaults when no G-buffer draw packets are available.
+  - Runtime-plan coverage that `clear_contract` is not counted as a runtime dispatch pass.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_output_defaults_test deferred_rt_shaderpack_test shader_pack_deferred_schema_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_output_defaults_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all 10 built-in Deferred compute shaders under
+    `vanilla-deferred-rt/world/deferred_rt/` after using the shaderpack root plus `src` and shader include roots.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target core mcvr_tests --config Release -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe --test-dir build-radiance-custom -C Release --output-on-failure` completed successfully: 13/13 tests passed.
+  - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing
+    `sun.misc.Unsafe` and deprecation warnings.
+  - MSVC reported existing C4819 code-page warnings while compiling headers such as `as.hpp`; no new build failure was
+    introduced.

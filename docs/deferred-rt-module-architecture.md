@@ -3763,6 +3763,10 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   `full_resolution`, `pass_resolution` or a named resolution domain. Active queue headers, record capacity and the
   queue-builder tile dispatch use that domain, and queued reflection/GI shaders map queue dispatch pixels back to
   full-resolution G-buffer pixels before sampling.
+- The old blanket `clear_contract` compute pass is now a compatibility marker for native output defaults. The active
+  runtime skips pipeline creation and dispatch for that marker, then records targeted public-output clears only for
+  unwritten or partial-writer outputs. G-buffer defaults are suppressed only on frames that actually render G-buffer
+  draw packets, and `compose` remains a partial writer because invalid-depth pixels are left to the default clear.
 - Scaled passes are rejected if they directly write public full-resolution outputs without an explicit future upsample
   path.
 - Acceleration/provider scene-runtime requirements are derived from the active plan instead of forced for every
@@ -3772,8 +3776,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
 - Deferred diagnostics no longer depend on console IO; compact overlay text is pulled from native state, while stats
   buffers/readbacks/atomics are disabled unless diagnostics stats are enabled.
 
-The next architecture work is output default policy, generated barriers, compose variants, history/upsample policy and
-GPU timing scopes.
+The next architecture work is generated barriers, descriptor pruning, compose variants, history/upsample policy and GPU
+timing scopes.
 
 ---
 
