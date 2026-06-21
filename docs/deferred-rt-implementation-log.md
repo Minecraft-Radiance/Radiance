@@ -2487,3 +2487,69 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
     `sun.misc.Unsafe` and deprecation warnings.
   - MSVC reported existing C4819 code-page warnings while compiling headers such as `as.hpp`; no new build failure was
     introduced.
+
+### Step 48: Deferred Generated Graph Plans
+
+- Status: completed.
+- Milestone: M5 of the eight-part Deferred RT runtime continuation.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_graph_plan.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_graph_plan.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/tests/deferred_rt_graph_plan_test.cpp`
+  - `MCVR-custom/tests/CMakeLists.txt`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - Active graph selection removed unselected passes, but command recording still had broad descriptor/resource/barrier
+    work tied to fixed Deferred semantics.
+  - Disabled or no-op graph regions must remove allocation, pipeline creation, dispatch, descriptor update and barrier
+    work where the selected graph proves that the resources are unused.
+- Implemented:
+  - Added a CPU-testable `DeferredRtGraphPlan` builder that expands active Deferred runtime pass names into per-pass
+    logical input/output images and buffers, fixed semantic native resources, scene-set descriptor intent and summary
+    counts.
+  - Fixed Deferred semantics now contribute public-output aliases and native module resources for G-buffer outputs,
+    classification masks, visibility masks, lighting queues, direct/reflection/GI uniforms and TLAS requirements.
+  - Declared resource aliases such as `gbuffer.*`, `lighting.*`, `classification.*`, `visibility.*`, `queue.*` and
+    `scene.*` drive descriptor and barrier intent for custom passes.
+  - `classify` and `build_lighting_queues` become no-op graph nodes when no remaining active pass consumes their
+    outputs. No-op graph nodes do not create runtime pipelines and do not dispatch.
+  - Descriptor updates and frame setup are pruned for unused classification masks/stats, visibility masks, lighting queue
+    records/headers/indirect args, scene-set resources, fixed direct/reflection/GI uniforms, TLAS bindings and pass stats
+    buffers.
+  - Native initialization skips classification masks, visibility masks, lighting queue resources and G-buffer depth/render
+    resources when the active graph does not use them.
+  - Compute and full-screen Deferred runtime passes now use generated graph pass barriers instead of hard-coded semantic
+    branches for queue build, reflection, GI and compose.
+  - Public-output aliases such as `gbuffer.depth`, `gbuffer.normal_roughness`, `lighting.direct`,
+    `lighting.reflection` and `lighting.gi` resolve to module-owned public outputs when barriers are generated.
+  - Graph reports include graph-plan summary counts and no-op pass reasons.
+- Deliberately retained:
+  - The Vulkan descriptor set layout ABI remains fixed. M5 prunes descriptor writes/bindings and resource work; it does
+    not synthesize a smaller pipeline layout per active graph.
+  - G-buffer render-pass layout transitions still use dedicated render-pass pre/post barriers. Generated graph barriers
+    cover compute and full-screen compute runtime passes.
+  - Barrier merging, subresource narrowing, delayed public-output export and compose variants remain later optimization
+    work.
+- Tests added:
+  - Fixed semantic resource expansion and descriptor intent coverage.
+  - Disabled backend graph plans that avoid queue/uniform/TLAS descriptors.
+  - No-op queue builder detection when no active queue consumers exist.
+  - Custom public-output alias handling for graph resources.
+  - Scene-set descriptor alias coverage for classification, visibility, G-buffer views/draws, texture mapping, lighting
+    queues and TLAS.
+  - Graph summary formatting coverage.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_graph_plan_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_graph_plan_test.exe` completed successfully.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_graph_plan_test deferred_rt_shaderpack_test shader_pack_deferred_schema_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target core mcvr_tests --config Release -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe --test-dir build-radiance-custom -C Release --output-on-failure` completed successfully: 14/14 tests passed.
+  - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing
+    `sun.misc.Unsafe` and deprecation warnings.
+  - MSVC reported existing C4819 code-page warnings while compiling `as.hpp`; no new build failure was introduced.

@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/C/D/E/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains and native output defaults are implemented; generated barrier plans remain planned
+Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults and the first generated graph/barrier/descriptor plan are implemented
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -643,6 +643,25 @@ Runtime plan construction order:
 8. Determine output default policy for unwritten outputs.
 9. Determine runtime requirements.
 10. Build descriptor, barrier and pipeline data only for active nodes.
+
+Implementation status:
+
+- Milestone M5 adds a CPU-testable generated graph plan built from active Deferred runtime pass names, shaderpack pass
+  declarations, fixed semantic resource rules and active queue domains.
+- The graph plan records per-pass logical image/buffer reads and writes, fixed native resource intent, scene-set
+  descriptor intent, no-op fixed passes and summary counts for graph diagnostics.
+- `classify` and `build_lighting_queues` become no-op runtime passes when the active graph has no classification or
+  lighting-queue consumers. They do not create pipelines and do not dispatch.
+- Descriptor update work is now pruned for unused classification masks/stats, visibility masks, lighting queue buffers,
+  fixed direct/reflection/GI uniforms and TLAS bindings, scene-set resources and pass stats bindings.
+- Native resource allocation and initialization for classification masks, visibility masks, lighting queues and
+  G-buffer render-pass/depth resources are skipped when the active graph does not need them.
+- Compute/full-screen pass barriers are generated from the active graph pass resource intent instead of hard-coded
+  semantic branches for queue build, reflection, GI and compose.
+- Public-output aliases such as `gbuffer.depth` and `lighting.gi` are resolved to the module-owned public outputs when
+  generating barriers, while custom runtime resources continue through the shaderpack runtime resource path.
+- The Vulkan descriptor layout ABI intentionally remains fixed in M5; the generated descriptor plan prunes updates and
+  bindings, not set-layout shape. G-buffer render passes still use dedicated render-pass pre/post barriers.
 
 Important requirement:
 
@@ -1372,12 +1391,30 @@ Tests:
 
 ### Step F: Pipeline baseline optimization
 
+Implementation status:
+
+- Milestone M5 implements the first generated graph/barrier/descriptor plan:
+  - active runtime pass names are expanded into per-pass logical resource intent,
+  - fixed Deferred semantics add native resource reads/writes for G-buffer outputs, classification/visibility masks,
+    lighting queues, direct/reflection/GI uniforms and public outputs,
+  - declared aliases such as `gbuffer.*`, `lighting.*`, `classification.*`, `visibility.*`, `queue.*` and `scene.*`
+    contribute to descriptor and barrier intent,
+  - unused `classify` and `build_lighting_queues` fixed passes become no-op graph nodes,
+  - no-op graph nodes are skipped during pipeline creation and runtime execution,
+  - descriptor updates, initialization and per-pass generated barriers are skipped for inactive resources,
+  - graph reports include compact graph-plan summaries and no-op reasons.
+- The implementation keeps a fixed Vulkan descriptor layout for compatibility. M5 removes unnecessary descriptor writes,
+  uploads, clears, barriers, allocation and dispatch work where possible; it does not yet generate a new pipeline layout
+  ABI per active graph.
+- G-buffer render pass layout transitions remain dedicated render-pass pre/post barriers. Compute and full-screen
+  compute passes use the generated graph pass barrier path.
+
 Tasks:
 
 - remove stats buffers, atomics and readbacks from the default path,
-- generate barrier plans from active graph resource reads/writes,
-- merge compatible barriers,
-- skip descriptor writes and bindings for inactive backends/resources,
+- generate barrier plans from active graph resource reads/writes, first compute/full-screen pass version completed in M5,
+- merge compatible barriers, planned,
+- skip descriptor writes and bindings for inactive backends/resources, first fixed-layout pruning completed in M5,
 - derive fine-grained scene runtime requirements from active graph,
 - skip TLAS binding/barriers when no ray-query backend is active,
 - skip provider packet enumeration when no scene draw stream is active,
@@ -1392,8 +1429,10 @@ Tasks:
 Tests:
 
 - stats disabled path records no stats resources or readbacks,
-- inactive backend descriptors are not updated or are bound only to explicit safe defaults,
-- disabling ray-query backends removes TLAS binding and ray-query barriers,
+- inactive backend descriptors are not updated or are bound only to explicit safe defaults, covered in M5 graph-plan tests
+  for fixed and scene descriptors,
+- disabling ray-query backends removes TLAS binding and ray-query barriers, covered in M5 graph-plan tests for TLAS
+  descriptor intent,
 - disabling scene render content removes provider draw-stream requirement,
 - direct-light queue profile dispatches less work than full-screen profile on sparse scenes,
 - compose variant omits disabled effect reads,
@@ -1520,6 +1559,7 @@ Still planned after these milestones:
   full-resolution G-buffer sampling contract and queue dispatch/full pixel mapping are complete; upsample ownership,
   rich history policy, motion-vector reprojection and compact diagnostics dimensions remain.
 - Zero-image aliasing, explicit scaled-output upsample ownership and delayed public-output export.
-- Generated barrier and descriptor plans for all active graph resources.
+- Generated barrier and descriptor plans for all active compute/full-screen graph resources; render-pass G-buffer
+  barriers, barrier merging and descriptor-layout ABI generation remain planned.
 - GPU timestamp timing scopes.
 - Compose variants and delayed public-output export.

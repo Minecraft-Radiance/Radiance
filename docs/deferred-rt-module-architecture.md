@@ -3159,6 +3159,14 @@ with optional fallback compute, and `full_screen` `compute_3d` passes through th
 `render` currently supports the hardened `content: minecraft_gbuffer` backend. Unsupported runtime pass content fails
 during module build with a clear runtime-plan error.
 
+The module now builds a generated `DeferredRtGraphPlan` after active runtime selection. The graph plan expands active
+concrete pass names into per-pass image/buffer intent, fixed semantic native resources, scene-set descriptor intent and
+no-op reasons. It is used to prune classification/visibility/lighting-queue/G-buffer allocations, descriptor updates,
+fixed direct/reflection/GI uniform uploads, TLAS bindings, pass stats bindings, pipeline creation for graph no-op fixed
+passes and compute/full-screen pass barriers. M5 deliberately keeps the Vulkan descriptor set layout ABI fixed; the
+generated descriptor plan decides which existing bindings are updated or left untouched, not which set-layout bindings
+exist. G-buffer render-pass transitions still use dedicated render-pass pre/post barriers.
+
 The fixed native shader-source path has been migrated into built-in `vanilla-deferred-rt`: G-buffer, classification,
 queue build, direct lighting, queued reflection/GI and compose are declared by the pack and recorded by the hardened
 Deferred runtime. Runtime synchronization is no longer keyed by pass `name`; fixed C++ hooks use the explicit optional
@@ -3238,6 +3246,13 @@ Remaining implementation steps after Step 41:
 - Explicit resource lifetime policy is complete in Step 41 for `per_frame`, `history`, `persistent` and
   `imported_texture`. Runtime resize and shaderpack reload reset history through resource rebuild/pre-close paths.
   Explicit camera-cut, dimension/world-change and major render-scale reset signals still need engine hooks.
+- Generated graph-plan resource expansion and first descriptor/barrier pruning are complete in the M5 continuation
+  milestone:
+  - fixed semantics expand to public outputs and native module resources,
+  - declared `gbuffer.*`, `lighting.*`, `classification.*`, `visibility.*`, `queue.*` and `scene.*` aliases drive
+    descriptor/barrier intent,
+  - inactive graph resources skip descriptor writes, uploads, initialization and generated compute barriers,
+  - `classify` and `build_lighting_queues` can become no-op nodes with no pipeline or dispatch.
 - `ScenePrepare` lifetime is now `WorldPipeline` scoped through `SharedSceneRuntime`, and provider packet enumeration is lazy behind the `Provider` requirement flag.
 - Expand preset storage/UI so a preset can configure the selected pipeline and each shaderpack-capable module's pack.
 - Define whether cross-module shaderpack resource references are forbidden by validation or represented through explicit
@@ -3767,6 +3782,10 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   runtime skips pipeline creation and dispatch for that marker, then records targeted public-output clears only for
   unwritten or partial-writer outputs. G-buffer defaults are suppressed only on frames that actually render G-buffer
   draw packets, and `compose` remains a partial writer because invalid-depth pixels are left to the default clear.
+- The runtime now builds a generated graph plan from active pass resources. It prunes unused descriptor updates,
+  classification/visibility/queue/G-buffer resource initialization, fixed lighting uniform uploads, TLAS bindings,
+  pass stats bindings, compute/full-screen barriers and no-op fixed-pass pipelines/dispatches. The descriptor layout ABI
+  remains fixed.
 - Scaled passes are rejected if they directly write public full-resolution outputs without an explicit future upsample
   path.
 - Acceleration/provider scene-runtime requirements are derived from the active plan instead of forced for every
@@ -3776,8 +3795,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
 - Deferred diagnostics no longer depend on console IO; compact overlay text is pulled from native state, while stats
   buffers/readbacks/atomics are disabled unless diagnostics stats are enabled.
 
-The next architecture work is generated barriers, descriptor pruning, compose variants, history/upsample policy and GPU
-timing scopes.
+The next architecture work is diagnostics snapshots/file traces/timestamps, explicit non-layered VR execution modes,
+compose variants, history/upsample policy, barrier merging and deeper scene/runtime optimization.
 
 ---
 
