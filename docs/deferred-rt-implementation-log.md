@@ -2219,3 +2219,71 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
   - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing `sun.misc.Unsafe` and deprecation warnings.
   - Debug `core` link was not used for final verification because the existing build tree links Release `shaderc_combined.lib`
     into Debug `core`, producing MSVC `_ITERATOR_DEBUG_LEVEL` / runtime-library mismatch errors unrelated to this step.
+
+### Step 44: Deferred Named Resolution Domains
+
+- Status: completed.
+- Milestone: M1 of the eight-part Deferred RT runtime continuation.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/configs.json`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `MCVR-custom/tests/shader_pack_deferred_schema_test.cpp`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - Shaderpack authors need a named resolution primitive so half/quarter-resolution work can reduce real dispatch and
+    resource cost instead of relying on shader early returns.
+  - Later coordinate, queue and output-default work needs pass/resource resolution to already be part of the active
+    runtime plan.
+- Implemented:
+  - Added root `resolutions` parsing with built-in `full`, `half` and `quarter` domains.
+  - Allowed shaderpacks to override built-in domain scale/round/min values and define additional named domains.
+  - Added `resolution` to Deferred full-screen, render, compute and ray-query pass configs.
+  - Added `resolution` to pack-owned runtime images in both preserved root texture syntax and Deferred
+    `resources.images` wrapper syntax. A resolution-domain image cannot also declare explicit width/height or legacy
+    `size`.
+  - Added shared shaderpack helpers for resolution-domain lookup and extent evaluation. These live in the generic
+    shaderpack layer so runtime resources do not depend on Deferred RT internals.
+  - Runtime images can now allocate from a named resolution domain using the same scale/min/round logic as Deferred
+    passes.
+  - Deferred runtime-plan validation now checks pass and runtime-image domain references and records the selected
+    concrete pass -> resolution domain mapping.
+  - Deferred graph report selection lines include the selected pass resolution domain.
+  - `screen` and `tile_grid` compute dispatch schedules use the active pass domain's width/height. This reduces launched
+    workgroups for scaled domains.
+  - Full-screen compute keeps target-image dispatch dimensions for `full` domains and uses the selected domain for
+    non-`full` domains.
+  - Built-in `vanilla-deferred-rt` declares `full`, `half` and `quarter` domains. All built-in passes remain `full`
+    until the coordinate-contract and queue-domain milestones land.
+- Deliberately deferred:
+  - The unified resolution push constant ABI is M2. M1 still passes the legacy width/height push constants, so scaled
+    shaders must not be enabled in built-in rendering yet.
+  - Full/dispatch coordinate mapping, half/quarter G-buffer sampling, upsample ownership, history-resolution policy,
+    motion-vector reprojection coordinates and queue tile coordinate rules are M2.
+  - Lighting queue indirect dispatch scaling is M3. `screen` and `tile_grid` schedules scale in M1, but
+    `lighting_queue` indirect arguments are still the existing queue path.
+  - Output default policy, generated barriers/descriptors, diagnostics snapshots, true `per_view`/`mono_replicate` and
+    deeper compose/direct-light optimization remain later milestones.
+- Tests added:
+  - Schema parsing for custom `resolutions`, resource `resolution`, pass `resolution`, built-in default domains and
+    invalid resource size/resolution mixes.
+  - Selection backend resolution inheritance and per-backend override parsing.
+  - Runtime extent evaluation for half/quarter/min/round behavior and invalid scale rejection.
+  - Runtime-plan recording of pass resolution domains.
+  - Runtime-plan errors for unknown pass/resource domains.
+  - Graph report coverage for selected backend resolution.
+- Verification:
+  - `cmake --build G:\cpp\radiance\MCVR-custom\build-radiance-custom --target deferred_rt_shaderpack_test shader_pack_deferred_schema_test --config Debug` completed successfully using the Visual Studio bundled CMake path because `cmake` was not on the shell `PATH`.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `cmake --build G:\cpp\radiance\MCVR-custom\build-radiance-custom --target core mcvr_tests --config Release -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully using the Visual Studio bundled CMake path.
+  - `ctest --test-dir G:\cpp\radiance\MCVR-custom\build-radiance-custom -C Release --output-on-failure` completed successfully: 11/11 tests passed.
+  - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing `sun.misc.Unsafe` and deprecation warnings.
+  - MSVC reported existing C4819 code-page warnings while compiling headers such as `as.hpp` and `vr_system.hpp`; no new build failure was introduced.

@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/G foundation partially implemented; resolution domains, scaled queues, output-default optimization and generated barrier plans remain planned  
+Status: Step A/B/C/G foundation partially implemented; coordinate contract, scaled queues, output-default optimization and generated barrier plans remain planned
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -1228,24 +1228,40 @@ Tests:
 
 ### Step C: Resolution domains
 
+Implementation status:
+
+- Milestone M1 implements the first named-domain layer:
+  - root `resolutions` parsing with built-in `full`, `half` and `quarter` domains,
+  - shaderpack-defined domain overrides and custom names,
+  - scale expression evaluation, minimum dimensions and round-up alignment,
+  - `resolution` references on Deferred full-screen, render, compute and ray-query passes,
+  - `resolution` references on pack-owned runtime images,
+  - active runtime-plan validation for pass/resource domain references,
+  - active runtime-plan diagnostics that record selected concrete pass -> resolution domain,
+  - actual reduced dispatch dimensions for `screen` and `tile_grid` compute schedules,
+  - runtime image allocation from the referenced domain.
+- Built-in `vanilla-deferred-rt` declares `full`, `half` and `quarter`; all built-in passes still default to `full`
+  until the coordinate contract and queue scaling milestones land.
+
 Tasks:
 
-- parse `resolutions`,
-- evaluate scale expressions,
-- round dimensions,
-- expose full and dispatch dimensions plus mapping constants in push constants,
-- allocate pack-owned resources from resolution domains,
+- parse `resolutions`, completed in M1,
+- evaluate scale expressions, completed in M1,
+- round dimensions, completed in M1,
+- expose full and dispatch dimensions plus mapping constants in push constants, planned for M2,
+- allocate pack-owned resources from resolution domains, completed in M1,
 - add generated shader definitions for resolution domains,
 - support full/half/quarter lighting target resources.
 
 Tests:
 
-- half scale at 2560x1440 produces 1280x720 rounded as configured,
-- quarter scale produces expected dispatch dimensions,
-- invalid zero/negative scale errors,
-- resource and pass using same domain agree,
-- full-to-dispatch and dispatch-to-full mapping constants are deterministic,
-- history resolution policy is explicit for scaled history resources.
+- half scale with alignment produces the expected rounded dispatch extent, covered in M1,
+- quarter scale with minimum dimensions produces the expected dispatch extent, covered in M1,
+- invalid zero/negative scale errors, covered in M1,
+- resource and pass using the same domain agree at schema/runtime-plan level, covered in M1,
+- unknown pass/resource domains fail runtime-plan validation, covered in M1,
+- full-to-dispatch and dispatch-to-full mapping constants are deterministic, planned for M2,
+- history resolution policy is explicit for scaled history resources, planned for M2.
 
 ### Step D: Scaled queues
 
@@ -1409,14 +1425,18 @@ Implemented in the current native milestone:
   backends, and provider draw streams are requested only when active scene draw content needs them.
 - Built-in `vanilla-deferred-rt` exposes `direct_light_backend`, `reflection_backend` and `gi_backend` attributes with
   `auto`, `ray_query`, `compute_3d` and `disabled` profiles.
+- Shaderpacks can declare named resolution domains. Passes and pack-owned runtime images can reference those domains,
+  and active `screen` / `tile_grid` compute dispatches use the reduced domain dimensions instead of full-resolution
+  launches.
 - Per-frame console diagnostics output has been removed from Deferred RT. The JVM-facing diagnostics overlay pulls
   module-owned native state instead.
 - Stats buffers, stats descriptor binding, atomics, clears and readbacks are gated behind the diagnostics stats/log
   switch and compile-time shader definition.
 
-Still planned after this milestone:
+Still planned after these milestones:
 
-- Named resolution domains and scaled dispatch constants.
+- Unified resolution-coordinate push constants, depth/normal sampling policy, upsample ownership, history-resolution
+  policy, motion-vector reprojection coordinates and queue coordinate rules.
 - Scaled lighting queue domains.
 - Output default policy that removes the blanket full-contract clear from the normal path.
 - Generated barrier and descriptor plans for all active graph resources.

@@ -3753,6 +3753,9 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
 - Disabled and unselected backends do not create Deferred runtime pipelines or dispatch work.
 - Runtime resources declared by the shaderpack are scoped to active concrete pass names before descriptor layouts and
   resource allocation.
+- Shaderpacks can declare named resolution domains, including the built-in `full`, `half` and `quarter` domains. Active
+  Deferred passes and pack-owned runtime images can reference a domain; `screen` and `tile_grid` compute schedules use
+  the selected domain's dispatch extent instead of launching full-resolution work.
 - Acceleration/provider scene-runtime requirements are derived from the active plan instead of forced for every
   Deferred configuration.
 - Deferred compute/ray `vr: view_agnostic` means layer-aware single dispatch; it does not mean mono. `per_view` and
@@ -3760,8 +3763,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
 - Deferred diagnostics no longer depend on console IO; compact overlay text is pulled from native state, while stats
   buffers/readbacks/atomics are disabled unless diagnostics stats are enabled.
 
-The next architecture work is still resolution domains, scaled queue domains, output default policy, generated barriers,
-compose variants and GPU timing scopes.
+The next architecture work is the resolution coordinate contract, scaled queue domains, output default policy,
+generated barriers, compose variants and GPU timing scopes.
 
 ---
 
