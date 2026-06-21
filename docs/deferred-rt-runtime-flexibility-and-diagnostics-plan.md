@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/C/G foundation partially implemented; coordinate contract, scaled queues, output-default optimization and generated barrier plans remain planned
+Status: Step A/B/C/G foundation partially implemented; named resolution domains and the first coordinate contract are implemented; scaled queues, output-default optimization and generated barrier plans remain planned
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -482,10 +482,11 @@ Runtime requirement:
 
 - pass dispatch dimensions come from the selected resolution domain,
 - pack-owned runtime resources can use the same domain,
-- queue builders can emit work for the same domain,
-- push constants include both full resolution and dispatch resolution,
-- shader definitions expose the active resolution domain,
-- diagnostics report selected domain, scale and dispatch dimensions.
+- queue builders can emit work for the same domain, planned for M3,
+- push constants include both full resolution and dispatch resolution, completed in M2,
+- shader definitions expose the active resolution domain, completed in M2,
+- diagnostics report selected domain, scale and dispatch dimensions; graph-level reporting exists for selected domains,
+  compact per-frame dimensions remain planned for the diagnostics milestone.
 
 Resolution domains must define a coordinate contract. The runtime must provide the same data to every scaled pass instead of letting shaders guess:
 
@@ -511,13 +512,21 @@ Rules:
 - `fullToDispatch` maps full-resolution pixel coordinates into dispatch-domain coordinates.
 - `dispatchToFull` maps dispatch-domain pixel coordinates into full-resolution coordinates.
 - `layerCount` is the active view/layer count.
+- M2 uses pixel-center mapping for integer helper functions:
+  - dispatch -> full: `floor((dispatchPixel + 0.5) * dispatchToFull)`, clamped to full bounds,
+  - full -> dispatch: `floor((fullPixel + 0.5) * fullToDispatch)`, clamped to dispatch bounds.
+- The initial depth/normal/material sampling policy for scaled dispatch shaders is nearest full-resolution G-buffer
+  sampling through the dispatch -> full mapping.
+- A scaled pass cannot write a public full-resolution output directly until it declares an explicit upsample or compose
+  handoff. The runtime rejects that graph shape.
 
 Scaled effects must also declare or inherit these policies:
 
-- G-buffer/depth/normal sampling policy, initially `nearest`;
-- output upsample policy, initially explicit compose or a named upsample pass;
-- history resolution, either `dispatch` or `full`;
-- queue domain, either the pass resolution domain or an explicitly named domain.
+- G-buffer/depth/normal sampling policy, initially `nearest`; the first runtime contract is implemented in M2.
+- output upsample policy, initially explicit compose or a named upsample pass; still planned for M4/M8.
+- history resolution, either `dispatch` or `full`; M2 blocks unsafe scaled public writes until explicit history and
+  upsample ownership are available.
+- queue domain, either the pass resolution domain or an explicitly named domain; planned for M3.
 
 Open-ended shader-side guessing is not allowed. A half-resolution GI shader must know how to map its dispatch pixel to full-resolution depth/normal, where its history lives and who upsamples the result.
 
@@ -1242,15 +1251,22 @@ Implementation status:
   - runtime image allocation from the referenced domain.
 - Built-in `vanilla-deferred-rt` declares `full`, `half` and `quarter`; all built-in passes still default to `full`
   until the coordinate contract and queue scaling milestones land.
+- Milestone M2 implements the first coordinate contract:
+  - a unified Deferred compute/ray push constant layout with full resolution, dispatch resolution, scale, inverse scale,
+    full/dispatch mapping factors, layer count and flags,
+  - shared shader helpers for dispatch bounds and pixel-center full/dispatch pixel mapping,
+  - active resolution-domain shader definitions,
+  - runtime validation that rejects scaled passes writing public full-resolution outputs without an explicit upsample
+    path.
 
 Tasks:
 
 - parse `resolutions`, completed in M1,
 - evaluate scale expressions, completed in M1,
 - round dimensions, completed in M1,
-- expose full and dispatch dimensions plus mapping constants in push constants, planned for M2,
+- expose full and dispatch dimensions plus mapping constants in push constants, completed in M2,
 - allocate pack-owned resources from resolution domains, completed in M1,
-- add generated shader definitions for resolution domains,
+- add generated shader definitions for resolution domains, completed in M2,
 - support full/half/quarter lighting target resources.
 
 Tests:
@@ -1260,8 +1276,9 @@ Tests:
 - invalid zero/negative scale errors, covered in M1,
 - resource and pass using the same domain agree at schema/runtime-plan level, covered in M1,
 - unknown pass/resource domains fail runtime-plan validation, covered in M1,
-- full-to-dispatch and dispatch-to-full mapping constants are deterministic, planned for M2,
-- history resolution policy is explicit for scaled history resources, planned for M2.
+- full-to-dispatch and dispatch-to-full mapping constants are deterministic, covered in M2,
+- history resolution policy is explicit for scaled history resources, planned after the queue/default-output milestones;
+  M2 blocks graph shapes that would otherwise need this policy for public outputs.
 
 ### Step D: Scaled queues
 
@@ -1428,6 +1445,8 @@ Implemented in the current native milestone:
 - Shaderpacks can declare named resolution domains. Passes and pack-owned runtime images can reference those domains,
   and active `screen` / `tile_grid` compute dispatches use the reduced domain dimensions instead of full-resolution
   launches.
+- Deferred compute/ray shaders receive a unified resolution push constant block with full and dispatch dimensions plus
+  deterministic pixel-center mapping helpers.
 - Per-frame console diagnostics output has been removed from Deferred RT. The JVM-facing diagnostics overlay pulls
   module-owned native state instead.
 - Stats buffers, stats descriptor binding, atomics, clears and readbacks are gated behind the diagnostics stats/log
@@ -1436,7 +1455,9 @@ Implemented in the current native milestone:
 Still planned after these milestones:
 
 - Unified resolution-coordinate push constants, depth/normal sampling policy, upsample ownership, history-resolution
-  policy, motion-vector reprojection coordinates and queue coordinate rules.
+  policy, motion-vector reprojection coordinates and queue coordinate rules. The push constant ABI and initial nearest
+  full-resolution G-buffer sampling contract are complete; upsample ownership, rich history policy, motion-vector
+  reprojection, compact diagnostics dimensions and queue coordinate rules remain.
 - Scaled lighting queue domains.
 - Output default policy that removes the blanket full-contract clear from the normal path.
 - Generated barrier and descriptor plans for all active graph resources.

@@ -2287,3 +2287,71 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
   - `ctest --test-dir G:\cpp\radiance\MCVR-custom\build-radiance-custom -C Release --output-on-failure` completed successfully: 11/11 tests passed.
   - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing `sun.misc.Unsafe` and deprecation warnings.
   - MSVC reported existing C4819 code-page warnings while compiling headers such as `as.hpp` and `vr_system.hpp`; no new build failure was introduced.
+
+### Step 45: Deferred Resolution Coordinate Contract
+
+- Status: completed.
+- Milestone: M2 of the eight-part Deferred RT runtime continuation.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/deferred_resolution.glsl`
+  - built-in Deferred RT compute/ray shaders under `vanilla-deferred-rt/world/deferred_rt/`
+  - `MCVR-custom/tests/deferred_rt_resolution_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_lighting_queue_test.cpp`
+  - `MCVR-custom/tests/CMakeLists.txt`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - M1 made pass/resource domains real, but scaled shaders still lacked a uniform coordinate ABI.
+  - Scaled dispatches must know both their dispatch domain and the full-resolution G-buffer/public-output domain before
+    queue scaling, history policy or upsample handoff can be made correct.
+- Implemented:
+  - Added `DeferredResolutionParams` with:
+    - `fullResolution`,
+    - `dispatchResolution`,
+    - `scale`,
+    - `invScale`,
+    - `fullToDispatch`,
+    - `dispatchToFull`,
+    - `layerCount`,
+    - `flags`.
+  - Replaced the old four-uint Deferred compute push constant range with the unified resolution block.
+  - Added `deferred_resolution.glsl` shared shader helpers for dispatch bounds and pixel-center full/dispatch pixel
+    mapping.
+  - Updated built-in Deferred compute/ray shaders to consume the shared resolution push constants.
+  - Switched ray-query/queued dispatch flags to the resolution flag namespace so compute pass flags have one owner.
+  - Added active domain shader definitions:
+    - `RADIANCE_DEFERRED_RESOLUTION_DOMAIN`,
+    - `RADIANCE_DEFERRED_RESOLUTION_DOMAIN_<NAME>`,
+    - `RADIANCE_DEFERRED_RESOLUTION_DOMAIN_SCALED` for non-`full` domains.
+  - Added runtime validation that rejects a scaled pass writing public full-resolution Deferred outputs without an
+    explicit upsample/compose path. Scaled custom intermediate outputs remain valid.
+  - Documented the first coordinate contract:
+    - dispatch -> full pixel: `floor((dispatchPixel + 0.5) * dispatchToFull)`, clamped,
+    - full -> dispatch pixel: `floor((fullPixel + 0.5) * fullToDispatch)`, clamped,
+    - depth/normal/material reads use nearest full-resolution G-buffer sampling in the first contract.
+- Deliberately deferred:
+  - Scaled lighting queue indirect dispatch and queue record domains are M3.
+  - Output default and upsample ownership are M4/M8.
+  - Rich scaled history policy and motion-vector reprojection policy remain later work. M2 prevents unsafe scaled public
+    writes until those policies exist.
+- Tests added:
+  - CPU tests for full and scaled resolution push constant values, mapping factors and flag bits.
+  - CPU tests for active resolution shader definitions and public-output detection.
+  - Runtime-plan tests allowing scaled custom outputs and rejecting scaled direct public outputs without upsample.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_resolution_test deferred_rt_shaderpack_test shader_pack_deferred_schema_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_resolution_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all 10 built-in Deferred compute shaders under `vanilla-deferred-rt/world/deferred_rt/` with the shaderpack root and source `common/` include paths.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target core mcvr_tests --config Release -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe --test-dir build-radiance-custom -C Release --output-on-failure` completed successfully: 12/12 tests passed.
+  - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing `sun.misc.Unsafe` and deprecation warnings.
+  - MSVC reported existing C4819 code-page warnings while compiling headers such as `as.hpp`; no new build failure was introduced.
