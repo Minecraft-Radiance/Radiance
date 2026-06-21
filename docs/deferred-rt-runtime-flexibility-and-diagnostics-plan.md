@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults, generated graph/barrier/descriptor plans and compact diagnostics transport are implemented
+Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults, generated graph/barrier/descriptor plans, compact diagnostics transport and explicit Deferred compute/ray VR execution modes are implemented
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -1215,9 +1215,29 @@ Required direction:
 - Per-eye execution is a compatibility fallback, not an invisible default.
 - Diagnostics must report pass-level VR execution mode and fallback reason.
 
+Implementation status:
+
+- Milestone M7 implements explicit Deferred compute/ray execution modes:
+  - `view_agnostic` and unspecified policies lower to `layered_single_dispatch`, preserving the existing layer-aware
+    single dispatch behavior.
+  - `per_view` lowers to `per_view_dispatch`; command recording loops each active view with
+    `layerCount = 1`, `baseLayer = viewIndex` and `viewIndex = viewIndex` in the unified resolution push constants.
+  - `mono_replicate` lowers to `mono_dispatch_replicate`; command recording runs layer 0 only, then copies declared
+    image outputs from layer 0 to the remaining active layers. Buffer outputs and native non-image fixed semantics are
+    rejected for `mono_replicate`.
+  - `unsupported` still rejects stereo plans.
+- The push-constant ABI now names the previous reserved words as `baseLayer` and `viewIndex` without changing the block
+  size. Built-in shaders map local dispatch `z` to the actual array layer through shared helpers.
+- Lighting queues now maintain both whole-queue indirect counts and per-kind/per-layer indirect counts. `per_view` and
+  `mono_replicate` queued reflection/GI dispatches use the per-layer indirect offset, so they do not re-dispatch work
+  from other views.
+- Writable shaderpack runtime images include transfer usage so `mono_replicate` can copy layered custom image outputs
+  as well as public outputs.
+
 Completion standard:
 
-- VR performance regressions caused by per-eye fallback are visible in frame snapshots and graph reports.
+- VR performance regressions caused by per-eye fallback are visible in graph reports. Compact snapshot mode still carries
+  aggregate pass timing slots rather than a rich named VR fallback list.
 
 ### 8.13 Use visibility mask before expensive work
 
@@ -1606,6 +1626,11 @@ Implemented in the current native milestone:
 - Optional file trace writes compact snapshot lines only when `diagnostics_trace_file` is configured.
 - Optional GPU timestamp timing records a frame scope plus fixed compact pass scopes only when
   `diagnostics_gpu_timing` is enabled.
+- Deferred compute/ray `vr` policies now lower to explicit runtime execution modes. `view_agnostic` stays layer-aware
+  single dispatch, `per_view` records one dispatch per active view, `mono_replicate` dispatches layer 0 and copies image
+  outputs to other active layers, and `unsupported` continues to reject stereo plans.
+- Resolution push constants include `baseLayer` and `viewIndex`, and lighting queues carry per-layer indirect counts so
+  queued `per_view` passes dispatch only the selected view's queued records.
 
 Still planned after these milestones:
 
@@ -1616,5 +1641,6 @@ Still planned after these milestones:
 - Zero-image aliasing, explicit scaled-output upsample ownership and delayed public-output export.
 - Generated barrier and descriptor plans for all active compute/full-screen graph resources; render-pass G-buffer
   barriers, barrier merging and descriptor-layout ABI generation remain planned.
-- More detailed named/per-pass timing report exports beyond the current compact fixed-slot pass timing fields.
+- More detailed named/per-pass timing and VR fallback report exports beyond the current compact fixed-slot pass timing
+  fields.
 - Compose variants and delayed public-output export.

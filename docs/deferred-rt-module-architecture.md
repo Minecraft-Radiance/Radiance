@@ -3790,8 +3790,11 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   path.
 - Acceleration/provider scene-runtime requirements are derived from the active plan instead of forced for every
   Deferred configuration.
-- Deferred compute/ray `vr: view_agnostic` means layer-aware single dispatch; it does not mean mono. `per_view` and
-  `mono_replicate` are reserved until explicit command-recording modes are implemented.
+- Deferred compute/ray `vr: view_agnostic` means layer-aware single dispatch; it does not mean mono. `per_view` now
+  records one dispatch per active view with `baseLayer/viewIndex` push constants, and `mono_replicate` runs layer 0 then
+  copies declared image outputs to the remaining active layers. `unsupported` still rejects stereo plans.
+- Lighting queue buffers include per-layer indirect dispatch entries so queued `per_view` reflection/GI passes dispatch
+  only the selected view's queue records instead of replaying the whole stereo queue.
 - Deferred diagnostics no longer depend on console IO. Native stores a compact fixed-field snapshot, Java pulls it as a
   `long[]` and formats the normal debug text without native string construction.
 - String-heavy graph reports are collected and exposed only when graph-report diagnostics are enabled. File tracing is a
@@ -3800,8 +3803,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   unless `diagnostics_gpu_timing` is enabled; when enabled, the snapshot carries a frame timing plus fixed compact pass
   timing slots.
 
-The next architecture work is explicit non-layered VR execution modes, compose variants, history/upsample policy, barrier
-merging and deeper scene/runtime optimization.
+The next architecture work is compose variants, history/upsample policy, barrier merging and deeper scene/runtime
+optimization.
 
 ---
 

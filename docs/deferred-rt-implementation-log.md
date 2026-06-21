@@ -2613,3 +2613,65 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
 - Deliberately deferred:
   - Rich named timing export beyond the compact fixed-slot pass id/microsecond fields.
   - RenderDoc/Nsight debug markers and a dedicated developer UI for graph reports.
+
+### Step 50: Deferred VR Execution Modes
+
+- Status: completed.
+- Milestone: M7 of the eight-part Deferred RT runtime continuation.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_lighting_queue.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_lighting_queue.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.cpp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/*.glsl`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/*.comp`
+  - `MCVR-custom/tests/deferred_rt_lighting_queue_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_resolution_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - `per_view` and `mono_replicate` were previously parsed but rejected for stereo Deferred compute/ray passes. The
+    runtime needed explicit command-recording modes instead of silently treating those policies as layered dispatch.
+- Implemented:
+  - Added `DeferredRtVrExecutionMode` and runtime-plan lowering from public shaderpack `vr` policy:
+    `view_agnostic`/unspecified to `layered_single_dispatch`, `per_view` to `per_view_dispatch`, and
+    `mono_replicate` to `mono_dispatch_replicate`.
+  - `unsupported` still rejects stereo plans.
+  - The unified Deferred resolution push constants now expose `baseLayer` and `viewIndex` in place of the previous
+    reserved words, preserving block size while making view/layer execution explicit.
+  - Compute and full-screen compute command recording now dispatches according to the lowered execution mode:
+    layered once, per-view once per active layer, or mono once on layer 0 followed by native image-layer copies.
+  - `mono_replicate` is rejected for buffer outputs and native non-image fixed semantics. It copies only declared image
+    outputs resolved through the generated graph plan.
+  - Lighting queue storage now contains whole-queue records plus per-layer queue record copies and indirect arguments.
+    Queued `per_view`/`mono_replicate` reflection and GI passes use the per-layer indirect offset, so dispatch counts do
+    not include other views' queued tiles.
+  - Built-in Deferred shaders map dispatch-local `z` to actual array layers through `baseLayer`, and queued shaders read
+    per-layer queue records when the runtime mode is per-view or mono-replicate.
+  - Writable shaderpack runtime images now include transfer src/dst usage so mono image replication can target layered
+    custom outputs as well as public outputs.
+- Deliberately retained:
+  - `view_agnostic` remains the preferred fast path and still means layer-aware single dispatch, not mono.
+  - Raster G-buffer VR behavior remains the existing multiview/per-layer render-pass path.
+  - Rich per-pass VR mode export in compact frame snapshots remains future diagnostics work; graph reports and formatted
+    runtime-plan summaries include the lowered mode.
+- Tests added:
+  - Runtime-plan coverage that stereo accepts `per_view` and `mono_replicate`, rejects `unsupported`, and rejects
+    `mono_replicate` buffer outputs.
+  - Resolution push-constant coverage for `baseLayer` and `viewIndex`.
+  - Lighting queue coverage for per-layer record offsets, per-layer capacities and per-layer indirect offsets.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_shaderpack_test deferred_rt_resolution_test deferred_rt_lighting_queue_test shader_pack_deferred_schema_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_resolution_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_lighting_queue_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all built-in Deferred compute shaders under
+    `vanilla-deferred-rt/world/deferred_rt/` with the shaderpack root, `src`, shader and shader include roots.
