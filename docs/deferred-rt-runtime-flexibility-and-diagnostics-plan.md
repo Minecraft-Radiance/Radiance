@@ -1643,17 +1643,31 @@ Implemented in the current native milestone:
   outputs to other active layers, and `unsupported` continues to reject stereo plans.
 - Resolution push constants include `baseLayer` and `viewIndex`, and lighting queues carry per-layer indirect counts so
   queued `per_view` passes dispatch only the selected view's queued records.
+- Scaled output, history and motion coordinate policy are now explicit runtime contracts. Deferred compute/ray/full-screen
+  passes can declare `scaled_output: shader_footprint` or `scaled_output: upsample_pass` with `upsample_pass`, plus
+  `history_resolution: dispatch|full` and `motion_reprojection: full_resolution|dispatch_to_full`.
+- Active runtime-plan validation rejects scaled public-output writers without `scaled_output`, rejects inactive/missing
+  upsample owners, rejects scaled history readers without `history_resolution`, and rejects scaled motion-vector readers
+  without `motion_reprojection`.
+- Pack-owned scaled history images must declare `history_resolution`; `full` history is allocated at the full domain even
+  when the owning effect dispatches at half/quarter resolution, while `dispatch` history stays in the pass/resource
+  domain.
+- Shader definitions and resolution push-constant flags expose scaled-output, history and motion policies. GLSL helpers
+  provide dispatch footprint bounds and motion-vector conversion between full-resolution and dispatch-resolution history
+  coordinates.
+- Generated graph plans treat `scaled_output: upsample_pass` as an ownership handoff: the scaled pass no longer owns the
+  public output write; the named active full-resolution upsample pass owns the public writer for barriers and compose
+  feature detection.
 
 Still planned after these milestones:
 
-- Unified resolution-coordinate push constants, depth/normal sampling policy, upsample ownership, history-resolution
-  policy, motion-vector reprojection coordinates and queue coordinate rules. The push constant ABI, initial nearest
-  full-resolution G-buffer sampling contract, queue dispatch/full pixel mapping and compact full-resolution diagnostics
-  dimensions are complete; upsample ownership, rich history policy and motion-vector reprojection remain.
-- Zero-image aliasing, explicit scaled-output upsample ownership and delayed public-output export.
+- Real built-in half/quarter lighting variants and concrete upsample shaders for public outputs. The contract and graph
+  ownership are implemented, but `vanilla-deferred-rt` still defaults public lighting outputs to full-resolution passes
+  until quality-preserving upsample shaders are introduced.
+- Zero-image aliasing and delayed public-output export.
 - Generated barrier and descriptor plans for all active compute/full-screen graph resources; M8 narrows render-pass
   G-buffer image barriers to actual G-buffer attachments, while barrier merging and descriptor-layout ABI generation
   remain planned.
 - More detailed named/per-pass timing and VR fallback report exports beyond the current compact fixed-slot pass timing
   fields.
-- Direct-light queue/tile scheduling, scaled public-output upsample ownership and delayed public-output export.
+- Direct-light queue/tile scheduling.

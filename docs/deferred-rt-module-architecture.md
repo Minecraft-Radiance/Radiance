@@ -3774,6 +3774,18 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
 - Deferred compute/ray pass push constants now expose `fullResolution`, `dispatchResolution`, `scale`, `invScale`,
   `fullToDispatch`, `dispatchToFull`, `layerCount` and `flags`. Shader helpers use pixel-center mapping between
   dispatch and full-resolution pixels, with nearest full-resolution G-buffer sampling as the first scaled-pass policy.
+- Scaled-output, history and motion-vector contracts are explicit on Deferred compute/ray/full-screen passes:
+  `scaled_output`, `upsample_pass`, `history_resolution` and `motion_reprojection`. Active runtime plans record these
+  contracts, shader definitions compile variants from them, and push-constant flags expose them to shared GLSL helpers.
+- Scaled public-output writers must either use `shader_footprint` ownership or name an active full-resolution
+  `upsample_pass`. For `upsample_pass`, the generated graph plan transfers public-output ownership to the upsample pass
+  so compose features, barriers and default clears do not treat the scaled producer as the final public writer.
+- Scaled history images must declare whether history is stored at `dispatch` or `full` resolution. `history_resolution:
+  full` allocates the history image in the full domain even when the pass/resource declares a scaled domain; `dispatch`
+  keeps the history at the scaled domain. Scaled passes reading history must declare the matching pass contract.
+- Scaled passes reading `gbuffer.motion`, `gbuffer.motion_vector`, `out:motion_vector` or `primary_motion_vector` must
+  declare `motion_reprojection`. Shared GLSL helpers provide full-to-dispatch and dispatch-to-full motion conversion for
+  history reprojection.
 - Lighting queue schedules can now choose a queue domain independently from the pass output policy:
   `full_resolution`, `pass_resolution` or a named resolution domain. Active queue headers, record capacity and the
   queue-builder tile dispatch use that domain, and queued reflection/GI shaders map queue dispatch pixels back to
@@ -3791,8 +3803,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   shader is compiled with matching feature definitions so those image loads are not part of the active variant.
 - Dedicated G-buffer render-pass pre/post barriers are still separate from generated compute/full-screen barriers, but
   they now transition only the actual G-buffer attachment outputs instead of every public Deferred output.
-- Scaled passes are rejected if they directly write public full-resolution outputs without an explicit future upsample
-  path.
+- Scaled passes are rejected if they directly write public full-resolution outputs without an explicit scaled-output
+  contract.
 - Acceleration/provider scene-runtime requirements are derived from the active plan instead of forced for every
   Deferred configuration.
 - Deferred compute/ray `vr: view_agnostic` means layer-aware single dispatch; it does not mean mono. `per_view` now
@@ -3808,8 +3820,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   unless `diagnostics_gpu_timing` is enabled; when enabled, the snapshot carries a frame timing plus fixed compact pass
   timing slots.
 
-The next architecture work is direct-light queue/tile scheduling, history/upsample policy, barrier merging, delayed
-public-output export and deeper scene/runtime optimization.
+The next architecture work is direct-light queue/tile scheduling, concrete built-in upsample passes, barrier merging,
+delayed public-output export and deeper scene/runtime optimization.
 
 ---
 

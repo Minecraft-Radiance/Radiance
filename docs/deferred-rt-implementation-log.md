@@ -2728,3 +2728,83 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
     `vanilla-deferred-rt/world/deferred_rt/` with the shaderpack root, `src`, shader and shader include roots.
   - `Debug core` compiled modified translation units and then failed only at the known existing link step where Release
     `shaderc_combined.lib` conflicts with Debug CRT settings.
+
+### Step 52: Deferred Scaled Output, History and Motion Contracts
+
+- Status: completed.
+- Milestone: M9, added after the initial eight-part Deferred RT runtime continuation.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_graph_plan.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack_stage_contract.cpp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/deferred_resolution.glsl`
+  - `MCVR-custom/tests/deferred_rt_graph_plan_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_resolution_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `MCVR-custom/tests/shader_pack_deferred_schema_test.cpp`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - Named resolution domains and scaled queue domains made half/quarter dispatch possible, but public-output ownership,
+    temporal history resolution and motion-vector reprojection still had ambiguous contracts.
+  - The runtime needed to reject unsafe scaled graph shapes before pipeline creation, not rely on shader early returns or
+    shaderpack author guesses.
+- Implemented:
+  - Added shaderpack schema fields for Deferred compute/ray/full-screen passes:
+    `scaled_output`, `upsample_pass`, `history_resolution` and `motion_reprojection`.
+  - Added explicit policies:
+    `scaled_output: none|shader_footprint|upsample_pass`,
+    `history_resolution: none|dispatch|full`, and
+    `motion_reprojection: none|full_resolution|dispatch_to_full`.
+  - Added `history_resolution` to pack-owned history image declarations in both legacy root `textures` and public
+    `resources.images` syntax. Scaled history images must declare `dispatch` or `full`; non-history images reject the
+    field.
+  - `history_resolution: full` now allocates the history image in the full-resolution domain even if the resource's
+    normal domain is scaled. `dispatch` keeps history in the scaled domain.
+  - Runtime plans record active resolution contracts by concrete pass name and selected logical alias.
+  - Active-plan validation rejects:
+    - scaled public-output writers without `scaled_output`,
+    - `scaled_output: upsample_pass` with a missing, inactive or scaled upsample owner,
+    - scaled history readers without `history_resolution`,
+    - scaled motion-vector readers without `motion_reprojection`.
+  - `scaled_output: shader_footprint` remains valid for passes that intentionally write only their mapped
+    full-resolution footprint.
+  - Generated graph plans treat `scaled_output: upsample_pass` as a public-output ownership handoff. The scaled producer
+    no longer owns the public output writer; the named full-resolution upsample pass owns it for compose feature
+    detection, barriers and default policy.
+  - Shader compile definitions and runtime push-constant flags now expose active scaled-output, history and motion
+    contracts.
+  - Shared GLSL resolution helpers now expose scaled-output policy checks, history policy checks, motion policy checks,
+    dispatch-footprint bounds and full/dispatch motion-vector conversion helpers.
+  - Full-screen compute backend aliases now carry selected concrete backend resolution/contract entries so command
+    recording and shader compilation see the same selected contract.
+- Deliberately retained:
+  - The built-in `vanilla-deferred-rt` lighting passes still default to full-resolution public output paths. M9 adds the
+    safe contract and graph ownership needed for scaled public outputs; it does not introduce quality-tuned built-in
+    upsample shaders yet.
+  - Delayed public-output export, zero-image aliasing and descriptor-layout ABI generation remain future optimization
+    work.
+  - Motion-vector direction/scale quality validation remains tied to future offline reprojection fixtures; M9 defines the
+    coordinate contract and rejects ambiguous scaled use.
+- Tests added:
+  - Resolution flag/definition coverage for scaled-output, history and motion policies.
+  - Runtime-plan coverage for accepted `shader_footprint`, accepted/rejected `upsample_pass`, scaled history readers and
+    scaled motion readers.
+  - Schema coverage for pass/resource contract parsing and scaled history resource rejection without policy.
+  - Graph-plan coverage that `scaled_output: upsample_pass` removes public-output ownership from the scaled producer and
+    assigns compose-visible ownership to the full-resolution upsample pass.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_graph_plan_test deferred_rt_resolution_test deferred_rt_shaderpack_test shader_pack_deferred_schema_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_graph_plan_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_resolution_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all built-in Deferred compute shaders under
+    `vanilla-deferred-rt/world/deferred_rt/` with the shaderpack root, `src`, shader and shader include roots.
