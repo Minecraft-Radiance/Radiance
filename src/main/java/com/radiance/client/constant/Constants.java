@@ -11,6 +11,44 @@ import net.minecraft.client.render.VertexFormat;
 
 public class Constants {
 
+    public static class SceneTags {
+
+        public static final int VERSION = 1;
+        public static final int INT_STRIDE = 4;
+
+        public static final int VIEW_GEOMETRY = 1 << 0;
+        public static final int VIEW_ACCELERATION = 1 << 1;
+        public static final int VIEW_POST = 1 << 2;
+
+        public static final int SOURCE_UNKNOWN = 0;
+        public static final int SOURCE_VANILLA_CHUNK = 1;
+        public static final int SOURCE_VANILLA_ENTITY = 2;
+        public static final int SOURCE_VANILLA_POST = 3;
+
+        private SceneTags() {
+        }
+
+        public static void write(int[] tags, int geometryIndex, int viewMask, int sourceTag) {
+            int base = geometryIndex * INT_STRIDE;
+            tags[base] = viewMask;
+            tags[base + 1] = sourceTag;
+            tags[base + 2] = 0;
+            tags[base + 3] = 0;
+        }
+
+        public static void writeVanillaChunk(int[] tags, int geometryIndex) {
+            write(tags, geometryIndex, VIEW_GEOMETRY | VIEW_ACCELERATION, SOURCE_VANILLA_CHUNK);
+        }
+
+        public static void writeVanillaEntity(int[] tags, int geometryIndex) {
+            write(tags, geometryIndex, VIEW_GEOMETRY | VIEW_ACCELERATION, SOURCE_VANILLA_ENTITY);
+        }
+
+        public static void writeVanillaPost(int[] tags, int geometryIndex) {
+            write(tags, geometryIndex, VIEW_POST, SOURCE_VANILLA_POST);
+        }
+    }
+
     public static class RasterMetadata {
 
         public static final int VERSION = 1;

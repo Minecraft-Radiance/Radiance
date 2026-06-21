@@ -866,6 +866,7 @@ public class EntityProxy {
         ByteBuffer geometryContentNameBB = null;
         ByteBuffer geometryTextureBB = null;
         ByteBuffer rasterMetadataBB = null;
+        ByteBuffer sceneTagBB = null;
         ByteBuffer vertexFormatBB = null;
         ByteBuffer indexFormatBB = null;
         ByteBuffer vertexCountBB = null;
@@ -946,6 +947,12 @@ public class EntityProxy {
             long rasterMetadataAddr = memAddress(rasterMetadataBB);
             int rasterMetadataBaseIndex = 0;
 
+            int sceneTagSize =
+                entityRenderDataList.getTotalLayersCount() * Constants.SceneTags.INT_STRIDE * Integer.BYTES;
+            sceneTagBB = MemoryUtil.memAlloc(sceneTagSize);
+            long sceneTagAddr = memAddress(sceneTagBB);
+            int sceneTagBaseIndex = 0;
+
             int vertexFormatSize = entityRenderDataList.getTotalLayersCount() * Integer.BYTES;
             vertexFormatBB = MemoryUtil.memAlloc(vertexFormatSize);
             long vertexFormatAddr = memAddress(vertexFormatBB);
@@ -971,6 +978,7 @@ public class EntityProxy {
                     ? null
                     : new ArrayList<>(entityRenderData.size());
                 int[] rasterMetadata = new int[Constants.RasterMetadata.INT_STRIDE];
+                int[] sceneTags = new int[Constants.SceneTags.INT_STRIDE];
 
                 entityHashCodeBB.putInt(entityHashCodeBaseAddr, entityRenderData.hashCode);
                 entityHashCodeBaseAddr += Integer.BYTES;
@@ -1062,6 +1070,16 @@ public class EntityProxy {
                         rasterMetadataBaseIndex++;
                     }
 
+                    if (entityRenderData.post) {
+                        Constants.SceneTags.writeVanillaPost(sceneTags, 0);
+                    } else {
+                        Constants.SceneTags.writeVanillaEntity(sceneTags, 0);
+                    }
+                    for (int tagValue : sceneTags) {
+                        sceneTagBB.putInt(sceneTagBaseIndex * Integer.BYTES, tagValue);
+                        sceneTagBaseIndex++;
+                    }
+
                     vertexFormatBB.putInt(vertexFormatBaseAddr, vertexFormatID);
                     vertexFormatBaseAddr += Integer.BYTES;
 
@@ -1111,7 +1129,7 @@ public class EntityProxy {
                     captureEntities));
             }
 
-            queueBuildWithRasterMetadata(lineWidth,
+            queueBuildWithSceneTags(lineWidth,
                 coordinate.getValue(),
                 normalOffset,
                 entityRenderDataList.getTotalEntityCount(),
@@ -1131,6 +1149,9 @@ public class EntityProxy {
                 Constants.RasterMetadata.VERSION,
                 rasterMetadataAddr,
                 Constants.RasterMetadata.INT_STRIDE,
+                Constants.SceneTags.VERSION,
+                sceneTagAddr,
+                Constants.SceneTags.INT_STRIDE,
                 vertexFormatAddr,
                 indexFormatAddr,
                 vertexCountAddr,
@@ -1150,6 +1171,7 @@ public class EntityProxy {
             freeDirectBuffer(geometryContentNameBB);
             freeDirectBuffer(geometryTextureBB);
             freeDirectBuffer(rasterMetadataBB);
+            freeDirectBuffer(sceneTagBB);
             freeDirectBuffer(vertexFormatBB);
             freeDirectBuffer(indexFormatBB);
             freeDirectBuffer(vertexCountBB);
@@ -1243,6 +1265,34 @@ public class EntityProxy {
         int rasterMetadataVersion,
         long rasterMetadata,
         int rasterMetadataIntStride,
+        long vertexFormats,
+        long indexFormats,
+        long vertexCounts,
+        long vertices);
+
+    private static native void queueBuildWithSceneTags(float lineWidth,
+        int coordinate,
+        boolean normalOffset,
+        int size,
+        long entityHashCodes,
+        long entityPosXs,
+        long entityPosYs,
+        long entityPosZs,
+        long entityRayTracingFlags,
+        long entityPostRenderFlags,
+        long entityPrebuiltBLASs,
+        long entityPosts,
+        long entityLayerCounts,
+        long geometryTypes,
+        long geometryGroupNames,
+        long geometryContentNames,
+        long geometryTextures,
+        int rasterMetadataVersion,
+        long rasterMetadata,
+        int rasterMetadataIntStride,
+        int sceneTagVersion,
+        long sceneTags,
+        int sceneTagIntStride,
         long vertexFormats,
         long indexFormats,
         long vertexCounts,

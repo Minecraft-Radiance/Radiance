@@ -325,6 +325,7 @@ public class ChunkProxy {
             ByteBuffer geometryGroupNameBB = null;
             ByteBuffer geometryTextureBB = null;
             ByteBuffer rasterMetadataBB = null;
+            ByteBuffer sceneTagBB = null;
             ByteBuffer vertexFormatBB = null;
             ByteBuffer vertexCountBB = null;
             ByteBuffer verticesBB = null;
@@ -354,6 +355,11 @@ public class ChunkProxy {
                 long rasterMetadataAddr = memAddress(rasterMetadataBB);
                 int rasterMetadataBaseIndex = 0;
 
+                int sceneTagSize = buffers.size() * Constants.SceneTags.INT_STRIDE * Integer.BYTES;
+                sceneTagBB = MemoryUtil.memAlloc(sceneTagSize);
+                long sceneTagAddr = memAddress(sceneTagBB);
+                int sceneTagBaseIndex = 0;
+
                 int vertexFormatSize = buffers.size() * Integer.BYTES;
                 vertexFormatBB = MemoryUtil.memAlloc(vertexFormatSize);
                 long vertexFormatAddr = memAddress(vertexFormatBB);
@@ -370,6 +376,7 @@ public class ChunkProxy {
                 int verticesBaseAddr = 0;
 
                 int[] rasterMetadata = new int[Constants.RasterMetadata.INT_STRIDE];
+                int[] sceneTags = new int[Constants.SceneTags.INT_STRIDE];
                 for (Map.Entry<RenderLayer, BuiltBuffer> entry : buffers.entrySet()) {
                     RenderLayer renderLayer = entry.getKey();
                     assert renderLayer.getDrawMode() == QUADS;
@@ -424,6 +431,12 @@ public class ChunkProxy {
                         rasterMetadataBaseIndex++;
                     }
 
+                    Constants.SceneTags.writeVanillaChunk(sceneTags, 0);
+                    for (int tagValue : sceneTags) {
+                        sceneTagBB.putInt(sceneTagBaseIndex * Integer.BYTES, tagValue);
+                        sceneTagBaseIndex++;
+                    }
+
                     vertexFormatBB.putInt(vertexFormatBaseAddr, vertexFormatID);
                     vertexFormatBaseAddr += Integer.BYTES;
 
@@ -455,7 +468,7 @@ public class ChunkProxy {
                         important,
                         replayGeometries));
                 }
-                rebuildSingleWithRasterMetadata(builtChunk.getOrigin()
+                rebuildSingleWithSceneTags(builtChunk.getOrigin()
                         .getX(),
                     builtChunk.getOrigin()
                         .getY(),
@@ -469,6 +482,9 @@ public class ChunkProxy {
                     Constants.RasterMetadata.VERSION,
                     rasterMetadataAddr,
                     Constants.RasterMetadata.INT_STRIDE,
+                    Constants.SceneTags.VERSION,
+                    sceneTagAddr,
+                    Constants.SceneTags.INT_STRIDE,
                     vertexFormatAddr,
                     vertexCountAddr,
                     verticesAddr,
@@ -485,6 +501,9 @@ public class ChunkProxy {
                 }
                 if (rasterMetadataBB != null) {
                     MemoryUtil.memFree(rasterMetadataBB);
+                }
+                if (sceneTagBB != null) {
+                    MemoryUtil.memFree(sceneTagBB);
                 }
                 if (vertexFormatBB != null) {
                     MemoryUtil.memFree(vertexFormatBB);
@@ -531,6 +550,25 @@ public class ChunkProxy {
         int rasterMetadataVersion,
         long rasterMetadata,
         int rasterMetadataIntStride,
+        long vertexFormats,
+        long vertexCounts,
+        long vertices,
+        boolean important);
+
+    private static native void rebuildSingleWithSceneTags(int originX,
+        int originY,
+        int originZ,
+        long index,
+        int size,
+        long geometryTypes,
+        long geometryGroupNames,
+        long geometryTextures,
+        int rasterMetadataVersion,
+        long rasterMetadata,
+        int rasterMetadataIntStride,
+        int sceneTagVersion,
+        long sceneTags,
+        int sceneTagIntStride,
         long vertexFormats,
         long vertexCounts,
         long vertices,
