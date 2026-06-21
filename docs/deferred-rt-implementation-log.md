@@ -2808,3 +2808,75 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
   - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
   - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all built-in Deferred compute shaders under
     `vanilla-deferred-rt/world/deferred_rt/` with the shaderpack root, `src`, shader and shader include roots.
+
+### Step 53: Deferred Direct-Light Queue and Tile Scheduling
+
+- Status: completed.
+- Milestone: M10, added after M9.
+- Target files:
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_graph_plan.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_module.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_output_defaults.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_output_defaults.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_resolution.cpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.hpp`
+  - `MCVR-custom/src/core/render/modules/world/deferred_rt/deferred_rt_shaderpack.cpp`
+  - `MCVR-custom/src/core/render/modules/world/shader_pack/shader_pack.cpp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/configs.json`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/direct_light_common.glsl`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/direct_light_fallback.comp`
+  - `MCVR-custom/src/shader/world/deferred_rt/internal/vanilla-deferred-rt/world/deferred_rt/direct_light_ray_query.comp`
+  - `MCVR-custom/tests/deferred_rt_graph_plan_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_output_defaults_test.cpp`
+  - `MCVR-custom/tests/deferred_rt_shaderpack_test.cpp`
+  - `MCVR-custom/tests/shader_pack_deferred_schema_test.cpp`
+  - `Radiance-custom/docs/deferred-rt-runtime-flexibility-and-diagnostics-plan.md`
+  - `Radiance-custom/docs/deferred-rt-module-architecture.md`
+  - `Radiance-custom/docs/deferred-rt-implementation-log.md`
+- Reason for this step:
+  - Direct light was still full-screen while reflection/GI could launch only active queued tiles. Sparse scenes paid for
+    direct-light work on every pixel even when classification had already identified eligible tiles.
+  - Moving direct light onto the queue also required output-default correctness, because queued direct light no longer
+    overwrites pixels outside active direct tiles.
+- Implemented:
+  - Fixed semantic validation now accepts `direct_light` as either legacy `screen` or
+    `lighting_queue` with `queue: direct`, and rejects direct light bound to reflection/GI queues.
+  - The built-in `vanilla-deferred-rt` pack schedules direct light through the direct lighting queue for both ray-query
+    and compute backends.
+  - Active runtime plans record direct queue domains like reflection/GI. `queue.domain: pass_resolution` and named
+    domains work for direct queue entries.
+  - Generated graph plans add lighting queue reads to direct-light passes only when the direct queue is active. The queue
+    builder remains a no-op when no active queued lighting pass consumes queue records.
+  - Direct-light shaders now support queued indirect dispatch by reading direct queue records/headers, mapping queue
+    dispatch pixels to full-resolution G-buffer pixels, and using per-layer queue offsets for `per_view` and
+    `mono_replicate`.
+  - Shader compilation receives `RADIANCE_DEFERRED_LIGHTING_QUEUE_DISPATCH` and queue-kind definitions from the active
+    pass schedule. Screen direct-light variants do not declare or require lighting queue buffers.
+  - Output defaults are now schedule-aware for direct light. Screen direct light remains a full writer, while queued
+    direct light is partial and keeps the native default clear for `first_hit_diffuse_direct_light`.
+- Tests added:
+  - Runtime-plan coverage for accepted screen direct light, accepted direct-queue direct light, wrong-queue rejection and
+    direct queue domain reporting.
+  - Graph-plan coverage that direct queue keeps `build_lighting_queues` active and binds queue descriptor intent.
+  - Output-default coverage that queued direct light keeps a default clear while screen direct light suppresses it.
+  - Schema coverage for direct-light screen compatibility, direct-light wrong-queue rejection and built-in direct queue
+    backend candidates.
+- Verification:
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target deferred_rt_graph_plan_test deferred_rt_shaderpack_test shader_pack_deferred_schema_test deferred_rt_lighting_queue_test deferred_rt_output_defaults_test --config Debug` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_graph_plan_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_shaderpack_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\shader_pack_deferred_schema_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_lighting_queue_test.exe` completed successfully.
+  - `G:\cpp\radiance\MCVR-custom\build-radiance-custom\tests\Debug\deferred_rt_output_defaults_test.exe` completed successfully.
+  - `D:\VulkanSDK\1.4.335.0\Bin\glslc.exe` compiled all built-in Deferred compute shaders plus explicit direct-light
+    queue variants with `RADIANCE_DEFERRED_LIGHTING_QUEUE_DISPATCH=1`.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe --build build-radiance-custom --target core mcvr_tests --config Release -- /m:1 /p:CL_MPCount=1 /v:minimal` completed successfully.
+  - `D:\Program Files\Microsoft Visual Studio\18\Community\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\ctest.exe --test-dir build-radiance-custom -C Release --output-on-failure` completed successfully: 14/14 tests passed.
+  - `G:\cpp\radiance\Radiance-custom\gradlew.bat classes` completed successfully. Gradle reported existing
+    `sun.misc.Unsafe` and deprecation warnings.
+- Deliberately retained:
+  - Direct light still writes full-resolution public output in the built-in pack. M10 reduces launched tiles; it does not
+    introduce half-resolution direct-light quality presets or upsample shaders.
+  - Queue tile size is still the shared 16x16 lighting-queue tile size. Runtime heuristics for direct-light queue
+    thresholds and sparse-scene GPU profiling remain future optimization work.

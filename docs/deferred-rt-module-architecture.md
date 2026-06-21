@@ -3790,10 +3790,15 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   `full_resolution`, `pass_resolution` or a named resolution domain. Active queue headers, record capacity and the
   queue-builder tile dispatch use that domain, and queued reflection/GI shaders map queue dispatch pixels back to
   full-resolution G-buffer pixels before sampling.
+- Direct lighting now uses the same queue infrastructure with `queue: direct`. The built-in pack schedules
+  `direct_light` through the direct lighting queue by default, the queue builder emits direct tiles from
+  `PIXEL_CLASSIFICATION_DIRECT_LIGHT_ELIGIBLE`, and direct-light shaders support both queued indirect dispatch and
+  legacy screen dispatch.
 - The old blanket `clear_contract` compute pass is now a compatibility marker for native output defaults. The active
   runtime skips pipeline creation and dispatch for that marker, then records targeted public-output clears only for
   unwritten or partial-writer outputs. G-buffer defaults are suppressed only on frames that actually render G-buffer
-  draw packets, and `compose` remains a partial writer because invalid-depth pixels are left to the default clear.
+  draw packets, queued direct light is treated as a partial writer because non-eligible tiles are not dispatched, and
+  `compose` remains a partial writer because invalid-depth pixels are left to the default clear.
 - The runtime now builds a generated graph plan from active pass resources. It prunes unused descriptor updates,
   classification/visibility/queue/G-buffer resource initialization, fixed lighting uniform uploads, TLAS bindings,
   pass stats bindings, compute/full-screen barriers and no-op fixed-pass pipelines/dispatches. The descriptor layout ABI
@@ -3810,8 +3815,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
 - Deferred compute/ray `vr: view_agnostic` means layer-aware single dispatch; it does not mean mono. `per_view` now
   records one dispatch per active view with `baseLayer/viewIndex` push constants, and `mono_replicate` runs layer 0 then
   copies declared image outputs to the remaining active layers. `unsupported` still rejects stereo plans.
-- Lighting queue buffers include per-layer indirect dispatch entries so queued `per_view` reflection/GI passes dispatch
-  only the selected view's queue records instead of replaying the whole stereo queue.
+- Lighting queue buffers include per-layer indirect dispatch entries so queued `per_view` direct-light/reflection/GI
+  passes dispatch only the selected view's queue records instead of replaying the whole stereo queue.
 - Deferred diagnostics no longer depend on console IO. Native stores a compact fixed-field snapshot, Java pulls it as a
   `long[]` and formats the normal debug text without native string construction.
 - String-heavy graph reports are collected and exposed only when graph-report diagnostics are enabled. File tracing is a
@@ -3820,8 +3825,8 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
   unless `diagnostics_gpu_timing` is enabled; when enabled, the snapshot carries a frame timing plus fixed compact pass
   timing slots.
 
-The next architecture work is direct-light queue/tile scheduling, concrete built-in upsample passes, barrier merging,
-delayed public-output export and deeper scene/runtime optimization.
+The next architecture work is concrete built-in upsample passes, barrier merging, delayed public-output export,
+direct-light queue profiling/threshold tuning and deeper scene/runtime optimization.
 
 ---
 

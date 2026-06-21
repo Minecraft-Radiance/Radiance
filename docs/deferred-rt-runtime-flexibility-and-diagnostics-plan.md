@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults, generated graph/barrier/descriptor plans, compact diagnostics transport, explicit Deferred compute/ray VR execution modes and first active-graph compose/barrier optimizations are implemented
+Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults, generated graph/barrier/descriptor plans, compact diagnostics transport, explicit Deferred compute/ray VR execution modes, first active-graph compose/barrier optimizations and direct-light queue/tile scheduling are implemented
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -11,7 +11,7 @@ Goal: make Deferred RT shaderpacks able to control real resource cost without ex
 The current Deferred RT implementation proves the renderer shape, but several costs are still tied to a fixed backbone:
 
 - fixed slots are generally present once declared by the pack,
-- `direct_light` is currently a full-resolution screen dispatch,
+- `direct_light` can now use either legacy full-resolution screen dispatch or direct lighting-queue dispatch,
 - `reflection` and `gi` use lighting-queue indirect dispatch, and M3 lets packs bind those queues to full, pass or named
   resolution domains instead of a fixed full-resolution tile domain,
 - ray-query passes only fall back to compute when ray query is unavailable or TLAS is missing,
@@ -589,9 +589,9 @@ Implementation status:
   `vkCmdClearColorImage` clears derived from the active Deferred fixed semantics.
 - `clear_contract` remains a compatibility marker in the built-in pack, but it is recorded as an output-default marker;
   the runtime does not build a pipeline for it and does not dispatch it.
-- Active full writers can suppress their default clear. Direct light is treated as a full writer for
-  `first_hit_diffuse_direct_light`; reflection, GI and compose remain partial writers and keep defaults where their
-  shaders can early-return or only write queued/eligible pixels.
+- Active full writers can suppress their default clear. Screen direct light is treated as a full writer for
+  `first_hit_diffuse_direct_light`; queued direct light, reflection, GI and compose remain partial writers and keep
+  defaults where their shaders can early-return or only write queued/eligible pixels.
 - G-buffer outputs are treated as fully covered only when the current frame actually has a G-buffer view and opaque or
   cutout draw packets. Empty-scene frames still default-clear G-buffer outputs so stale previous-frame contents cannot
   leak downstream.
@@ -1141,19 +1141,22 @@ Completion standard:
 
 Current issue:
 
-- Built-in `direct_light` is full-screen.
+- Built-in `direct_light` now defaults to the direct lighting queue.
+- Screen scheduling remains valid for external packs, but queued scheduling is the intended sparse-work path.
 - Even when ray query is enabled, not every pixel needs a direct-light ray.
 
 Required direction:
 
-- Support a direct-light queue or tile schedule in addition to screen schedule.
-- Use classification, visibility mask and simple lighting tests to skip sky, invalid, hidden-area and back-facing pixels before ray query.
+- Support a direct-light queue or tile schedule in addition to screen schedule, completed in M10.
+- Use classification and visibility mask data to skip sky, invalid and hidden-area tiles before direct-light ray query,
+  first queued tile implementation completed in M10. Back-facing/light-facing refinement remains future shader tuning.
 - Permit compute fallback and disabled backend through selection profiles.
 - Report direct-light candidate counts and dispatch dimensions in diagnostics.
 
 Completion standard:
 
-- Direct ray-query work can be made proportional to eligible pixels/tiles rather than always full-screen.
+- Direct ray-query work can be made proportional to eligible pixels/tiles rather than always full-screen. M10 implements
+  the runtime queue path; sparse-scene GPU profiling and threshold tuning remain performance follow-up work.
 
 ### 8.9 Improve queue builder and queue granularity
 
@@ -1492,7 +1495,7 @@ Tasks:
 - skip provider packet enumeration when no scene draw stream is active,
 - cache or incrementally update G-buffer draw packet metadata where practical,
 - review G-buffer internal formats separately from public output formats,
-- add direct-light queue/tile scheduling support,
+- add direct-light queue/tile scheduling support, completed in M10,
 - build only active lighting queues,
 - generate compose variants from active graph feature flags, first fixed compose-feature version completed in M8,
 - delay public output export where downstream graph allows it,
@@ -1506,7 +1509,8 @@ Tests:
 - disabling ray-query backends removes TLAS binding and ray-query barriers, covered in M5 graph-plan tests for TLAS
   descriptor intent,
 - disabling scene render content removes provider draw-stream requirement,
-- direct-light queue profile dispatches less work than full-screen profile on sparse scenes,
+- direct-light queue profile dispatches less work than full-screen profile on sparse scenes, runtime graph/dispatch
+  path covered in M10 tests and real sparse-scene GPU profiling still planned,
 - compose variant omits disabled effect reads, covered in M8 graph-plan tests for direct/GI/specular/fog/refraction
   feature pruning,
 - VR fallback mode appears in diagnostics.
@@ -1658,6 +1662,14 @@ Implemented in the current native milestone:
 - Generated graph plans treat `scaled_output: upsample_pass` as an ownership handoff: the scaled pass no longer owns the
   public output write; the named active full-resolution upsample pass owns the public writer for barriers and compose
   feature detection.
+- Direct light can now use `schedule: { "mode": "lighting_queue", "queue": "direct" }`. The built-in pack uses that
+  schedule by default, the queue builder emits direct tiles from the classification mask, and direct-light shaders map
+  queued dispatch pixels back to full-resolution G-buffer pixels before evaluating lighting or ray-query occlusion.
+- Runtime/schema validation still accepts legacy screen direct light, but rejects `direct_light` bound to reflection/GI
+  queues. Active graph plans add lighting queue reads only when the direct queue is active, and the queue builder remains
+  a no-op when no active queued lighting pass consumes queue records.
+- Output defaults are schedule-aware for direct light: queued direct light is a partial writer and keeps the native
+  default clear for `first_hit_diffuse_direct_light`, while screen direct light remains a full writer.
 
 Still planned after these milestones:
 
@@ -1670,4 +1682,5 @@ Still planned after these milestones:
   remain planned.
 - More detailed named/per-pass timing and VR fallback report exports beyond the current compact fixed-slot pass timing
   fields.
-- Direct-light queue/tile scheduling.
+- Sparse-scene GPU profiling and quality tuning for direct-light queue thresholds. M10 implements the queue/tile runtime
+  path; it does not yet add scene-driven heuristics beyond classification-mask tile eligibility.
