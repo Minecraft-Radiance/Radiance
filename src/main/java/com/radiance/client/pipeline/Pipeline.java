@@ -44,6 +44,7 @@ public class Pipeline {
     public static int eyeCount = 1; // Updated from VRProxy at runtime
     private static final String RAY_TRACING_MODULE_NAME = "render_pipeline.module.ray_tracing.name";
     private static final String DEFERRED_RT_MODULE_NAME = "render_pipeline.module.deferred_rt.name";
+    private static final String WORLD_SURFACE_RESOLVE_MODULE_NAME = "render_pipeline.module.world_surface_resolve.name";
     private static final String RAY_TRACING_SHADER_PACK_PATH_ATTRIBUTE = "render_pipeline.module.ray_tracing.attribute.shader_pack_path";
     private static final String DEFERRED_RT_SHADER_PACK_PATH_ATTRIBUTE = "render_pipeline.module.deferred_rt.attribute.shader_pack_path";
     private static final String POST_RENDER_SHADER_PACK_PATH_ATTRIBUTE = "render_pipeline.module.post_render.attribute.shader_pack_path";
@@ -194,6 +195,7 @@ public class Pipeline {
             return areModulesAvailable(
                     DEFERRED_RT_MODULE_NAME,
                     NRD_MODULE_NAME,
+                    WORLD_SURFACE_RESOLVE_MODULE_NAME,
                     TEMPORAL_ACCUMULATION_MODULE_NAME,
                     TONE_MAPPING_MODULE_NAME,
                     POST_RENDER_MODULE_NAME);
@@ -203,6 +205,7 @@ public class Pipeline {
             return areModulesAvailable(
                     DEFERRED_RT_MODULE_NAME,
                     NRD_MODULE_NAME,
+                    WORLD_SURFACE_RESOLVE_MODULE_NAME,
                     FSR3_MODULE_NAME,
                     TONE_MAPPING_MODULE_NAME,
                     POST_RENDER_MODULE_NAME);
@@ -212,6 +215,7 @@ public class Pipeline {
             return areModulesAvailable(
                     DEFERRED_RT_MODULE_NAME,
                     NRD_MODULE_NAME,
+                    WORLD_SURFACE_RESOLVE_MODULE_NAME,
                     XESS_MODULE_NAME,
                     TONE_MAPPING_MODULE_NAME,
                     POST_RENDER_MODULE_NAME);
@@ -1408,6 +1412,13 @@ public class Pipeline {
         connect(rayTracingModule.getOutputImageConfig("first_hit_depth"),
                 dlssModule.getInputImageConfig("first_hit_depth"));
 
+        connect(rayTracingModule.getOutputImageConfig("surface_specular_radiance"),
+                dlssModule.getInputImageConfig("transparency_layer"));
+        connect(rayTracingModule.getOutputImageConfig("radiance"),
+                dlssModule.getInputImageConfig("color_before_transparency"));
+        connect(rayTracingModule.getOutputImageConfig("surface_motion_vector"),
+                dlssModule.getInputImageConfig("transparency_motion_vector"));
+
         connect(dlssModule.getOutputImageConfig("processed"),
                 toneMappingModule.getInputImageConfig("denoised_radiance"));
         connect(dlssModule.getOutputImageConfig("processed"),
@@ -1524,6 +1535,13 @@ public class Pipeline {
         connect(deferredRtModule.getOutputImageConfig("first_hit_depth"),
                 dlssModule.getInputImageConfig("first_hit_depth"));
 
+        connect(deferredRtModule.getOutputImageConfig("surface_radiance_alpha"),
+                dlssModule.getInputImageConfig("transparency_layer"));
+        connect(deferredRtModule.getOutputImageConfig("radiance"),
+                dlssModule.getInputImageConfig("color_before_transparency"));
+        connect(deferredRtModule.getOutputImageConfig("surface_motion_vector"),
+                dlssModule.getInputImageConfig("transparency_motion_vector"));
+
         connect(dlssModule.getOutputImageConfig("processed"),
                 toneMappingModule.getInputImageConfig("denoised_radiance"));
         connect(dlssModule.getOutputImageConfig("processed"),
@@ -1626,6 +1644,8 @@ public class Pipeline {
         connect(rayTracingModule.getOutputImageConfig("first_hit_refraction"),
                 denoiserModule.getInputImageConfig("first_hit_refraction"));
 
+        connectRayTracingSurfaceDefaultsToNrd(rayTracingModule, denoiserModule);
+
         connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
                 upscalerModule.getInputImageConfig("color"));
 
@@ -1639,6 +1659,7 @@ public class Pipeline {
                 upscalerModule.getInputImageConfig("motion_vector"));
         connect(rayTracingModule.getOutputImageConfig("normal_roughness"),
                 upscalerModule.getInputImageConfig("normal_roughness"));
+        connectRayTracingMaskDefaultsToUpscaler(rayTracingModule, upscalerModule);
 
         connect(upscalerModule.getOutputImageConfig("upscaled_radiance"),
                 toneMappingModule.getInputImageConfig("denoised_radiance"));
@@ -1725,6 +1746,8 @@ public class Pipeline {
         connect(rayTracingModule.getOutputImageConfig("first_hit_refraction"),
                 denoiserModule.getInputImageConfig("first_hit_refraction"));
 
+        connectRayTracingSurfaceDefaultsToNrd(rayTracingModule, denoiserModule);
+
         connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
                 upscalerModule.getInputImageConfig("color"));
 
@@ -1738,6 +1761,7 @@ public class Pipeline {
                 upscalerModule.getInputImageConfig("motion_vector"));
         connect(rayTracingModule.getOutputImageConfig("normal_roughness"),
                 upscalerModule.getInputImageConfig("normal_roughness"));
+        connectRayTracingMaskDefaultsToUpscaler(rayTracingModule, upscalerModule);
 
         connect(upscalerModule.getOutputImageConfig("upscaled_radiance"),
                 toneMappingModule.getInputImageConfig("denoised_radiance"));
@@ -1832,6 +1856,8 @@ public class Pipeline {
         connect(rayTracingModule.getOutputImageConfig("first_hit_refraction"),
                 denoiserModule.getInputImageConfig("first_hit_refraction"));
 
+        connectRayTracingSurfaceDefaultsToNrd(rayTracingModule, denoiserModule);
+
         connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
                 temporalAccumulationModule.getInputImageConfig("color"));
 
@@ -1859,6 +1885,33 @@ public class Pipeline {
         connectOutput(postRenderModule.getOutputImageConfig("post_rendered"));
     }
 
+    private static void connectRayTracingSurfaceDefaultsToNrd(Module rayTracingModule, Module denoiserModule) {
+        connect(rayTracingModule.getOutputImageConfig("surface_specular_radiance"),
+                denoiserModule.getInputImageConfig("surface_specular_radiance"));
+        connect(rayTracingModule.getOutputImageConfig("surface_specular_hit_depth"),
+                denoiserModule.getInputImageConfig("surface_specular_hit_depth"));
+        connect(rayTracingModule.getOutputImageConfig("surface_specular_albedo"),
+                denoiserModule.getInputImageConfig("surface_specular_albedo"));
+        connect(rayTracingModule.getOutputImageConfig("surface_depth"),
+                denoiserModule.getInputImageConfig("surface_depth"));
+        connect(rayTracingModule.getOutputImageConfig("surface_motion_vector"),
+                denoiserModule.getInputImageConfig("surface_motion_vector"));
+        connect(rayTracingModule.getOutputImageConfig("surface_normal_roughness"),
+                denoiserModule.getInputImageConfig("surface_normal_roughness"));
+        connect(rayTracingModule.getOutputImageConfig("surface_flags"),
+                denoiserModule.getInputImageConfig("surface_flags"));
+    }
+
+    private static void connectRayTracingMaskDefaultsToUpscaler(Module rayTracingModule, Module upscalerModule) {
+        if (Objects.equals(upscalerModule.name, FSR3_MODULE_NAME)) {
+            connect(rayTracingModule.getOutputImageConfig("reactive_mask"),
+                    upscalerModule.getInputImageConfig("reactive_mask"));
+        } else if (Objects.equals(upscalerModule.name, XESS_MODULE_NAME)) {
+            connect(rayTracingModule.getOutputImageConfig("responsive_mask"),
+                    upscalerModule.getInputImageConfig("responsive_mask"));
+        }
+    }
+
     public static void assembleDeferredRtNRD() {
         if (!isPresetAvailable(Presets.DEFERRED_RT_NRD.key)) {
             assembleBestAvailablePreset("Deferred RT NRD preset is unavailable.");
@@ -1874,6 +1927,8 @@ public class Pipeline {
 
         Module denoiserModule = addModule(NRD_MODULE_NAME);
 
+        Module surfaceResolveModule = addModule(WORLD_SURFACE_RESOLVE_MODULE_NAME);
+
         Module temporalAccumulationModule = addModule(TEMPORAL_ACCUMULATION_MODULE_NAME);
 
         Module toneMappingModule = addModule(TONE_MAPPING_MODULE_NAME);
@@ -1884,24 +1939,28 @@ public class Pipeline {
         deferredRtModule.y = 220;
         denoiserModule.x = 380;
         denoiserModule.y = 120;
-        temporalAccumulationModule.x = 660;
+        surfaceResolveModule.x = 660;
+        surfaceResolveModule.y = 220;
+        temporalAccumulationModule.x = 940;
         temporalAccumulationModule.y = 120;
-        toneMappingModule.x = 940;
+        toneMappingModule.x = 1220;
         toneMappingModule.y = 120;
-        postRenderModule.x = 940;
+        postRenderModule.x = 1220;
         postRenderModule.y = 300;
 
         INSTANCE.activePresetName = Presets.DEFERRED_RT_NRD.key;
 
         connectDeferredRtToNrd(deferredRtModule, denoiserModule);
 
-        connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
+        connectDeferredRtAndNrdToSurfaceResolve(deferredRtModule, denoiserModule, surfaceResolveModule);
+
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_radiance"),
                 temporalAccumulationModule.getInputImageConfig("color"));
 
-        connect(deferredRtModule.getOutputImageConfig("motion_vector"),
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_motion_vector"),
                 temporalAccumulationModule.getInputImageConfig("motion"));
 
-        connect(deferredRtModule.getOutputImageConfig("normal_roughness"),
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_normal_roughness"),
                 temporalAccumulationModule.getInputImageConfig("normal_roughness"));
 
         connect(temporalAccumulationModule.getOutputImageConfig("accumulated_radiance"),
@@ -1909,11 +1968,11 @@ public class Pipeline {
         connect(temporalAccumulationModule.getOutputImageConfig("accumulated_radiance"),
                 postRenderModule.getInputImageConfig("hdr_input"));
 
-        connect(deferredRtModule.getOutputImageConfig("first_hit_depth"),
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_depth"),
                 postRenderModule.getInputImageConfig("first_hit_depth"));
-        connect(deferredRtModule.getOutputImageConfig("motion_vector"),
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_motion_vector"),
                 postRenderModule.getInputImageConfig("motion_vector"));
-        connect(deferredRtModule.getOutputImageConfig("normal_roughness"),
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_normal_roughness"),
                 postRenderModule.getInputImageConfig("normal_roughness"));
 
         connect(toneMappingModule.getOutputImageConfig("mapped_output"),
@@ -1937,6 +1996,8 @@ public class Pipeline {
 
         Module denoiserModule = addModule(NRD_MODULE_NAME);
 
+        Module surfaceResolveModule = addModule(WORLD_SURFACE_RESOLVE_MODULE_NAME);
+
         Module upscalerModule = addModule(FSR3_MODULE_NAME);
 
         Module toneMappingModule = addModule(TONE_MAPPING_MODULE_NAME);
@@ -1947,21 +2008,25 @@ public class Pipeline {
         deferredRtModule.y = 220;
         denoiserModule.x = 380;
         denoiserModule.y = 120;
-        upscalerModule.x = 660;
+        surfaceResolveModule.x = 660;
+        surfaceResolveModule.y = 220;
+        upscalerModule.x = 940;
         upscalerModule.y = 220;
-        toneMappingModule.x = 940;
+        toneMappingModule.x = 1220;
         toneMappingModule.y = 120;
-        postRenderModule.x = 940;
+        postRenderModule.x = 1220;
         postRenderModule.y = 300;
 
         INSTANCE.activePresetName = Presets.DEFERRED_RT_NRD_FSR.key;
 
         connectDeferredRtToNrd(deferredRtModule, denoiserModule);
 
-        connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
+        connectDeferredRtAndNrdToSurfaceResolve(deferredRtModule, denoiserModule, surfaceResolveModule);
+
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_radiance"),
                 upscalerModule.getInputImageConfig("color"));
 
-        connectDeferredRtToUpscaler(deferredRtModule, upscalerModule);
+        connectSurfaceResolveToUpscaler(surfaceResolveModule, upscalerModule);
 
         connect(upscalerModule.getOutputImageConfig("upscaled_radiance"),
                 toneMappingModule.getInputImageConfig("denoised_radiance"));
@@ -1995,6 +2060,8 @@ public class Pipeline {
 
         Module denoiserModule = addModule(NRD_MODULE_NAME);
 
+        Module surfaceResolveModule = addModule(WORLD_SURFACE_RESOLVE_MODULE_NAME);
+
         Module upscalerModule = addModule(XESS_MODULE_NAME);
 
         Module toneMappingModule = addModule(TONE_MAPPING_MODULE_NAME);
@@ -2005,21 +2072,25 @@ public class Pipeline {
         deferredRtModule.y = 220;
         denoiserModule.x = 380;
         denoiserModule.y = 120;
-        upscalerModule.x = 660;
+        surfaceResolveModule.x = 660;
+        surfaceResolveModule.y = 220;
+        upscalerModule.x = 940;
         upscalerModule.y = 220;
-        toneMappingModule.x = 940;
+        toneMappingModule.x = 1220;
         toneMappingModule.y = 120;
-        postRenderModule.x = 940;
+        postRenderModule.x = 1220;
         postRenderModule.y = 300;
 
         INSTANCE.activePresetName = Presets.DEFERRED_RT_NRD_XESS.key;
 
         connectDeferredRtToNrd(deferredRtModule, denoiserModule);
 
-        connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
+        connectDeferredRtAndNrdToSurfaceResolve(deferredRtModule, denoiserModule, surfaceResolveModule);
+
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_radiance"),
                 upscalerModule.getInputImageConfig("color"));
 
-        connectDeferredRtToUpscaler(deferredRtModule, upscalerModule);
+        connectSurfaceResolveToUpscaler(surfaceResolveModule, upscalerModule);
 
         connect(upscalerModule.getOutputImageConfig("upscaled_radiance"),
                 toneMappingModule.getInputImageConfig("denoised_radiance"));
@@ -2080,19 +2151,75 @@ public class Pipeline {
 
         connect(deferredRtModule.getOutputImageConfig("first_hit_refraction"),
                 denoiserModule.getInputImageConfig("first_hit_refraction"));
+
+        connect(deferredRtModule.getOutputImageConfig("surface_specular_radiance"),
+                denoiserModule.getInputImageConfig("surface_specular_radiance"));
+
+        connect(deferredRtModule.getOutputImageConfig("surface_specular_hit_depth"),
+                denoiserModule.getInputImageConfig("surface_specular_hit_depth"));
+
+        connect(deferredRtModule.getOutputImageConfig("surface_specular_albedo"),
+                denoiserModule.getInputImageConfig("surface_specular_albedo"));
+
+        connect(deferredRtModule.getOutputImageConfig("surface_depth"),
+                denoiserModule.getInputImageConfig("surface_depth"));
+
+        connect(deferredRtModule.getOutputImageConfig("surface_motion_vector"),
+                denoiserModule.getInputImageConfig("surface_motion_vector"));
+
+        connect(deferredRtModule.getOutputImageConfig("surface_normal_roughness"),
+                denoiserModule.getInputImageConfig("surface_normal_roughness"));
+
+        connect(deferredRtModule.getOutputImageConfig("surface_flags"),
+                denoiserModule.getInputImageConfig("surface_flags"));
     }
 
-    private static void connectDeferredRtToUpscaler(Module deferredRtModule, Module upscalerModule) {
+    private static void connectDeferredRtAndNrdToSurfaceResolve(Module deferredRtModule,
+                                                                Module denoiserModule,
+                                                                Module surfaceResolveModule) {
+        connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
+                surfaceResolveModule.getInputImageConfig("base_radiance"));
         connect(deferredRtModule.getOutputImageConfig("linear_depth"),
+                surfaceResolveModule.getInputImageConfig("base_depth"));
+        connect(deferredRtModule.getOutputImageConfig("motion_vector"),
+                surfaceResolveModule.getInputImageConfig("base_motion_vector"));
+        connect(deferredRtModule.getOutputImageConfig("normal_roughness"),
+                surfaceResolveModule.getInputImageConfig("base_normal_roughness"));
+        connect(deferredRtModule.getOutputImageConfig("surface_radiance_alpha"),
+                surfaceResolveModule.getInputImageConfig("surface_radiance_alpha"));
+        connect(deferredRtModule.getOutputImageConfig("surface_depth"),
+                surfaceResolveModule.getInputImageConfig("surface_depth"));
+        connect(deferredRtModule.getOutputImageConfig("surface_motion_vector"),
+                surfaceResolveModule.getInputImageConfig("surface_motion_vector"));
+        connect(deferredRtModule.getOutputImageConfig("surface_normal_roughness"),
+                surfaceResolveModule.getInputImageConfig("surface_normal_roughness"));
+        connect(deferredRtModule.getOutputImageConfig("surface_flags"),
+                surfaceResolveModule.getInputImageConfig("surface_flags"));
+        connect(denoiserModule.getOutputImageConfig("denoised_surface_specular_radiance"),
+                surfaceResolveModule.getInputImageConfig("surface_specular_radiance"));
+        connect(deferredRtModule.getOutputImageConfig("surface_specular_hit_depth"),
+                surfaceResolveModule.getInputImageConfig("surface_specular_hit_depth"));
+    }
+
+    private static void connectSurfaceResolveToUpscaler(Module surfaceResolveModule, Module upscalerModule) {
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_depth"),
                 upscalerModule.getInputImageConfig("depth"));
 
-        connect(deferredRtModule.getOutputImageConfig("first_hit_depth"),
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_depth"),
                 upscalerModule.getInputImageConfig("first_hit_depth"));
 
-        connect(deferredRtModule.getOutputImageConfig("motion_vector"),
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_motion_vector"),
                 upscalerModule.getInputImageConfig("motion_vector"));
-        connect(deferredRtModule.getOutputImageConfig("normal_roughness"),
+        connect(surfaceResolveModule.getOutputImageConfig("resolved_normal_roughness"),
                 upscalerModule.getInputImageConfig("normal_roughness"));
+
+        if (Objects.equals(upscalerModule.name, FSR3_MODULE_NAME)) {
+            connect(surfaceResolveModule.getOutputImageConfig("reactive_mask"),
+                    upscalerModule.getInputImageConfig("reactive_mask"));
+        } else if (Objects.equals(upscalerModule.name, XESS_MODULE_NAME)) {
+            connect(surfaceResolveModule.getOutputImageConfig("responsive_mask"),
+                    upscalerModule.getInputImageConfig("responsive_mask"));
+        }
     }
 
     private static void assemblePresetByKeyInternal(String presetName) {

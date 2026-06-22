@@ -104,6 +104,7 @@
   "render_pipeline.module.deferred_rt.attribute.diagnostics_gpu_timing": "诊断GPU计时",
   "render_pipeline.module.deferred_rt.attribute.diagnostics_trace_file": "诊断追踪文件",
   "render_pipeline.module.deferred_rt.attribute.diagnostics_log_interval": "诊断日志间隔",
+  "render_pipeline.module.world_surface_resolve.name": "世界表面合成",
   "render_pipeline.module.temporal_accumulation.name": "简单时序累积",
   "render_pipeline.module.tone_mapping.name": "色调映射",
   "render_pipeline.module.tone_mapping.attribute.method": "方法",

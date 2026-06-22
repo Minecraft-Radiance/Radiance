@@ -10,6 +10,8 @@ inputImageConfigs:
     format: "R16_SFLOAT"
   - name: "normal_roughness"
     format: "R16G16B16A16_SFLOAT"
+  - name: "responsive_mask"
+    format: "R8_UNORM"
 outputImageConfigs:
   - name: "upscaled_radiance"
     format: "R16G16B16A16_SFLOAT"

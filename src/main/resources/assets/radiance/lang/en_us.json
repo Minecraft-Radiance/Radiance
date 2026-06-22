@@ -104,6 +104,7 @@
   "render_pipeline.module.deferred_rt.attribute.diagnostics_gpu_timing": "Diagnostics GPU Timing",
   "render_pipeline.module.deferred_rt.attribute.diagnostics_trace_file": "Diagnostics Trace File",
   "render_pipeline.module.deferred_rt.attribute.diagnostics_log_interval": "Diagnostics Log Interval",
+  "render_pipeline.module.world_surface_resolve.name": "World Surface Resolve",
   "render_pipeline.module.temporal_accumulation.name": "Temporal Accumulation",
   "render_pipeline.module.tone_mapping.name": "Tone Mapping",
   "render_pipeline.module.tone_mapping.attribute.method": "Method",

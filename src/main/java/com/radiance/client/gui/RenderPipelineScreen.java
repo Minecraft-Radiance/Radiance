@@ -39,8 +39,10 @@ public class RenderPipelineScreen extends Screen {
     private static final Identifier GEAR_TEX = Identifier.of(Radiance.MOD_ID,
         "textures/gui/render_pipeline/gear.png");
 
+    private static final int UNKNOWN_FORMAT_COLOR = 0xFF9CA3AF;
     private static final Map<String, Integer> FORMAT_COLORS = Map.of("R8G8B8A8_SRGB", 0xFF4EA5FF,
-        "R8G8B8A8_UNORM", 0xFF62E36A, "R16G16_SFLOAT", 0xFFFF6BD6, "R16_SFLOAT", 0xFF6BE6FF,
+        "R8G8B8A8_UNORM", 0xFF62E36A, "R8_UNORM", 0xFF8FD14F, "R8_UINT", 0xFFA78BFA,
+        "R16G16_SFLOAT", 0xFFFF6BD6, "R16_SFLOAT", 0xFF6BE6FF,
         "R16G16B16A16_SFLOAT", 0xFFFFB84E);
 
     private static final int HEADER_HEIGHT = 32;
@@ -107,10 +109,7 @@ public class RenderPipelineScreen extends Screen {
 
     private int getFormatColor(String format) {
         Integer c = FORMAT_COLORS.get(format);
-        if (c == null) {
-            throw new RuntimeException("No color for image format: " + format);
-        }
-        return c;
+        return c != null ? c : UNKNOWN_FORMAT_COLOR;
     }
 
     @Override

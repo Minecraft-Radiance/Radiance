@@ -13,6 +13,7 @@ public class VulkanConstants {
 
     public enum VkFormat {
         VK_FORMAT_R8_UNORM(9, "R8_UNORM"),
+        VK_FORMAT_R8_UINT(13, "R8_UINT"),
         VK_FORMAT_R8_SRGB(15, "R8_SRGB"),
         VK_FORMAT_R8G8_UNORM(16, "R8G8_UNORM"),
         VK_FORMAT_R8G8_SRGB(22, "R8G8_SRGB"),
