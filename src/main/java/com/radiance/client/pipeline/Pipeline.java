@@ -1499,13 +1499,6 @@ public class Pipeline {
         connect(rayTracingModule.getOutputImageConfig("first_hit_depth"),
                 dlssModule.getInputImageConfig("first_hit_depth"));
 
-        connect(rayTracingModule.getOutputImageConfig("surface_specular_radiance"),
-                dlssModule.getInputImageConfig("transparency_layer"));
-        connect(rayTracingModule.getOutputImageConfig("radiance"),
-                dlssModule.getInputImageConfig("color_before_transparency"));
-        connect(rayTracingModule.getOutputImageConfig("surface_motion_vector"),
-                dlssModule.getInputImageConfig("transparency_motion_vector"));
-
         connect(dlssModule.getOutputImageConfig("processed"),
                 toneMappingModule.getInputImageConfig("denoised_radiance"));
         connect(dlssModule.getOutputImageConfig("processed"),
@@ -1745,7 +1738,6 @@ public class Pipeline {
                 upscalerModule.getInputImageConfig("motion_vector"));
         connect(rayTracingModule.getOutputImageConfig("normal_roughness"),
                 upscalerModule.getInputImageConfig("normal_roughness"));
-        connectRayTracingMaskDefaultsToUpscaler(rayTracingModule, upscalerModule);
 
         connect(upscalerModule.getOutputImageConfig("upscaled_radiance"),
                 toneMappingModule.getInputImageConfig("denoised_radiance"));
@@ -1847,7 +1839,6 @@ public class Pipeline {
                 upscalerModule.getInputImageConfig("motion_vector"));
         connect(rayTracingModule.getOutputImageConfig("normal_roughness"),
                 upscalerModule.getInputImageConfig("normal_roughness"));
-        connectRayTracingMaskDefaultsToUpscaler(rayTracingModule, upscalerModule);
 
         connect(upscalerModule.getOutputImageConfig("upscaled_radiance"),
                 toneMappingModule.getInputImageConfig("denoised_radiance"));
@@ -1968,16 +1959,6 @@ public class Pipeline {
                 postRenderModule.getInputImageConfig("ldr_input"));
 
         connectOutput(postRenderModule.getOutputImageConfig("post_rendered"));
-    }
-
-    private static void connectRayTracingMaskDefaultsToUpscaler(Module rayTracingModule, Module upscalerModule) {
-        if (Objects.equals(upscalerModule.name, FSR3_MODULE_NAME)) {
-            connect(rayTracingModule.getOutputImageConfig("reactive_mask"),
-                    upscalerModule.getInputImageConfig("reactive_mask"));
-        } else if (Objects.equals(upscalerModule.name, XESS_MODULE_NAME)) {
-            connect(rayTracingModule.getOutputImageConfig("responsive_mask"),
-                    upscalerModule.getInputImageConfig("responsive_mask"));
-        }
     }
 
     public static void assembleDeferredRtNRD() {
