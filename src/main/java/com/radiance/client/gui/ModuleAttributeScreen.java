@@ -72,6 +72,7 @@ public class ModuleAttributeScreen extends Screen {
     @Override
     public void close() {
         Pipeline.getModuleAttributes(module);
+        Pipeline.rebuildModulePorts(module);
         Pipeline.savePipeline();
         MinecraftClient.getInstance().setScreen(parent);
     }

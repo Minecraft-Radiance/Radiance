@@ -67,6 +67,7 @@ public class Pipeline {
     private static final String XESS_MODULE_NAME = "render_pipeline.module.xess_sr.name";
     private static final String TONE_MAPPING_MODULE_NAME = "render_pipeline.module.tone_mapping.name";
     private static final String POST_RENDER_MODULE_NAME = "render_pipeline.module.post_render.name";
+    private static final String NRD_SIGNAL_GROUPS_ATTRIBUTE = "render_pipeline.module.nrd.attribute.signal_groups";
     private static Path PIPELINE_CONFIG_PATH = null;
     private final List<Module> modules = new ArrayList<>();
     private final Map<ImageConfig, List<ImageConfig>> moduleConnections = new HashMap<>();
@@ -285,9 +286,70 @@ public class Pipeline {
     }
 
     public static Module addModule(Module module) {
+        if (module != null) {
+            module.initializeStaticPorts();
+        }
         INSTANCE.modules.add(module);
 
         return module;
+    }
+
+    public static void rebuildModulePorts(Module module) {
+        if (module == null || !module.usesSignalGroups()) {
+            return;
+        }
+
+        Map<ImageConfig, String> oldPortNames = new HashMap<>();
+        for (ImageConfig imageConfig : module.inputImageConfigs) {
+            oldPortNames.put(imageConfig, imageConfig.name);
+        }
+        for (ImageConfig imageConfig : module.outputImageConfigs) {
+            oldPortNames.put(imageConfig, imageConfig.name);
+        }
+
+        List<PortConnectionSnapshot> storedConnections = new ArrayList<>();
+        for (Map.Entry<ImageConfig, List<ImageConfig>> entry : INSTANCE.moduleConnections.entrySet()) {
+            ImageConfig src = entry.getKey();
+            for (ImageConfig dst : entry.getValue()) {
+                if (src.owner != module && dst.owner != module) {
+                    continue;
+                }
+                storedConnections.add(new PortConnectionSnapshot(
+                        src.owner == module ? oldPortNames.getOrDefault(src, src.name) : null,
+                        dst.owner == module ? oldPortNames.getOrDefault(dst, dst.name) : null,
+                        src.owner == module ? null : src,
+                        dst.owner == module ? null : dst));
+            }
+        }
+
+        INSTANCE.moduleConnections.entrySet().removeIf(entry -> {
+            if (entry.getKey().owner == module) {
+                return true;
+            }
+            entry.getValue().removeIf(dst -> dst.owner == module);
+            return entry.getValue().isEmpty();
+        });
+
+        module.rebuildExpandedPorts();
+        module.rebuildExpandedAttributes();
+
+        for (PortConnectionSnapshot storedConnection : storedConnections) {
+            ImageConfig src = storedConnection.srcExternal != null
+                    ? storedConnection.srcExternal
+                    : module.findOutputImageConfig(storedConnection.srcImageName);
+            ImageConfig dst = storedConnection.dstExternal != null
+                    ? storedConnection.dstExternal
+                    : module.findInputImageConfig(storedConnection.dstImageName);
+            if (src != null && dst != null && Objects.equals(src.format, dst.format)) {
+                connect(src, dst);
+            }
+        }
+    }
+
+    private record PortConnectionSnapshot(String srcImageName,
+                                          String dstImageName,
+                                          ImageConfig srcExternal,
+                                          ImageConfig dstExternal) {
     }
 
     public static void connect(ImageConfig src, ImageConfig dst) {
@@ -306,6 +368,23 @@ public class Pipeline {
             throw new RuntimeException("Invalid output format.");
         }
         src.finalOutput = true;
+    }
+
+    private static void setModuleAttribute(Module module, String attributeName, String value) {
+        if (module == null || module.attributeConfigs == null) {
+            return;
+        }
+        for (AttributeConfig attributeConfig : module.attributeConfigs) {
+            if (attributeConfig != null && Objects.equals(attributeConfig.name, attributeName)) {
+                attributeConfig.value = value;
+                rebuildModulePorts(module);
+                return;
+            }
+        }
+    }
+
+    private static void setNrdSignalGroups(Module denoiserModule, String groups) {
+        setModuleAttribute(denoiserModule, NRD_SIGNAL_GROUPS_ATTRIBUTE, groups);
     }
 
     public static List<ShaderPackChoice> getAvailableShaderPacks() {
@@ -1259,6 +1338,8 @@ public class Pipeline {
             ByteBuffer namesPtrBuffer = allocAndTrack(allocatedBuffers, moduleCount * 8);
             ByteBuffer inputsPtrBuffer = allocAndTrack(allocatedBuffers, moduleCount * 8);
             ByteBuffer outputsPtrBuffer = allocAndTrack(allocatedBuffers, moduleCount * 8);
+            ByteBuffer inputCountsBuffer = allocAndTrack(allocatedBuffers, moduleCount * 4);
+            ByteBuffer outputCountsBuffer = allocAndTrack(allocatedBuffers, moduleCount * 4);
             ByteBuffer attributeCountsBuffer = allocAndTrack(allocatedBuffers, moduleCount * 4);
             ByteBuffer attributesPtrBuffer = allocAndTrack(allocatedBuffers, moduleCount * 8);
 
@@ -1273,6 +1354,7 @@ public class Pipeline {
                 namesPtrBuffer.putLong(MemoryUtil.memAddress(nameBuffer));
 
                 List<ImageConfig> inputs = module.inputImageConfigs;
+                inputCountsBuffer.putInt(inputs.size());
                 ByteBuffer inputIndices = allocAndTrack(allocatedBuffers, inputs.size() * 4);
                 for (ImageConfig inConfig : inputs) {
                     inputIndices.putInt(imgMap.get(inConfig));
@@ -1281,6 +1363,7 @@ public class Pipeline {
                 inputsPtrBuffer.putLong(MemoryUtil.memAddress(inputIndices));
 
                 List<ImageConfig> outputs = module.outputImageConfigs;
+                outputCountsBuffer.putInt(outputs.size());
                 ByteBuffer outputIndices = allocAndTrack(allocatedBuffers, outputs.size() * 4);
                 for (ImageConfig outConfig : outputs) {
                     outputIndices.putInt(imgMap.getOrDefault(outConfig, -1));
@@ -1318,10 +1401,12 @@ public class Pipeline {
             namesPtrBuffer.flip();
             inputsPtrBuffer.flip();
             outputsPtrBuffer.flip();
+            inputCountsBuffer.flip();
+            outputCountsBuffer.flip();
             attributeCountsBuffer.flip();
             attributesPtrBuffer.flip();
 
-            ByteBuffer params = allocAndTrack(allocatedBuffers, 56);
+            ByteBuffer params = allocAndTrack(allocatedBuffers, 72);
 
             params.putInt(moduleCount);
             params.putInt(eyeCount); // 1=mono, 2=stereo (VR)
@@ -1330,6 +1415,8 @@ public class Pipeline {
             params.putLong(MemoryUtil.memAddress(formatBuffer));
             params.putLong(MemoryUtil.memAddress(inputsPtrBuffer));
             params.putLong(MemoryUtil.memAddress(outputsPtrBuffer));
+            params.putLong(MemoryUtil.memAddress(inputCountsBuffer));
+            params.putLong(MemoryUtil.memAddress(outputCountsBuffer));
             params.putLong(MemoryUtil.memAddress(attributeCountsBuffer));
             params.putLong(MemoryUtil.memAddress(attributesPtrBuffer));
 
@@ -1582,6 +1669,7 @@ public class Pipeline {
         Module rayTracingModule = addModule(RAY_TRACING_MODULE_NAME);
 
         Module denoiserModule = addModule(NRD_MODULE_NAME);
+        setNrdSignalGroups(denoiserModule, "0");
 
         Module upscalerModule = addModule(FSR3_MODULE_NAME);
 
@@ -1644,8 +1732,6 @@ public class Pipeline {
         connect(rayTracingModule.getOutputImageConfig("first_hit_refraction"),
                 denoiserModule.getInputImageConfig("first_hit_refraction"));
 
-        connectRayTracingSurfaceDefaultsToNrd(rayTracingModule, denoiserModule);
-
         connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
                 upscalerModule.getInputImageConfig("color"));
 
@@ -1684,6 +1770,7 @@ public class Pipeline {
         Module rayTracingModule = addModule(RAY_TRACING_MODULE_NAME);
 
         Module denoiserModule = addModule(NRD_MODULE_NAME);
+        setNrdSignalGroups(denoiserModule, "0");
 
         Module upscalerModule = addModule(XESS_MODULE_NAME);
 
@@ -1746,7 +1833,6 @@ public class Pipeline {
         connect(rayTracingModule.getOutputImageConfig("first_hit_refraction"),
                 denoiserModule.getInputImageConfig("first_hit_refraction"));
 
-        connectRayTracingSurfaceDefaultsToNrd(rayTracingModule, denoiserModule);
 
         connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
                 upscalerModule.getInputImageConfig("color"));
@@ -1794,6 +1880,7 @@ public class Pipeline {
         Module rayTracingModule = addModule(RAY_TRACING_MODULE_NAME);
 
         Module denoiserModule = addModule(NRD_MODULE_NAME);
+        setNrdSignalGroups(denoiserModule, "0");
 
         Module temporalAccumulationModule = addModule(TEMPORAL_ACCUMULATION_MODULE_NAME);
 
@@ -1856,8 +1943,6 @@ public class Pipeline {
         connect(rayTracingModule.getOutputImageConfig("first_hit_refraction"),
                 denoiserModule.getInputImageConfig("first_hit_refraction"));
 
-        connectRayTracingSurfaceDefaultsToNrd(rayTracingModule, denoiserModule);
-
         connect(denoiserModule.getOutputImageConfig("denoised_radiance"),
                 temporalAccumulationModule.getInputImageConfig("color"));
 
@@ -1885,23 +1970,6 @@ public class Pipeline {
         connectOutput(postRenderModule.getOutputImageConfig("post_rendered"));
     }
 
-    private static void connectRayTracingSurfaceDefaultsToNrd(Module rayTracingModule, Module denoiserModule) {
-        connect(rayTracingModule.getOutputImageConfig("surface_specular_radiance"),
-                denoiserModule.getInputImageConfig("surface_specular_radiance"));
-        connect(rayTracingModule.getOutputImageConfig("surface_specular_hit_depth"),
-                denoiserModule.getInputImageConfig("surface_specular_hit_depth"));
-        connect(rayTracingModule.getOutputImageConfig("surface_specular_albedo"),
-                denoiserModule.getInputImageConfig("surface_specular_albedo"));
-        connect(rayTracingModule.getOutputImageConfig("surface_depth"),
-                denoiserModule.getInputImageConfig("surface_depth"));
-        connect(rayTracingModule.getOutputImageConfig("surface_motion_vector"),
-                denoiserModule.getInputImageConfig("surface_motion_vector"));
-        connect(rayTracingModule.getOutputImageConfig("surface_normal_roughness"),
-                denoiserModule.getInputImageConfig("surface_normal_roughness"));
-        connect(rayTracingModule.getOutputImageConfig("surface_flags"),
-                denoiserModule.getInputImageConfig("surface_flags"));
-    }
-
     private static void connectRayTracingMaskDefaultsToUpscaler(Module rayTracingModule, Module upscalerModule) {
         if (Objects.equals(upscalerModule.name, FSR3_MODULE_NAME)) {
             connect(rayTracingModule.getOutputImageConfig("reactive_mask"),
@@ -1926,6 +1994,7 @@ public class Pipeline {
         Module deferredRtModule = addModule(DEFERRED_RT_MODULE_NAME);
 
         Module denoiserModule = addModule(NRD_MODULE_NAME);
+        setNrdSignalGroups(denoiserModule, "0,1");
 
         Module surfaceResolveModule = addModule(WORLD_SURFACE_RESOLVE_MODULE_NAME);
 
@@ -1995,6 +2064,7 @@ public class Pipeline {
         Module deferredRtModule = addModule(DEFERRED_RT_MODULE_NAME);
 
         Module denoiserModule = addModule(NRD_MODULE_NAME);
+        setNrdSignalGroups(denoiserModule, "0,1");
 
         Module surfaceResolveModule = addModule(WORLD_SURFACE_RESOLVE_MODULE_NAME);
 
@@ -2059,6 +2129,7 @@ public class Pipeline {
         Module deferredRtModule = addModule(DEFERRED_RT_MODULE_NAME);
 
         Module denoiserModule = addModule(NRD_MODULE_NAME);
+        setNrdSignalGroups(denoiserModule, "0,1");
 
         Module surfaceResolveModule = addModule(WORLD_SURFACE_RESOLVE_MODULE_NAME);
 
@@ -2621,6 +2692,9 @@ public class Pipeline {
         module.dynamicAttributeStoragePath = shaderPackAttributeStoragePath == null
                 ? null
                 : shaderPackAttributeStoragePath.toAbsolutePath().normalize().toString();
+        if (module.usesSignalGroups()) {
+            module.rebuildExpandedAttributes(currentValues);
+        }
     }
 
     private static Set<String> collectStaticAttributeNames(Module module) {
@@ -2815,6 +2889,9 @@ public class Pipeline {
         applyStoredAttributeValues(module, module.attributeConfigs, storedAttributes);
         getModuleAttributes(module);
         applyStoredAttributeValues(module, module.attributeConfigs, storedAttributes);
+        if (module.usesSignalGroups()) {
+            rebuildModulePorts(module);
+        }
     }
 
     private static void applyStoredAttributeValues(Module module,
@@ -2829,6 +2906,9 @@ public class Pipeline {
 
         for (StoredAttribute storedAttribute : storedAttributes) {
             if (storedAttribute == null || storedAttribute.name == null) {
+                continue;
+            }
+            if (isStructuralAttribute(module, storedAttribute.name)) {
                 continue;
             }
             if (staticAttributeNames != null && !staticAttributeNames.contains(storedAttribute.name)) {
@@ -2849,6 +2929,12 @@ public class Pipeline {
                 break;
             }
         }
+    }
+
+    private static boolean isStructuralAttribute(Module module, String attributeName) {
+        return module != null
+                && module.usesSignalGroups()
+                && Objects.equals(attributeName, module.signalGroupAttribute);
     }
 
     public static void savePipeline() {
@@ -3028,6 +3114,9 @@ public class Pipeline {
 
         for (AttributeConfig attributeConfig : module.attributeConfigs) {
             if (attributeConfig == null || attributeConfig.name == null) {
+                continue;
+            }
+            if (isStructuralAttribute(module, attributeConfig.name)) {
                 continue;
             }
             if (staticAttributeNames != null && !staticAttributeNames.contains(attributeConfig.name)) {

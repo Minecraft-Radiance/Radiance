@@ -98,13 +98,8 @@ public class ModuleEntry {
 
         try (InputStream inputStream = openModuleStream()) {
             Module module = yaml.load(inputStream);
-            for (ImageConfig imageConfig : module.inputImageConfigs) {
-                imageConfig.owner = module;
-            }
-            for (ImageConfig imageConfig : module.outputImageConfigs) {
-                imageConfig.owner = module;
-            }
             module.staticAttributeConfigs = Module.copyAttributeConfigs(module.attributeConfigs);
+            module.initializeStaticPorts();
             return module;
         } catch (Exception e) {
             throw new RuntimeException("Failed to load module from: " + this.resourcePath, e);
