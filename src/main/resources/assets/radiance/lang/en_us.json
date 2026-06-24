@@ -147,6 +147,7 @@
   "render_pipeline.module.fsr_upscaler.attribute.quality_mode.balanced": "Balanced",
   "render_pipeline.module.fsr_upscaler.attribute.quality_mode.performance": "Performance",
   "render_pipeline.module.fsr_upscaler.attribute.quality_mode.ultra": "Ultra Performance",
+  "render_pipeline.module.fsr_upscaler.attribute.signal_groups": "Signal Groups",
   "render_pipeline.module.fsr_upscaler.attribute.sharpness": "Sharpness",
   "render_pipeline.module.xess_sr.name": "XeSS Upscaler",
   "render_pipeline.module.xess_sr.attribute.enable": "Enable XeSS Upscaler",

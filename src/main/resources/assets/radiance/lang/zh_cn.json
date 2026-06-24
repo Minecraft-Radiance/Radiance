@@ -147,6 +147,7 @@
   "render_pipeline.module.fsr_upscaler.attribute.quality_mode.balanced": "平衡",
   "render_pipeline.module.fsr_upscaler.attribute.quality_mode.performance": "性能",
   "render_pipeline.module.fsr_upscaler.attribute.quality_mode.ultra": "极致性能",
+  "render_pipeline.module.fsr_upscaler.attribute.signal_groups": "信号组",
   "render_pipeline.module.fsr_upscaler.attribute.sharpness": "锐化程度",
   "render_pipeline.module.xess_sr.name": "XeSS 超分",
   "render_pipeline.module.xess_sr.attribute.enable": "启用 XeSS 超分",

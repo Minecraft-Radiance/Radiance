@@ -10,8 +10,6 @@ inputImageConfigs:
     format: "R16_SFLOAT"
   - name: "normal_roughness"
     format: "R16G16B16A16_SFLOAT"
-  - name: "reactive_mask"
-    format: "R8_UNORM"
 outputImageConfigs:
   - name: "upscaled_radiance"
     format: "R16G16B16A16_SFLOAT"
@@ -21,7 +19,16 @@ outputImageConfigs:
     format: "R16G16_SFLOAT"
   - name: "upscaled_normal_roughness"
     format: "R16G16B16A16_SFLOAT"
+signalGroupAttribute: "render_pipeline.module.fsr_upscaler.attribute.signal_groups"
+signalGroups:
+  "1":
+    inputImageConfigs:
+      - name: "reactive_mask"
+        format: "R8_UNORM"
 attributeConfigs:
+  - name: "render_pipeline.module.fsr_upscaler.attribute.signal_groups"
+    type: "string"
+    value: "0"
   - name: "render_pipeline.module.fsr_upscaler.attribute.enable"
     type: "bool"
     value: "render_pipeline.true"

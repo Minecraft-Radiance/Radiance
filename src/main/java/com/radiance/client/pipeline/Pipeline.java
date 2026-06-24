@@ -68,6 +68,7 @@ public class Pipeline {
     private static final String TONE_MAPPING_MODULE_NAME = "render_pipeline.module.tone_mapping.name";
     private static final String POST_RENDER_MODULE_NAME = "render_pipeline.module.post_render.name";
     private static final String NRD_SIGNAL_GROUPS_ATTRIBUTE = "render_pipeline.module.nrd.attribute.signal_groups";
+    private static final String FSR_SIGNAL_GROUPS_ATTRIBUTE = "render_pipeline.module.fsr_upscaler.attribute.signal_groups";
     private static Path PIPELINE_CONFIG_PATH = null;
     private final List<Module> modules = new ArrayList<>();
     private final Map<ImageConfig, List<ImageConfig>> moduleConnections = new HashMap<>();
@@ -385,6 +386,10 @@ public class Pipeline {
 
     private static void setNrdSignalGroups(Module denoiserModule, String groups) {
         setModuleAttribute(denoiserModule, NRD_SIGNAL_GROUPS_ATTRIBUTE, groups);
+    }
+
+    private static void setFsrSignalGroups(Module upscalerModule, String groups) {
+        setModuleAttribute(upscalerModule, FSR_SIGNAL_GROUPS_ATTRIBUTE, groups);
     }
 
     public static List<ShaderPackChoice> getAvailableShaderPacks() {
@@ -2050,6 +2055,7 @@ public class Pipeline {
         Module surfaceResolveModule = addModule(WORLD_SURFACE_RESOLVE_MODULE_NAME);
 
         Module upscalerModule = addModule(FSR3_MODULE_NAME);
+        setFsrSignalGroups(upscalerModule, "0,1");
 
         Module toneMappingModule = addModule(TONE_MAPPING_MODULE_NAME);
 
