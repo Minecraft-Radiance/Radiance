@@ -1,0 +1,182 @@
+plugins {
+    id 'fabric-loom' version "${loom_version}"
+    id 'maven-publish'
+}
+
+apply plugin: 'com.replaymod.preprocess'
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+compileJava {
+    options.compilerArgs += ['-h', "${rootProject.projectDir}/src/main/native/include"]
+    outputs.upToDateWhen { false }
+}
+
+loom {
+    accessWidenerPath = project.rootProject.file("src/main/resources/radiance.accesswidener")
+}
+
+tasks.named("runClient", JavaExec) {
+   args "--width", "1920", "--height", "1080"
+}
+
+repositories {
+    maven { name = "Fabric"; url = "https://maven.fabricmc.net/" }
+    maven { name = "Mojang"; url = "https://libraries.minecraft.net/" }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings "net.fabricmc:yarn:${yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+    implementation "org.yaml:snakeyaml:2.5"
+    include "org.yaml:snakeyaml:2.5"
+}
+
+sourceSets {
+    replayCommon {
+        java.setSrcDirs(["src/replayCommon/java"])
+        resources.setSrcDirs(["src/replayCommon/resources"])
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
+        runtimeClasspath += output + compileClasspath
+    }
+    replay {
+        java.setSrcDirs(["src/replay/java"])
+        resources.setSrcDirs(["src/replay/resources"])
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath + sourceSets.replayCommon.output
+        runtimeClasspath += output + compileClasspath
+    }
+    replayCli {
+        java.setSrcDirs(["src/replayCli/java"])
+        resources.setSrcDirs(["src/replayCli/resources"])
+        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath + sourceSets.replayCommon.output
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    replayCommonImplementation.extendsFrom implementation
+    replayCommonCompileOnly.extendsFrom compileOnly
+    replayCommonRuntimeOnly.extendsFrom runtimeOnly
+    replayImplementation.extendsFrom implementation
+    replayCompileOnly.extendsFrom compileOnly
+    replayRuntimeOnly.extendsFrom runtimeOnly
+    replayCliImplementation.extendsFrom implementation
+    replayCliCompileOnly.extendsFrom compileOnly
+    replayCliRuntimeOnly.extendsFrom runtimeOnly
+}
+
+dependencies {
+    replayImplementation sourceSets.replayCommon.output
+    replayCliImplementation sourceSets.replayCommon.output
+    replayImplementation "org.xerial:sqlite-jdbc:3.46.1.3"
+    replayCliImplementation "org.xerial:sqlite-jdbc:3.46.1.3"
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", minecraft_version
+    inputs.property "loader_version", loader_version
+    filteringCharset "UTF-8"
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": minecraft_version,
+                "loader_version": loader_version
+    }
+}
+
+def targetJavaVersion = Integer.parseInt(java_target)
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+        it.options.release.set(targetJavaVersion)
+    }
+}
+
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    if (JavaVersion.current() < javaVersion) {
+        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") { rename { "${it}_${project.archivesBaseName}" } }
+}
+
+tasks.named("remapJar") {
+    archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${minecraft_version}.jar")
+}
+
+tasks.named("remapSourcesJar") {
+    archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${minecraft_version}-sources.jar")
+}
+
+tasks.named("processReplayResources") {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", minecraft_version
+    inputs.property "loader_version", loader_version
+    filteringCharset "UTF-8"
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": minecraft_version,
+                "loader_version": loader_version
+    }
+}
+
+tasks.register("replayDevJar", Jar) {
+    group = "build"
+    description = "Builds the unmapped optional Radiance replay capture development mod jar."
+    dependsOn tasks.named("replayCommonClasses"), tasks.named("replayClasses")
+    archiveFileName.set("${project.archives_base_name}-ReplayCapture-${project.version}-fabric-${minecraft_version}-dev-unmapped.jar")
+    from(sourceSets.replayCommon.output)
+    from(sourceSets.replay.output)
+    from { configurations.replayRuntimeClasspath.findAll { it.name.endsWith(".jar") }.collect { zipTree(it) } }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude "META-INF/*.SF", "META-INF/*.sf", "META-INF/*.DSA", "META-INF/*.dsa", "META-INF/*.RSA", "META-INF/*.rsa"
+    from("LICENSE") { rename { "${it}_${project.archivesBaseName}-ReplayCapture" } }
+}
+
+tasks.register("remapReplayDevJar", net.fabricmc.loom.task.RemapJarTask) {
+    group = "build"
+    dependsOn tasks.named("replayDevJar")
+    inputFile.set(tasks.named("replayDevJar", Jar).flatMap { it.archiveFile })
+    archiveFileName.set("${project.archives_base_name}-ReplayCapture-${project.version}-fabric-${minecraft_version}-dev.jar")
+    sourceNamespace.set("named")
+    targetNamespace.set("intermediary")
+    classpath.from(sourceSets.replay.runtimeClasspath, sourceSets.replayCommon.runtimeClasspath)
+}
+
+tasks.register("replayCliDevJar", Jar) {
+    group = "build"
+    dependsOn tasks.named("classes"), tasks.named("replayCommonClasses"), tasks.named("replayCliClasses")
+    zip64 = true
+    archiveFileName.set("${project.archives_base_name}-ReplayCli-${project.version}-fabric-${minecraft_version}-dev.jar")
+    from(sourceSets.main.output)
+    from(sourceSets.replayCommon.output)
+    from(sourceSets.replayCli.output)
+    from { configurations.runtimeClasspath.findAll { it.name.endsWith(".jar") }.collect { zipTree(it) } }
+    from { configurations.replayCliRuntimeClasspath.findAll { it.name.endsWith(".jar") }.collect { zipTree(it) } }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    exclude "META-INF/*.SF", "META-INF/*.sf", "META-INF/*.DSA", "META-INF/*.dsa", "META-INF/*.RSA", "META-INF/*.rsa", "META-INF/FABRIC*"
+    manifest { attributes "Main-Class": "com.radiance.replay.cli.ReplayCliMain" }
+    from("LICENSE") { rename { "${it}_${project.archivesBaseName}-ReplayCli" } }
+}
+
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+    repositories {}
+}

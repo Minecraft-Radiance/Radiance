@@ -4,7 +4,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Collectors;
+//#if MC>=260200
+//$$ import com.mojang.blaze3d.platform.NativeImage;
+//#else
 import net.minecraft.client.texture.NativeImage;
+//#endif
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL33;

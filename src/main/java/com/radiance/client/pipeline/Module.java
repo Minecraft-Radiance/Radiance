@@ -7,7 +7,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+//#if MC>=260200
+//$$ import net.minecraft.network.chat.Component;
+//#else
 import net.minecraft.text.Text;
+//#endif
 
 public class Module {
 
@@ -243,13 +247,19 @@ public class Module {
         }
     }
 
+    //#if MC>=260200
+    //$$ public Component translateText(String key) {
+    //$$     if (key == null || key.isEmpty()) return Component.empty();
+    //$$     String translated = dynamicTranslations.get(key);
+    //$$     return translated != null ? Component.literal(translated) : Component.translatable(key);
+    //$$ }
+    //#else
     public Text translateText(String key) {
-        if (key == null || key.isEmpty()) {
-            return Text.empty();
-        }
+        if (key == null || key.isEmpty()) return Text.empty();
         String translated = dynamicTranslations.get(key);
         return translated != null ? Text.literal(translated) : Text.translatable(key);
     }
+    //#endif
 
     public ImageConfig getInputImageConfig(String name) {
         ImageConfig imageConfig = findInputImageConfig(name);

@@ -1,19 +1,12 @@
 package com.radiance.client.gui;
 
+import static com.radiance.client.gui.compat.GuiCompat.*;
+
 import com.radiance.client.pipeline.Module;
 import com.radiance.client.pipeline.config.AttributeConfig;
 
 import java.util.List;
 import java.util.Locale;
-
-import net.minecraft.client.font.TextRenderer;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.client.gui.widget.SliderWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
 
 final class AttributeWidgetUtil {
 
@@ -49,41 +42,34 @@ final class AttributeWidgetUtil {
         }
     }
 
-    static void drawBorder(DrawContext ctx, int x, int y, int w, int h, int color) {
-        ctx.fill(x, y, x + w, y + 1, color);
-        ctx.fill(x, y + h - 1, x + w, y + h, color);
-        ctx.fill(x, y, x + 1, y + h, color);
-        ctx.fill(x + w - 1, y, x + w, y + h, color);
+    static void drawBorder(Object ctx, int x, int y, int w, int h, int color) {
+        fill(ctx, x, y, x + w, y + 1, color);
+        fill(ctx, x, y + h - 1, x + w, y + h, color);
+        fill(ctx, x, y, x + 1, y + h, color);
+        fill(ctx, x + w - 1, y, x + w, y + h, color);
     }
 
-    static void layoutWidgets(List<ClickableWidget> widgets, int x, int y, int singleWidth,
-        int tripleWidth, int gap) {
+    static void layoutWidgets(List<Object> widgets, int x, int y, int singleWidth, int tripleWidth, int gap) {
         if (widgets.size() == 1) {
-            ClickableWidget w = widgets.get(0);
-            w.setX(x);
-            w.setY(y);
-            w.setWidth(singleWidth);
+            Object w = widgets.get(0);
+            setX(w, x); setY(w, y); setW(w, singleWidth);
             return;
         }
-
         if (widgets.size() == 3) {
             for (int i = 0; i < 3; i++) {
-                ClickableWidget cw = widgets.get(i);
-                cw.setX(x + i * (tripleWidth + gap));
-                cw.setY(y);
-                cw.setWidth(tripleWidth);
+                Object cw = widgets.get(i);
+                setX(cw, x + i * (tripleWidth + gap));
+                setY(cw, y);
+                setW(cw, tripleWidth);
             }
         }
     }
 
-    static int totalWidgetWidth(List<ClickableWidget> widgets, int singleWidth, int tripleWidth, int gap) {
-        if (widgets.size() == 3) {
-            return (tripleWidth * 3) + (gap * 2);
-        }
-        return singleWidth;
+    static int totalWidgetWidth(List<Object> widgets, int singleWidth, int tripleWidth, int gap) {
+        return (widgets.size() == 3) ? (tripleWidth * 3) + (gap * 2) : singleWidth;
     }
 
-    static List<ClickableWidget> buildWidgets(Module module, AttributeConfig cfg, TextRenderer textRenderer,
+    static List<Object> buildWidgets(Module module, AttributeConfig cfg, Object font,
         int width,
         int vec3ComponentWidth) {
         String type = cfg.type == null ? "" : cfg.type.toLowerCase(Locale.ROOT);
@@ -102,171 +88,138 @@ final class AttributeWidgetUtil {
 
         return switch (type) {
             case "bool" -> List.of(buildBoolWidget(module, cfg, width));
-            case "int" -> List.of(buildIntWidget(cfg, textRenderer, width));
-            case "float" -> List.of(buildFloatWidget(cfg, textRenderer, width));
-            case "string" -> List.of(buildStringWidget(cfg, textRenderer, width));
-            case "vec3" -> buildVec3Widget(cfg, textRenderer, vec3ComponentWidth);
-            default -> List.of(buildStringWidget(cfg, textRenderer, width));
+            case "int" -> List.of(buildIntWidget(cfg, font, width));
+            case "float" -> List.of(buildFloatWidget(cfg, font, width));
+            case "string" -> List.of(buildStringWidget(cfg, font, width));
+            case "vec3" -> buildVec3Widget(cfg, font, vec3ComponentWidth);
+            default -> List.of(buildStringWidget(cfg, font, width));
         };
     }
 
-    private static ClickableWidget buildBoolWidget(Module module, AttributeConfig cfg, int width) {
+    private static Object buildBoolWidget(Module module, AttributeConfig cfg, int width) {
         boolean b = "render_pipeline.true".equalsIgnoreCase(cfg.value);
-        return ButtonWidget.builder(
-            module.translateText(b ? "render_pipeline.true" : "render_pipeline.false"), btn -> {
-                boolean nv = !"render_pipeline.true".equalsIgnoreCase(cfg.value);
-                cfg.value = nv ? "render_pipeline.true" : "render_pipeline.false";
-                btn.setMessage(module.translateText(cfg.value));
-            }).dimensions(0, 0, width, 20).build();
+        return newButton(module.translateText(b ? "render_pipeline.true" : "render_pipeline.false"), _btn -> {
+            boolean nv = !"render_pipeline.true".equalsIgnoreCase(cfg.value);
+            cfg.value = nv ? "render_pipeline.true" : "render_pipeline.false";
+            setButtonMsg(_btn, module.translateText(cfg.value));
+        }, width);
     }
 
-    private static ClickableWidget buildEnumWidget(Module module, AttributeConfig cfg, String raw, int width) {
+    private static Object buildEnumWidget(Module module, AttributeConfig cfg, String raw, int width) {
         String[] values = raw.isEmpty() ? new String[]{"<empty>"} : raw.split("-");
         int idx = 0;
         if (cfg.value != null) {
             for (int i = 0; i < values.length; i++) {
-                if (values[i].equals(cfg.value)) {
-                    idx = i;
-                    break;
-                }
+                if (values[i].equals(cfg.value)) { idx = i; break; }
             }
-        } else {
-            cfg.value = values[0];
-        }
-
+        } else { cfg.value = values[0]; }
         int[] index = new int[]{idx};
-        return ButtonWidget.builder(module.translateText(values[index[0]]), btn -> {
+        return newButton(module.translateText(values[index[0]]), _btn -> {
             index[0] = (index[0] + 1) % values.length;
             cfg.value = values[index[0]];
-            btn.setMessage(module.translateText(cfg.value));
-        }).dimensions(0, 0, width, 20).build();
+            setButtonMsg(_btn, module.translateText(cfg.value));
+        }, width);
     }
 
-    private static ClickableWidget buildIntWidget(AttributeConfig cfg, TextRenderer textRenderer,
-        int width) {
-        TextFieldWidget tf = new TextFieldWidget(textRenderer, 0, 0, width, 20, Text.empty());
-        tf.setMaxLength(64);
-        tf.setText(cfg.value == null ? "" : cfg.value);
-        tf.setTextPredicate(s -> s.isEmpty() || s.equals("-") || s.matches("-?\\d+"));
-        tf.setChangedListener(text -> {
-            if (isStrictInt(text)) {
-                cfg.value = text;
-            }
-        });
+    private static Object buildIntWidget(AttributeConfig cfg, Object font, int width) {
+        Object tf = newTextField(font, width, emptyTxt());
+        tfSetMaxLen(tf, 64);
+        tfSetValue(tf, cfg.value == null ? "" : cfg.value);
+        tfSetResponder(tf, text -> { if (isStrictInt(text)) cfg.value = text; });
         return tf;
     }
 
-    private static ClickableWidget buildFloatWidget(AttributeConfig cfg, TextRenderer textRenderer,
-        int width) {
-        TextFieldWidget tf = new TextFieldWidget(textRenderer, 0, 0, width, 20, Text.empty());
-        tf.setMaxLength(64);
-        tf.setText(cfg.value == null ? "" : cfg.value);
-        tf.setTextPredicate(
-            s -> s.isEmpty() || s.equals("-") || s.equals(".") || s.equals("-.") || s.matches(
-                "-?\\d+")
-                || s.matches("-?\\d+\\.") || s.matches("-?\\d*\\.\\d+"));
-        tf.setChangedListener(text -> {
-            if (isStrictFloat(text)) {
-                cfg.value = text;
-            }
-        });
+    private static Object buildFloatWidget(AttributeConfig cfg, Object font, int width) {
+        Object tf = newTextField(font, width, emptyTxt());
+        tfSetMaxLen(tf, 64);
+        tfSetValue(tf, cfg.value == null ? "" : cfg.value);
+        tfSetResponder(tf, text -> { if (isStrictFloat(text)) cfg.value = text; });
         return tf;
     }
 
-    private static ClickableWidget buildStringWidget(AttributeConfig cfg, TextRenderer textRenderer,
-        int width) {
-        TextFieldWidget tf = new TextFieldWidget(textRenderer, 0, 0, width, 20, Text.empty());
-        tf.setMaxLength(128);
-        tf.setText(cfg.value == null ? "" : cfg.value);
-        tf.setChangedListener(text -> cfg.value = text);
+    private static Object buildStringWidget(AttributeConfig cfg, Object font, int width) {
+        Object tf = newTextField(font, width, emptyTxt());
+        tfSetMaxLen(tf, 128);
+        tfSetValue(tf, cfg.value == null ? "" : cfg.value);
+        tfSetResponder(tf, text -> cfg.value = text);
         return tf;
     }
 
-    private static List<ClickableWidget> buildVec3Widget(AttributeConfig cfg,
-        TextRenderer textRenderer,
+    private static List<Object> buildVec3Widget(AttributeConfig cfg,
+        Object font,
         int componentWidth) {
-        if (cfg.value == null || cfg.value.isEmpty()) {
-            cfg.value = "0,0,0";
-        }
-
+        if (cfg.value == null || cfg.value.isEmpty()) cfg.value = "0,0,0";
         float[] v = parseVec3(cfg.value);
-        TextFieldWidget x = vecField(textRenderer, v[0], componentWidth);
-        TextFieldWidget y = vecField(textRenderer, v[1], componentWidth);
-        TextFieldWidget z = vecField(textRenderer, v[2], componentWidth);
-
+        Object x = vecField(font, v[0], componentWidth);
+        Object y = vecField(font, v[1], componentWidth);
+        Object z = vecField(font, v[2], componentWidth);
         Runnable syncIfValid = () -> {
-            String sx = x.getText();
-            String sy = y.getText();
-            String sz = z.getText();
+            String sx = tfValue(x);
+            String sy = tfValue(y);
+            String sz = tfValue(z);
 
             if (isStrictFloat(sx) && isStrictFloat(sy) && isStrictFloat(sz)) {
                 cfg.value = sx + "," + sy + "," + sz;
             }
         };
 
-        x.setChangedListener(s -> syncIfValid.run());
-        y.setChangedListener(s -> syncIfValid.run());
-        z.setChangedListener(s -> syncIfValid.run());
+        tfSetResponder(x, s -> syncIfValid.run());
+        tfSetResponder(y, s -> syncIfValid.run());
+        tfSetResponder(z, s -> syncIfValid.run());
 
         syncIfValid.run();
         return List.of(x, y, z);
     }
 
-    private static TextFieldWidget vecField(TextRenderer textRenderer, float v, int width) {
-        TextFieldWidget tf = new TextFieldWidget(textRenderer, 0, 0, width, 20, Text.empty());
-        tf.setMaxLength(32);
-        tf.setText(trimFloat(v));
-        tf.setTextPredicate(
-            s -> s.isEmpty() || s.equals("-") || s.equals(".") || s.equals("-.") || s.matches(
-                "-?\\d+")
-                || s.matches("-?\\d+\\.") || s.matches("-?\\d*\\.\\d+"));
+    private static Object vecField(Object font, float v, int width) {
+        Object tf = newTextField(font, width, emptyTxt());
+        tfSetMaxLen(tf, 32);
+        tfSetValue(tf, trimFloat(v));
         return tf;
     }
 
-    private static ClickableWidget buildIntRange(AttributeConfig cfg, String raw, int width) {
+    private static Object buildIntRange(AttributeConfig cfg, String raw, int width) {
         Range r = parseRange(raw);
-        int start = (int) r.start;
-        int end = (int) r.end;
-        if (start > end) {
-            int t = start;
-            start = end;
-            end = t;
-        }
-
+        int start = (int) r.start, end = (int) r.end;
+        if (start > end) { int t = start; start = end; end = t; }
         int cur = start;
-        if (isInt(cfg.value)) {
-            cur = Integer.parseInt(cfg.value);
-        } else {
-            cfg.value = String.valueOf(start);
-        }
-        cur = MathHelper.clamp(cur, start, end);
-
-        IntRangeSlider slider = new IntRangeSlider(0, 0, width, 20, start, end, cur, cfg);
-        slider.updateMessage();
-        return slider;
+        if (isInt(cfg.value)) cur = Integer.parseInt(cfg.value);
+        else cfg.value = String.valueOf(start);
+        cur = clampI(cur, start, end);
+        final int sliderStart = start;
+        final int sliderEnd = end;
+        return newSlider(width, normalizedRangeValue(cur, sliderStart, sliderEnd),
+            value -> txt(Integer.toString(currentInt(value, sliderStart, sliderEnd))),
+            value -> cfg.value = Integer.toString(clampI(currentInt(value, sliderStart, sliderEnd),
+                sliderStart, sliderEnd)));
     }
 
-    private static ClickableWidget buildFloatRange(AttributeConfig cfg, String raw, int width) {
+    private static Object buildFloatRange(AttributeConfig cfg, String raw, int width) {
         Range r = parseRange(raw);
-        float start = (float) r.start;
-        float end = (float) r.end;
-        if (start > end) {
-            float t = start;
-            start = end;
-            end = t;
-        }
-
+        float start = (float) r.start, end = (float) r.end;
+        if (start > end) { float t = start; start = end; end = t; }
         float cur = start;
-        if (isFloat(cfg.value)) {
-            cur = Float.parseFloat(cfg.value);
-        } else {
-            cfg.value = formatTwoDecimals(start);
-        }
-        cur = MathHelper.clamp(cur, start, end);
+        if (isFloat(cfg.value)) cur = Float.parseFloat(cfg.value);
+        else cfg.value = formatTwoDecimals(start);
+        cur = clampF(cur, start, end);
+        final float sliderStart = start;
+        final float sliderEnd = end;
+        return newSlider(width, normalizedRangeValue(cur, sliderStart, sliderEnd),
+            value -> txt(formatTwoDecimals(currentFloat(value, sliderStart, sliderEnd))),
+            value -> cfg.value = formatTwoDecimals(clampF(currentFloat(value, sliderStart, sliderEnd),
+                sliderStart, sliderEnd)));
+    }
 
-        FloatRangeSlider slider = new FloatRangeSlider(0, 0, width, 20, start, end, cur, cfg);
-        slider.updateMessage();
-        return slider;
+    private static double normalizedRangeValue(double current, double start, double end) {
+        return end == start ? 0 : (current - start) / (end - start);
+    }
+
+    private static int currentInt(double value, int start, int end) {
+        return end == start ? start : start + (int) Math.round(value * (end - start));
+    }
+
+    private static float currentFloat(double value, float start, float end) {
+        return end == start ? start : (float) (start + value * (end - start));
     }
 
     private static boolean isInt(String s) {
@@ -332,73 +285,4 @@ final class AttributeWidgetUtil {
 
     }
 
-    private static class IntRangeSlider extends SliderWidget {
-
-        private final int start;
-        private final int end;
-        private final AttributeConfig cfg;
-
-        public IntRangeSlider(int x, int y, int width, int height, int start, int end, int cur,
-            AttributeConfig cfg) {
-            super(x, y, width, height, Text.empty(),
-                (cur - (double) start) / (double) (end - start));
-            this.start = start;
-            this.end = end;
-            this.cfg = cfg;
-            this.value = (cur - (double) start) / (double) (end - start);
-        }
-
-        private int current() {
-            if (end == start) {
-                return start;
-            }
-            return start + (int) Math.round(this.value * (end - start));
-        }
-
-        @Override
-        protected void updateMessage() {
-            setMessage(Text.translatable(Integer.toString(current())));
-        }
-
-        @Override
-        protected void applyValue() {
-            int v = MathHelper.clamp(current(), start, end);
-            cfg.value = Integer.toString(v);
-        }
-    }
-
-    private static class FloatRangeSlider extends SliderWidget {
-
-        private final float start;
-        private final float end;
-        private final AttributeConfig cfg;
-
-        public FloatRangeSlider(int x, int y, int width, int height, float start, float end,
-            float cur,
-            AttributeConfig cfg) {
-            super(x, y, width, height, Text.empty(), (cur - start) / (double) (end - start));
-            this.start = start;
-            this.end = end;
-            this.cfg = cfg;
-            this.value = (cur - start) / (double) (end - start);
-        }
-
-        private float current() {
-            if (end == start) {
-                return start;
-            }
-            return (float) (start + this.value * (end - start));
-        }
-
-        @Override
-        protected void updateMessage() {
-            setMessage(Text.translatable(formatTwoDecimals(current())));
-        }
-
-        @Override
-        protected void applyValue() {
-            float v = MathHelper.clamp(current(), start, end);
-            cfg.value = formatTwoDecimals(v);
-        }
-    }
 }

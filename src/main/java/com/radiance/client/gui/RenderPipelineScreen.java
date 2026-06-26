@@ -1,43 +1,26 @@
 package com.radiance.client.gui;
 
-import static net.minecraft.client.option.GameOptions.getGenericValueText;
+import static com.radiance.client.gui.compat.GuiCompat.*;
 
-import com.mojang.serialization.Codec;
 import com.radiance.Radiance;
 import com.radiance.client.config.VRPerformanceConfig;
-import com.radiance.client.option.Options;
+import com.radiance.client.gui.compat.PlatformScreen;
 import com.radiance.client.pipeline.Module;
 import com.radiance.client.pipeline.ModuleEntry;
 import com.radiance.client.pipeline.Pipeline;
 import com.radiance.client.pipeline.Presets;
 import com.radiance.client.pipeline.config.AttributeConfig;
 import com.radiance.client.pipeline.config.ImageConfig;
-import com.radiance.mixin_related.extensions.vulkan_render_integration.IDrawContextExt;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.client.option.SimpleOption;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+public class RenderPipelineScreen extends PlatformScreen {
 
-public class RenderPipelineScreen extends Screen {
-
-    private static final Identifier GEAR_TEX = Identifier.of(Radiance.MOD_ID,
-        "textures/gui/render_pipeline/gear.png");
+    private static final Object GEAR_TEX = id(Radiance.MOD_ID, "textures/gui/render_pipeline/gear.png");
 
     private static final int UNKNOWN_FORMAT_COLOR = 0xFF9CA3AF;
     private static final Map<String, Integer> FORMAT_COLORS = Map.of("R8G8B8A8_SRGB", 0xFF4EA5FF,
@@ -47,20 +30,23 @@ public class RenderPipelineScreen extends Screen {
 
     private static final int HEADER_HEIGHT = 32;
     private static final float GLOBAL_SCALE = 0.75f;
-    private static final String RENDER_PIPELINE_SCREEN_BACK = "render_pipeline_screen.back";
-    private static final String RENDER_PIPELINE_SCREEN_RELOAD = "render_pipeline_screen.reload";
-    private static final String RENDER_PIPELINE_SCREEN_ADD_MODULE = "render_pipeline_screen.add_module";
-    private static final String RENDER_PIPELINE_SCREEN_SHADER_PACK = "render_pipeline_screen.shader_pack";
-    private static final String RENDER_PIPELINE_SCREEN_VR = "render_pipeline_screen.vr";
-    private static final String RENDER_PIPELINE_SCREEN_BACK_HINT = "render_pipeline_screen.back_hint";
-    private static final String RENDER_PIPELINE_SCREEN_REBUILDING = "render_pipeline_screen.rebuilding";
-    private final Screen parent;
+    private static final String BACK_KEY = "render_pipeline_screen.back";
+    private static final String RELOAD_KEY = "render_pipeline_screen.reload";
+    private static final String ADD_MODULE_KEY = "render_pipeline_screen.add_module";
+    private static final String SHADER_PACK_KEY = "render_pipeline_screen.shader_pack";
+    private static final String VR_KEY = "render_pipeline_screen.vr";
+    private static final String BACK_HINT_KEY = "render_pipeline_screen.back_hint";
+    private static final String REBUILDING_KEY = "render_pipeline_screen.rebuilding";
+    private static final String PRESET_NAME_KEY = "render_pipeline.preset.name";
+    private static final String MODE_NAME_KEY = "render_pipeline.mode.name";
+
+    private final Object parent;
     private final List<ModuleNode> nodes = new ArrayList<>();
     private final List<ModuleConnection> moduleConnections = new ArrayList<>();
     private ModuleNode draggedNode = null;
     private double lastMouseX, lastMouseY;
     private ModuleSelector activeSelector = null;
-    private VRSettingsPopup activeVRSettings = null;
+    private Object activeVRSettings = null;
     private ImageConfig localFinalOutput = null;
     private ImageConfig pendingPort = null;
     private boolean isPendingOutput = false;
@@ -71,27 +57,20 @@ public class RenderPipelineScreen extends Screen {
     private PresetEntry activePreset = null;
     private PresetSelector activePresetSelector = null;
     private final List<PresetModuleBlock> presetBlocks = new ArrayList<>();
-    private final List<ClickableWidget> presetWidgets = new ArrayList<>();
+    private final List<Object> presetWidgets = new ArrayList<>();
     private int presetScrollY = 0;
 
-    private ButtonWidget modeToggleBtn;
-    private ButtonWidget secondaryBtn;
+    private Object modeToggleBtn;
+    private Object secondaryBtn;
     private CompletableFuture<Void> rebuildFuture = null;
     private boolean rebuildQueued = false;
 
-    private static final String RENDER_PIPELINE_PRESET_NAME = "render_pipeline.preset.name";
-    private static final String RENDER_PIPELINE_MODE_NAME = "render_pipeline.mode.name";
-
-    public RenderPipelineScreen(Screen parent) {
-        super(Text.literal("Render Pipeline"));
-
+    public RenderPipelineScreen(Object parent) {
+        super(txtLit("Render Pipeline"));
         this.parent = parent;
-
         registerDefaultPresets();
-
         Pipeline.PipelineMode pipelineMode = Pipeline.getPipelineMode();
         this.mode = pipelineMode == Pipeline.PipelineMode.PRESET ? Mode.PRESET : Mode.PIPELINE;
-
         String presetName = Pipeline.processPresetName(Pipeline.getActivePreset());
         if (presetName != null) {
             for (PresetEntry e : presets) {
@@ -101,7 +80,6 @@ public class RenderPipelineScreen extends Screen {
                 }
             }
         }
-
         if (this.mode == Mode.PRESET && this.activePreset == null && !this.presets.isEmpty()) {
             this.activePreset = this.presets.getFirst();
         }
@@ -118,7 +96,7 @@ public class RenderPipelineScreen extends Screen {
     }
 
     private void rebuildUI() {
-        clearChildren();
+        screenClearChildren(this);
         activeSelector = null;
         activePresetSelector = null;
         activeVRSettings = null;
@@ -127,107 +105,99 @@ public class RenderPipelineScreen extends Screen {
         if (mode == Mode.PRESET && activePreset == null && !presets.isEmpty()) {
             activePreset = presets.getFirst();
         }
-
         if (mode == Mode.PIPELINE) {
             refreshPipeline();
         }
 
-        int backX = 10;
-        int backW = 60;
-        int toggleX = backX + backW + 5;
-        int toggleW = 110;
-        int shaderPackX = toggleX + toggleW + 5;
-        int shaderPackW = 110;
-        int vrX = shaderPackX + shaderPackW + 5;
-        int vrW = 54;
-        int secondaryX = vrX + vrW + 5;
-        int secondaryW = 150;
+        int backX = 10, backW = 60;
+        int toggleX = backX + backW + 5, toggleW = 110;
+        int shaderPackX = toggleX + toggleW + 5, shaderPackW = 110;
+        int vrX = shaderPackX + shaderPackW + 5, vrW = 54;
+        int secondaryX = vrX + vrW + 5, secondaryW = 150;
 
-        addDrawableChild(
-            ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_SCREEN_BACK), button -> close())
-                .dimensions(backX, 6, backW, 20).build());
+        // Back button
+        screenAddChild(this, newButton(txt(BACK_KEY), btn -> close(), backW));
+        setX(screenChildren(this).getLast(), backX);
+        setY(screenChildren(this).getLast(), 6);
 
-        modeToggleBtn = addDrawableChild(ButtonWidget.builder(
-            Text.translatable(RENDER_PIPELINE_MODE_NAME)
-                .append(Text.literal(": ").append(Text.translatable(mode.key))), button -> {
+        // Mode toggle
+        modeToggleBtn = newButton(
+            txtAppend(txt(MODE_NAME_KEY), txtAppend(txtLit(": "), txt(mode.key))),
+            btn -> {
                 if (mode == Mode.PIPELINE) {
-                    if (activePreset == null && !presets.isEmpty()) {
-                        activePreset = presets.getFirst();
-                    }
-                    Pipeline.switchToPresetMode(
-                        activePreset != null ? activePreset.name() : "Default", false);
+                    if (activePreset == null && !presets.isEmpty()) activePreset = presets.getFirst();
+                    Pipeline.switchToPresetMode(activePreset != null ? activePreset.name() : "Default", false);
                     mode = Mode.PRESET;
                 } else {
                     Pipeline.switchToPipelineMode(false);
                     mode = Mode.PIPELINE;
                 }
                 rebuildUI();
-            }).dimensions(toggleX, 6, toggleW, 20).build());
+            }, toggleW);
+        screenAddChild(this, modeToggleBtn);
+        setX(modeToggleBtn, toggleX);
+        setY(modeToggleBtn, 6);
 
-        addDrawableChild(ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_SCREEN_SHADER_PACK),
-                button -> MinecraftClient.getInstance().setScreen(new ShaderPackScreen(this)))
-            .dimensions(shaderPackX, 6, shaderPackW, 20)
-            .build());
+        // Shader pack
+        screenAddChild(this, newButton(txt(SHADER_PACK_KEY),
+            btn -> setScreen(getMinecraft(), new ShaderPackScreen(this)), shaderPackW));
+        setX(screenChildren(this).getLast(), shaderPackX);
+        setY(screenChildren(this).getLast(), 6);
 
-        addDrawableChild(ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_SCREEN_VR),
-                button -> {
-                    activeSelector = null;
-                    activePresetSelector = null;
-                    activeVRSettings = activeVRSettings == null
-                        ? new VRSettingsPopup(vrX, HEADER_HEIGHT + 4)
-                        : null;
-                })
-            .dimensions(vrX, 6, vrW, 20)
-            .build());
+        // VR
+        screenAddChild(this, newButton(txt(VR_KEY), btn -> {
+            activeSelector = null;
+            activePresetSelector = null;
+            activeVRSettings = (activeVRSettings == null) ? createVRSettings(vrX, HEADER_HEIGHT + 4) : null;
+        }, vrW));
+        setX(screenChildren(this).getLast(), vrX);
+        setY(screenChildren(this).getLast(), 6);
 
+        // Secondary button
         if (mode == Mode.PIPELINE) {
-            secondaryBtn = addDrawableChild(
-                ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_SCREEN_ADD_MODULE),
-                    button -> {
-                        Map<String, ModuleEntry> entries = Pipeline.INSTANCE.getModuleEntries();
-                        if (entries != null && !entries.isEmpty()) {
-                            activeVRSettings = null;
-                            activeSelector = new ModuleSelector(secondaryX, HEADER_HEIGHT + 4,
-                                entries);
-                        }
-                    }).dimensions(secondaryX, 6, secondaryW, 20).build());
+            secondaryBtn = newButton(txt(ADD_MODULE_KEY), btn -> {
+                Map<String, ModuleEntry> entries = Pipeline.INSTANCE.getModuleEntries();
+                if (entries != null && !entries.isEmpty()) {
+                    activeVRSettings = null;
+                    activeSelector = new ModuleSelector(secondaryX, HEADER_HEIGHT + 4, entries);
+                }
+            }, secondaryW);
         } else {
-            Text activePresetText = activePreset != null
-                ? Text.translatable(activePreset.name())
-                : Text.literal("N/A"); // to make sure
-            secondaryBtn = addDrawableChild(
-                ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_PRESET_NAME)
-                    .append(Text.literal(": "))
-                    .append(activePresetText), button -> {
+            Object presetText = activePreset != null ? txt(activePreset.name()) : txtLit("N/A");
+            secondaryBtn = newButton(
+                txtAppend(txt(PRESET_NAME_KEY), txtAppend(txtLit(": "), presetText)),
+                btn -> {
                     if (!presets.isEmpty()) {
                         activeVRSettings = null;
-                        activePresetSelector = new PresetSelector(secondaryX, HEADER_HEIGHT + 4,
-                            presets);
+                        activePresetSelector = new PresetSelector(secondaryX, HEADER_HEIGHT + 4, presets);
                     }
-                }).dimensions(secondaryX, 6, secondaryW, 20).build());
+                }, secondaryW);
         }
+        screenAddChild(this, secondaryBtn);
+        setX(secondaryBtn, secondaryX);
+        setY(secondaryBtn, 6);
 
-        ButtonWidget reloadBtn = addDrawableChild(
-            ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_SCREEN_RELOAD), button -> {
-                if (mode == Mode.PIPELINE) {
-                    refreshPipeline();
-                } else {
-                    applyActivePreset();
-                }
-            }).dimensions(secondaryX + secondaryW + 5, 6, 100, 20).build());
-
-        reloadBtn.active = true;
-        secondaryBtn.visible = true;
-        secondaryBtn.active = true;
+        // Reload button
+        Object reloadBtn = newButton(txt(RELOAD_KEY), btn -> {
+            if (mode == Mode.PIPELINE) refreshPipeline();
+            else applyActivePreset();
+        }, 100);
+        screenAddChild(this, reloadBtn);
+        setX(reloadBtn, secondaryX + secondaryW + 5);
+        setY(reloadBtn, 6);
+        setActive(reloadBtn, true);
+        setVisible(secondaryBtn, true);
+        setActive(secondaryBtn, true);
 
         if (mode == Mode.PRESET) {
             presetScrollY = 0;
-            if (activePreset == null && !presets.isEmpty()) {
-                activePreset = presets.get(0);
-            }
+            if (activePreset == null && !presets.isEmpty()) activePreset = presets.get(0);
             applyActivePreset();
         }
     }
+
+    /** Stub: VRSettingsPopup is not available in 26.2+ */
+    private Object createVRSettings(int x, int y) { return null; }
 
     public void refreshPipeline() {
         nodes.clear();
@@ -265,40 +235,26 @@ public class RenderPipelineScreen extends Screen {
 
     @Override
     public void close() {
-        if (isRebuilding()) {
-            return;
-        }
-
-        if (mode == Mode.PIPELINE) {
-            syncToPipeline();
-        } else {
-            syncPresetToPipeline();
-        }
+        if (isRebuilding()) return;
+        if (mode == Mode.PIPELINE) syncToPipeline();
+        else syncPresetToPipeline();
         rebuildQueued = true;
     }
 
     @Override
     public void tick() {
         super.tick();
-
-        if (rebuildQueued || rebuildFuture == null || !rebuildFuture.isDone()) {
-            return;
-        }
-
-        if (Pipeline.isNativeRebuildActive()) {
-            return;
-        }
-
+        if (rebuildQueued || rebuildFuture == null || !rebuildFuture.isDone()) return;
+        if (Pipeline.isNativeRebuildActive()) return;
         rebuildFuture.join();
         rebuildFuture = null;
-        MinecraftClient.getInstance().setScreen(parent);
+        setScreen(getMinecraft(), parent);
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    protected void renderScreen(Object ctx, int mouseX, int mouseY, float delta) {
         if (isRebuilding()) {
-            this.renderBackground(context, mouseX, mouseY, delta);
-            renderRebuildOverlay(context);
+            renderRebuildOverlay(ctx);
             if (rebuildQueued) {
                 rebuildQueued = false;
                 rebuildFuture = CompletableFuture.runAsync(Pipeline::build);
@@ -307,57 +263,48 @@ public class RenderPipelineScreen extends Screen {
         }
 
         for (ModuleNode node : nodes) {
-            node.updateWidth(textRenderer);
+            node.updateWidth(screenFont(this));
         }
 
-        this.renderBackground(context, mouseX, mouseY, delta);
+        matricesPush(ctx);
+        matricesScale(ctx, GLOBAL_SCALE, GLOBAL_SCALE, 1f);
 
-        context.getMatrices().push();
-        context.getMatrices().scale(GLOBAL_SCALE, GLOBAL_SCALE, 1f);
+        int smx = (int) (mouseX / GLOBAL_SCALE);
+        int smy = (int) (mouseY / GLOBAL_SCALE);
 
-        int scaledMouseX = (int) (mouseX / GLOBAL_SCALE);
-        int scaledMouseY = (int) (mouseY / GLOBAL_SCALE);
-
-        for (Drawable drawable : this.drawables) {
-            drawable.render(context, scaledMouseX, scaledMouseY, delta);
-        }
-
-        context.drawTextWithShadow(textRenderer,
-            Text.translatable(RENDER_PIPELINE_SCREEN_BACK_HINT), 10, HEADER_HEIGHT + 8, 0xFFEAEAEA);
+        Object font = screenFont(this);
+        drawText(ctx, font, txt(BACK_HINT_KEY), 10, HEADER_HEIGHT + 8, 0xFFEAEAEA, true);
 
         if (mode == Mode.PIPELINE) {
-            for (ModuleNode node : nodes) {
-                drawModuleNode(context, node);
-            }
-
-            drawConnections(context);
-
+            for (ModuleNode node : nodes) drawModuleNode(ctx, node);
+            drawConnections(ctx);
             if (activeSelector != null) {
-                context.getMatrices().push();
-                context.getMatrices().translate(0, 0, 200);
-                activeSelector.render(context, scaledMouseX, scaledMouseY);
-                context.getMatrices().pop();
+                matricesPush(ctx);
+                matricesTranslate(ctx, 0, 0, 200);
+                activeSelector.render(ctx, smx, smy);
+                matricesPop(ctx);
             }
         } else {
-            renderPresetMode(context);
+            renderPresetMode(ctx);
             if (activePresetSelector != null) {
-                context.getMatrices().push();
-                context.getMatrices().translate(0, 0, 200);
-                activePresetSelector.render(context, scaledMouseX, scaledMouseY);
-                context.getMatrices().pop();
+                matricesPush(ctx);
+                matricesTranslate(ctx, 0, 0, 200);
+                activePresetSelector.render(ctx, smx, smy);
+                matricesPop(ctx);
             }
         }
 
         if (activeVRSettings != null) {
-            context.getMatrices().push();
-            context.getMatrices().translate(0, 0, 220);
-            activeVRSettings.render(context, scaledMouseX, scaledMouseY);
-            context.getMatrices().pop();
+            matricesPush(ctx);
+            matricesTranslate(ctx, 0, 0, 220);
+            renderVRSettings(activeVRSettings, ctx, smx, smy);
+            matricesPop(ctx);
         }
 
-        context.getMatrices().pop();
-
+        matricesPop(ctx);
     }
+
+    private void renderVRSettings(Object vs, Object ctx, int mx, int my) { /* stub */ }
 
     private int scaledW() {
         return (int) (this.width / GLOBAL_SCALE);
@@ -367,107 +314,65 @@ public class RenderPipelineScreen extends Screen {
         return (int) (this.height / GLOBAL_SCALE);
     }
 
-    private void renderPresetMode(DrawContext ctx) {
-        int sw = scaledW();
-        int sh = scaledH();
-        int x0 = 10;
-        int y0 = HEADER_HEIGHT + 28;
+    private void renderPresetMode(Object ctx) {
+        int sw = scaledW(), sh = scaledH();
+        int x0 = 10, y0 = HEADER_HEIGHT + 28;
         int contentW = sw - 20;
-
         int y = y0 + presetScrollY;
-        int titleGap = 12;
-        int afterTitle = 8;
-        int rowH = 22;
+        int titleGap = 12, afterTitle = 8, rowH = 22;
+        Object font = screenFont(this);
 
         for (PresetModuleBlock block : presetBlocks) {
-            if (block.rows.isEmpty()) {
-                continue;
-            }
+            if (block.rows.isEmpty()) continue;
             int titleY = y;
-            int tw = textRenderer.getWidth(block.module.translateText(block.module.name));
+            int tw = textWidth(font, block.module.translateText(block.module.name));
             int tx = x0 + (contentW - tw) / 2;
 
             boolean titleVisible = titleY >= (HEADER_HEIGHT + 18) && titleY <= (sh - 24);
             if (titleVisible) {
-                ctx.drawTextWithShadow(textRenderer, block.module.translateText(block.module.name), tx,
-                    titleY, 0xFFEAEAEA);
+                drawText(ctx, font, block.module.translateText(block.module.name), tx, titleY, 0xFFEAEAEA, true);
             }
 
             y += titleGap + afterTitle;
-
             for (int i = 0; i < block.rows.size(); i++) {
                 PresetRow row = block.rows.get(i);
                 int ry = y + i * rowH;
                 boolean visible = ry >= (HEADER_HEIGHT + 18) && ry <= (sh - 24);
-
                 if (visible) {
-                    ctx.drawTextWithShadow(textRenderer, block.module.translateText(row.cfg.name), x0 + 10,
-                        ry + 6, 0xFFD0D0D0);
+                    drawText(ctx, font, block.module.translateText(row.cfg.name), x0 + 10, ry + 6, 0xFFD0D0D0, true);
                 }
-
                 layoutPresetRowWidgets(row, x0 + contentW - 10, ry);
-
-                String type = row.cfg.type == null ? "" : row.cfg.type.toLowerCase(Locale.ROOT);
+                String type = row.cfg.type == null ? "" : row.cfg.type.toLowerCase(java.util.Locale.ROOT);
                 boolean doBorder = AttributeWidgetUtil.shouldValidateBorder(type);
-
-                for (ClickableWidget w : row.widgets) {
-                    w.visible = visible;
-                    w.active = visible;
-
-                    if (!doBorder) {
-                        continue;
-                    }
-
+                for (Object widget : row.widgets) {
+                    setVisible(widget, visible);
+                    setActive(widget, visible);
+                    if (!doBorder) continue;
                     boolean ok = true;
-                    if (type.equals("vec3")) {
-                        if (w instanceof TextFieldWidget tf) {
-                            ok = AttributeWidgetUtil.isStrictFloat(tf.getText());
-                        }
-                    } else if (type.equals("int")) {
-                        if (w instanceof TextFieldWidget tf) {
-                            ok = AttributeWidgetUtil.isStrictInt(tf.getText());
-                        }
-                    } else if (type.equals("float")) {
-                        if (w instanceof TextFieldWidget tf) {
-                            ok = AttributeWidgetUtil.isStrictFloat(tf.getText());
-                        }
-                    }
-
-                    int bx = w.getX() - 1;
-                    int by = w.getY() - 1;
-                    int bw = w.getWidth() + 2;
-                    int bh = w.getHeight() + 2;
-                    AttributeWidgetUtil.drawBorder(ctx, bx, by, bw, bh,
+                    if (type.equals("vec3") && isTextField(widget)) ok = AttributeWidgetUtil.isStrictFloat(tfGetText(widget));
+                    else if (type.equals("int") && isTextField(widget)) ok = AttributeWidgetUtil.isStrictInt(tfGetText(widget));
+                    else if (type.equals("float") && isTextField(widget)) ok = AttributeWidgetUtil.isStrictFloat(tfGetText(widget));
+                    AttributeWidgetUtil.drawBorder(ctx, getX(widget) - 1, getY(widget) - 1, getW(widget) + 2, getH(widget) + 2,
                         ok ? 0xFF34D058 : 0xFFE5534B);
                 }
             }
-
             y += block.rows.size() * rowH + 18;
         }
     }
 
-    private void renderRebuildOverlay(DrawContext context) {
-        context.fill(0, 0, this.width, this.height, 0xE0000000);
-
-        int popupWidth = 160;
-        int popupHeight = 30;
-        int x0 = (this.width - popupWidth) / 2;
-        int y0 = (this.height - popupHeight) / 2;
-
-        context.fill(x0, y0, x0 + popupWidth, y0 + popupHeight, 0xFF000000);
-        context.fill(x0, y0, x0 + popupWidth, y0 + 1, 0xFFFFFFFF);
-        context.fill(x0, y0 + popupHeight - 1, x0 + popupWidth, y0 + popupHeight, 0xFFFFFFFF);
-        context.fill(x0, y0, x0 + 1, y0 + popupHeight, 0xFFFFFFFF);
-        context.fill(x0 + popupWidth - 1, y0, x0 + popupWidth, y0 + popupHeight, 0xFFFFFFFF);
-
-        context.drawCenteredTextWithShadow(textRenderer,
-            Text.translatable(RENDER_PIPELINE_SCREEN_REBUILDING),
-            this.width / 2, y0 + 9, 0xFFEAEAEA);
+    private void renderRebuildOverlay(Object ctx) {
+        fill(ctx, 0, 0, this.width, this.height, 0xE0000000);
+        int pw = 160, ph = 30;
+        int x0 = (this.width - pw) / 2, y0 = (this.height - ph) / 2;
+        fill(ctx, x0, y0, x0 + pw, y0 + ph, 0xFF000000);
+        fill(ctx, x0, y0, x0 + pw, y0 + 1, 0xFFFFFFFF);
+        fill(ctx, x0, y0 + ph - 1, x0 + pw, y0 + ph, 0xFFFFFFFF);
+        fill(ctx, x0, y0, x0 + 1, y0 + ph, 0xFFFFFFFF);
+        fill(ctx, x0 + pw - 1, y0, x0 + pw, y0 + ph, 0xFFFFFFFF);
+        drawCenteredText(ctx, screenFont(this), txt(REBUILDING_KEY), this.width / 2, y0 + 9, 0xFFEAEAEA);
     }
 
-    private boolean isRebuilding() {
-        return rebuildQueued || rebuildFuture != null;
-    }
+    private boolean isRebuilding() { return rebuildQueued || rebuildFuture != null; }
 
     private void layoutPresetRowWidgets(PresetRow row, int rightEdge, int y) {
         int singleWidth = 200;
@@ -498,14 +403,12 @@ public class RenderPipelineScreen extends Screen {
         return null;
     }
 
-    private void drawBezier(DrawContext ctx, int x1, int y1, int x2, int y2, int color) {
+    private void drawBezier(Object ctx, int x1, int y1, int x2, int y2, int color) {
         int segments = 32;
-        float prevX = x1;
-        float prevY = y1;
+        float prevX = x1, prevY = y1;
         float thickness = 1.2f;
-
         float ctrlOffset = Math.abs(x2 - x1) * 0.5f;
-
+        Object rl = getGuiRenderLayer();
         for (int i = 1; i <= segments; i++) {
             float t = i / (float) segments;
             float invT = 1 - t;
@@ -513,90 +416,66 @@ public class RenderPipelineScreen extends Screen {
             float b1 = 3 * invT * invT * t;
             float b2 = 3 * invT * t * t;
             float b3 = t * t * t;
-
             float cx = b0 * x1 + b1 * (x1 + ctrlOffset) + b2 * (x2 - ctrlOffset) + b3 * x2;
             float cy = b0 * y1 + b1 * y1 + b2 * y2 + b3 * y2;
-
-            ((IDrawContextExt) (Object) ctx).radiance$drawOrientedQuad(RenderLayer.getGui(),
-                prevX, prevY, cx, cy, thickness, color);
-
-            prevX = cx;
-            prevY = cy;
+            drawOrientedQuad(ctx, rl, prevX, prevY, cx, cy, thickness, color);
+            prevX = cx; prevY = cy;
         }
     }
 
-    private void drawConnections(DrawContext context) {
+    private void drawConnections(Object ctx) {
         for (ModuleConnection link : moduleConnections) {
             PortPos p1 = getPortPosition(link.src, true);
             PortPos p2 = getPortPosition(link.dst, false);
-            if (p1 != null && p2 != null) {
-                drawBezier(context, p1.x, p1.y, p2.x, p2.y, getFormatColor(link.src.format));
-            }
+            if (p1 != null && p2 != null) drawBezier(ctx, p1.x, p1.y, p2.x, p2.y, getFormatColor(link.src.format));
         }
     }
 
-    private void drawModuleNode(DrawContext context, ModuleNode moduleNode) {
-        int x = (int) moduleNode.module.x;
-        int y = (int) moduleNode.module.y + HEADER_HEIGHT;
-        int w = moduleNode.width;
-        int h = moduleNode.height();
+    private void drawModuleNode(Object ctx, ModuleNode node) {
+        int x = (int) node.module.x;
+        int y = (int) node.module.y + HEADER_HEIGHT;
+        int w = node.width, h = node.height();
+        Object font = screenFont(this);
 
-        context.fill(x, y, x + w, y + h, 0xFF20242C);
-
-        context.fill(x, y, x + w, y + moduleNode.headerH, 0xFF2B3240);
-
-        context.drawTextWithShadow(textRenderer, moduleNode.module.translateText(moduleNode.module.name), x + 6,
-            y + 5, 0xFFEAEAEA);
+        fill(ctx, x, y, x + w, y + h, 0xFF20242C);
+        fill(ctx, x, y, x + w, y + node.headerH, 0xFF2B3240);
+        drawText(ctx, font, node.module.translateText(node.module.name), x + 6, y + 5, 0xFFEAEAEA, true);
 
         int btnSize = 12;
         int deleteX = x + w - btnSize - 4;
-        int btnY = y + (moduleNode.headerH - btnSize) / 2;
+        int btnY = y + (node.headerH - btnSize) / 2;
         int gearX = deleteX - btnSize - 2;
 
-        context.drawTexture(RenderLayer::getGuiTextured, GEAR_TEX, gearX, btnY, 0, 0, btnSize,
-            btnSize, btnSize, btnSize);
+        drawTexture(ctx, GEAR_TEX, gearX, btnY, 0, 0, btnSize, btnSize, btnSize, btnSize);
+        drawText(ctx, font, "×", deleteX + 3, btnY + 2, 0xFFFF5A5A, true);
 
-        context.drawTextWithShadow(textRenderer, "×", deleteX + 3, btnY + 2, 0xFFFF5A5A);
-
-        for (int i = 0; i < moduleNode.rows(); i++) {
-            int ry = y + moduleNode.headerH + moduleNode.pad + i * moduleNode.rowH + 7;
-
-            if (i < moduleNode.module.inputImageConfigs.size()) {
-                ImageConfig in = moduleNode.module.inputImageConfigs.get(i);
-                int dotX = x + 10;
-                int dotY = ry + 7;
-
+        for (int i = 0; i < node.rows(); i++) {
+            int ry = y + node.headerH + node.pad + i * node.rowH + 7;
+            if (i < node.module.inputImageConfigs.size()) {
+                ImageConfig in = node.module.inputImageConfigs.get(i);
+                int dotX = x + 10, dotY = ry + 7;
                 int color = (in == pendingPort) ? 0xFFFFFF00 : getFormatColor(in.format);
-                boolean isConnected = moduleConnections.stream().anyMatch(l -> l.dst == in);
-                drawPortDot(context, dotX, dotY, color, isConnected, false);
-
-                context.drawTextWithShadow(textRenderer, in.name, x + 18, ry + 2, 0xFFD0D0D0);
+                boolean connected = moduleConnections.stream().anyMatch(l -> l.dst == in);
+                drawPortDot(ctx, dotX, dotY, color, connected, false);
+                drawText(ctx, font, in.name, x + 18, ry + 2, 0xFFD0D0D0, true);
             }
-
-            if (i < moduleNode.module.outputImageConfigs.size()) {
-                ImageConfig out = moduleNode.module.outputImageConfigs.get(i);
-                int dotX = x + w - 10;
-                int dotY = ry + 7;
-
+            if (i < node.module.outputImageConfigs.size()) {
+                ImageConfig out = node.module.outputImageConfigs.get(i);
+                int dotX = x + w - 10, dotY = ry + 7;
                 int color = (out == pendingPort) ? 0xFFFFFF00 : getFormatColor(out.format);
-                boolean isConnected = moduleConnections.stream().anyMatch(l -> l.src == out);
-                drawPortDot(context, dotX, dotY, color, isConnected, out == localFinalOutput);
-
-                int nameWidth = textRenderer.getWidth(out.name);
-                context.drawTextWithShadow(textRenderer, out.name, (dotX - 8) - nameWidth, ry + 2,
-                    0xFFD0D0D0);
+                boolean connected = moduleConnections.stream().anyMatch(l -> l.src == out);
+                drawPortDot(ctx, dotX, dotY, color, connected, out == localFinalOutput);
+                int nameWidth = textWidth(font, out.name);
+                drawText(ctx, font, out.name, (dotX - 8) - nameWidth, ry + 2, 0xFFD0D0D0, true);
             }
         }
     }
 
-    private void drawPortDot(DrawContext ctx, int cx, int cy, int color, boolean filled,
-        boolean isFinal) {
-        ctx.fill(cx - 4, cy - 4, cx + 5, cy + 5, isFinal ? 0xFF55FF55 : 0xFF000000);
-        ctx.fill(cx - 3, cy - 3, cx + 4, cy + 4, 0xFF000000);
-        ctx.fill(cx - 2, cy - 2, cx + 3, cy + 3, color);
-        if (!filled) {
-            ctx.fill(cx - 1, cy - 1, cx + 2, cy + 2, 0xFF20242C);
-        }
+    private void drawPortDot(Object ctx, int cx, int cy, int color, boolean filled, boolean isFinal) {
+        fill(ctx, cx - 4, cy - 4, cx + 5, cy + 5, isFinal ? 0xFF55FF55 : 0xFF000000);
+        fill(ctx, cx - 3, cy - 3, cx + 4, cy + 4, 0xFF000000);
+        fill(ctx, cx - 2, cy - 2, cx + 3, cy + 3, color);
+        if (!filled) fill(ctx, cx - 1, cy - 1, cx + 2, cy + 2, 0xFF20242C);
     }
 
     private boolean testCycle(ImageConfig src, ImageConfig dst) {
@@ -729,8 +608,8 @@ public class RenderPipelineScreen extends Screen {
         draggedNode = null;
 
         if (activeVRSettings != null && mouseY >= HEADER_HEIGHT) {
-            if (activeVRSettings.contains(mouseX, mouseY)) {
-                return activeVRSettings.mouseClicked(mouseX, mouseY, button);
+            if (vrSettingsContains(activeVRSettings, mouseX, mouseY)) {
+                return vrSettingsMouseClicked(activeVRSettings, mouseX, mouseY, button);
             }
             activeVRSettings = null;
         }
@@ -757,8 +636,7 @@ public class RenderPipelineScreen extends Screen {
             }
 
             if (button == 0 && isGearClicked(node, mouseX, mouseY)) {
-                MinecraftClient.getInstance()
-                    .setScreen(new ModuleAttributeScreen(this, node.module));
+                setScreen(getMinecraft(), new ModuleAttributeScreen(this, node.module));
                 return true;
             }
         }
@@ -860,7 +738,7 @@ public class RenderPipelineScreen extends Screen {
         mouseX /= GLOBAL_SCALE;
         mouseY /= GLOBAL_SCALE;
 
-        if (activeVRSettings != null && activeVRSettings.mouseDragged(mouseX, mouseY, button,
+        if (activeVRSettings != null && vrSettingsMouseDragged(activeVRSettings, mouseX, mouseY, button,
             deltaX / GLOBAL_SCALE, deltaY / GLOBAL_SCALE)) {
             return true;
         }
@@ -905,7 +783,7 @@ public class RenderPipelineScreen extends Screen {
         mouseX /= GLOBAL_SCALE;
         mouseY /= GLOBAL_SCALE;
 
-        if (activeVRSettings != null && activeVRSettings.mouseReleased(mouseX, mouseY, button)) {
+        if (activeVRSettings != null && vrSettingsMouseReleased(activeVRSettings, mouseX, mouseY, button)) {
             return true;
         }
 
@@ -946,56 +824,40 @@ public class RenderPipelineScreen extends Screen {
     }
 
     private class ModuleSelector {
-
         private final int x, y, width;
         private final List<ModuleEntry> options;
         private final int itemHeight = 18;
 
         public ModuleSelector(int x, int y, Map<String, ModuleEntry> entries) {
-            this.x = x;
-            this.y = y;
+            this.x = x; this.y = y;
             this.options = new ArrayList<>();
             for (ModuleEntry entry : entries.values()) {
-                if (entry == null || entry.name == null) {
-                    continue;
-                }
-                if (Pipeline.isModuleAvailable(entry.name)) {
-                    this.options.add(entry);
-                }
+                if (entry == null || entry.name == null) continue;
+                if (Pipeline.isModuleAvailable(entry.name)) this.options.add(entry);
             }
             this.width = 120;
         }
 
-        public void render(DrawContext ctx, int mouseX, int mouseY) {
-            int currentY = y;
-            ctx.fill(x - 1, y - 1, x + width + 1, y + (options.size() * itemHeight) + 1,
-                0xFFFFFFFF);
-
+        public void render(Object ctx, int mx, int my) {
+            int cy = y;
+            Object font = screenFont(RenderPipelineScreen.this);
+            fill(ctx, x - 1, y - 1, x + width + 1, y + (options.size() * itemHeight) + 1, 0xFFFFFFFF);
             for (ModuleEntry entry : options) {
-                boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= currentY
-                    && mouseY <= currentY + itemHeight;
-                ctx.fill(x, currentY, x + width, currentY + itemHeight,
-                    hovered ? 0xFF444444 : 0xFF222222);
-                ctx.drawTextWithShadow(textRenderer, Text.translatable(entry.name), x + 5,
-                    currentY + 5, 0xFFE0E0E0);
-                currentY += itemHeight;
+                boolean hovered = mx >= x && mx <= x + width && my >= cy && my <= cy + itemHeight;
+                fill(ctx, x, cy, x + width, cy + itemHeight, hovered ? 0xFF444444 : 0xFF222222);
+                drawText(ctx, font, txt(entry.name), x + 5, cy + 5, 0xFFE0E0E0, true);
+                cy += itemHeight;
             }
         }
 
-        public boolean onClick(double mouseX, double mouseY) {
-            if (mouseX < x || mouseX > x + width || mouseY < y || mouseY > y + (options.size()
-                * itemHeight)) {
-                return false;
-            }
-            int index = (int) ((mouseY - y) / itemHeight);
+        public boolean onClick(double mx, double my) {
+            if (mx < x || mx > x + width || my < y || my > y + (options.size() * itemHeight)) return false;
+            int index = (int) ((my - y) / itemHeight);
             if (index >= 0 && index < options.size()) {
                 ModuleEntry selected = options.get(index);
-                if (!Pipeline.isModuleAvailable(selected.name)) {
-                    return true;
-                }
+                if (!Pipeline.isModuleAvailable(selected.name)) return true;
                 Module module = selected.loadModule();
-                module.x = 100;
-                module.y = 100;
+                module.x = 100; module.y = 100;
                 nodes.add(new ModuleNode(module));
                 return true;
             }
@@ -1028,219 +890,79 @@ public class RenderPipelineScreen extends Screen {
 
     private void applyActivePreset() {
         presetBlocks.clear();
-        for (ClickableWidget w : presetWidgets) {
-            this.children().remove(w);
-            this.drawables.remove(w);
+        for (Object w : presetWidgets) {
+            try {
+                List<?> children = screenChildren(this);
+                children.remove(w);
+                // renderables managed by PlatformScreen
+            } catch (Exception ignored) {}
         }
         presetWidgets.clear();
 
-        if (activePreset == null) {
-            return;
-        }
-
+        if (activePreset == null) return;
         Pipeline.switchToPresetMode(activePreset.name(), false);
 
         List<Module> modules = new ArrayList<>(Pipeline.INSTANCE.getModules());
-
         for (Module m : modules) {
             PresetModuleBlock block = new PresetModuleBlock(m);
             presetBlocks.add(block);
-            if (m.attributeConfigs == null || m.attributeConfigs.isEmpty()) {
-                continue;
-            }
+            if (m.attributeConfigs == null || m.attributeConfigs.isEmpty()) continue;
             for (AttributeConfig cfg : m.attributeConfigs) {
-                if (Pipeline.isRayTracingShaderPackAttribute(m, cfg)) {
-                    continue;
-                }
-                List<ClickableWidget> ws = buildPresetWidgets(m, cfg);
-                for (ClickableWidget w : ws) {
-                    presetWidgets.add(addDrawableChild(w));
+                if (Pipeline.isRayTracingShaderPackAttribute(m, cfg)) continue;
+                List<Object> ws = buildPresetWidgets(m, cfg);
+                for (Object w : ws) {
+                    presetWidgets.add(screenAddChild(RenderPipelineScreen.this, w));
                 }
                 block.rows.add(new PresetRow(cfg, ws));
             }
         }
 
         if (secondaryBtn != null && mode == Mode.PRESET) {
-            Text activePresetText = activePreset != null
-                ? Text.translatable(activePreset.name())
-                : Text.literal("N/A");
-            secondaryBtn.setMessage(Text.translatable(RENDER_PIPELINE_PRESET_NAME)
-                .append(Text.literal(": "))
-                .append(activePresetText));
+            Object text = activePreset != null ? txt(activePreset.name()) : txtLit("N/A");
+            setButtonMsg(secondaryBtn, txtAppend(txt(PRESET_NAME_KEY), txtAppend(txtLit(": "), text)));
         }
+    }
+
+    private List<Object> buildPresetWidgets(Module module, AttributeConfig cfg) {
+        return AttributeWidgetUtil.buildWidgets(module, cfg, screenFont(this), 200, 64);
     }
 
     private void syncPresetToPipeline() {
         Pipeline.savePipeline();
     }
 
-    private List<ClickableWidget> buildPresetWidgets(Module module, AttributeConfig cfg) {
-        return AttributeWidgetUtil.buildWidgets(module, cfg, textRenderer, 200, 64);
-    }
-
-    private class VRSettingsPopup {
-
-        private final int x, y, width, height;
-        private final List<ClickableWidget> widgets = new ArrayList<>();
-
-        private VRSettingsPopup(int x, int y) {
-            this.x = x;
-            this.y = y;
-            this.width = 230;
-
-            int rowH = 24;
-            int currentY = y + 6;
-            int widgetX = x + 6;
-            int widgetW = width - 12;
-
-            for (SimpleOption<?> option : buildOptions()) {
-                widgets.add(option.createWidget(MinecraftClient.getInstance().options,
-                    widgetX, currentY, widgetW));
-                currentY += rowH;
-            }
-
-            this.height = (currentY - y) + 6;
-        }
-
-        private List<SimpleOption<?>> buildOptions() {
-            List<SimpleOption<?>> options = new ArrayList<>();
-
-            options.add(SimpleOption.ofBoolean(
-                Options.VR_ENABLED_KEY,
-                Options.vrEnabled,
-                value -> Options.setVREnabled(value, true)));
-
-            options.add(new SimpleOption<>(Options.VR_RENDER_SCALE_KEY,
-                SimpleOption.emptyTooltip(),
-                (optionText, value) -> getGenericValueText(optionText,
-                    Text.literal(String.format(Locale.ROOT, "%.2fx", value / 100.0f))),
-                new SimpleOption.ValidatingIntSliderCallbacks(10, 200),
-                Codec.intRange(10, 200),
-                Math.round(Options.vrRenderScale * 100.0f),
-                value -> Options.setVRRenderScale(value / 100.0f, true)));
-
-            options.add(new SimpleOption<>(Options.VR_IPD_KEY,
-                SimpleOption.emptyTooltip(),
-                (optionText, value) -> getGenericValueText(optionText,
-                    Text.literal(String.format(Locale.ROOT, "%.3fm", value / 1000.0f))),
-                new SimpleOption.ValidatingIntSliderCallbacks(0, 120),
-                Codec.intRange(0, 120),
-                Math.round(Options.vrIPD * 1000.0f),
-                value -> Options.setVRIPD(value / 1000.0f, true)));
-
-            options.add(new SimpleOption<>(Options.VR_WORLD_SCALE_KEY,
-                SimpleOption.emptyTooltip(),
-                (optionText, value) -> getGenericValueText(optionText,
-                    Text.literal(String.format(Locale.ROOT, "%.2fx", value / 100.0f))),
-                new SimpleOption.ValidatingIntSliderCallbacks(1, 500),
-                Codec.intRange(1, 500),
-                Math.round(Options.vrWorldScale * 100.0f),
-                value -> Options.setVRWorldScale(value / 100.0f, true)));
-
-            options.add(SimpleOption.ofBoolean(
-                Options.POST_STEREO_SIMULATOR_KEY,
-                Options.postStereoSimulator,
-                value -> Options.setPostStereoSimulator(value, true)));
-
-            options.add(SimpleOption.ofBoolean(
-                Options.VR_F3_CHARTS_KEY,
-                Options.vrF3Charts,
-                value -> Options.setVRF3Charts(value, true)));
-
-            options.add(new SimpleOption<>(Options.VR_F3_CHART_POSITION_KEY,
-                SimpleOption.emptyTooltip(),
-                (optionText, value) -> getGenericValueText(optionText,
-                    Text.translatable("options.video.vr.f3_chart_position." + value.name()
-                        .toLowerCase(Locale.ROOT))),
-                new PotentialValuesBasedCallbacksNoValue<>(
-                    Arrays.asList(VRPerformanceConfig.HudPosition.TOP_LEFT,
-                        VRPerformanceConfig.HudPosition.TOP_RIGHT,
-                        VRPerformanceConfig.HudPosition.BOTTOM_LEFT,
-                        VRPerformanceConfig.HudPosition.BOTTOM_RIGHT),
-                    Codec.STRING.xmap(Options::parseHudPosition,
-                        VRPerformanceConfig.HudPosition::name)),
-                Options.vrF3ChartPosition,
-                value -> Options.setVRF3ChartPosition(value, true)));
-
-            return options;
-        }
-
-        private void render(DrawContext ctx, int mouseX, int mouseY) {
-            ctx.fill(x - 1, y - 1, x + width + 1, y + height + 1, 0xFFFFFFFF);
-            ctx.fill(x, y, x + width, y + height, 0xFF20242C);
-            for (ClickableWidget widget : widgets) {
-                widget.render(ctx, mouseX, mouseY, 0f);
-            }
-        }
-
-        private boolean contains(double mouseX, double mouseY) {
-            return mouseX >= x && mouseX <= x + width && mouseY >= y && mouseY <= y + height;
-        }
-
-        private boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX,
-            double deltaY) {
-            for (ClickableWidget widget : widgets) {
-                if (widget.mouseDragged(mouseX, mouseY, button, deltaX, deltaY)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        private boolean mouseClicked(double mouseX, double mouseY, int button) {
-            for (ClickableWidget widget : widgets) {
-                if (widget.mouseClicked(mouseX, mouseY, button)) {
-                    return true;
-                }
-            }
-            return true;
-        }
-
-        private boolean mouseReleased(double mouseX, double mouseY, int button) {
-            for (ClickableWidget widget : widgets) {
-                if (widget.mouseReleased(mouseX, mouseY, button)) {
-                    return true;
-                }
-            }
-            return false;
-        }
-    }
+    // VRSettings stubs (SimpleOption is not available in 26.2+)
+    private boolean vrSettingsContains(Object vs, double mx, double my) { return false; }
+    private boolean vrSettingsMouseClicked(Object vs, double mx, double my, int btn) { return false; }
+    private boolean vrSettingsMouseDragged(Object vs, double mx, double my, int btn, double dx, double dy) { return false; }
+    private boolean vrSettingsMouseReleased(Object vs, double mx, double my, int btn) { return false; }
 
     private class PresetSelector {
-
         private final int x, y, width;
         private final List<PresetEntry> options;
         private final int itemHeight = 18;
 
         public PresetSelector(int x, int y, List<PresetEntry> presets) {
-            this.x = x;
-            this.y = y;
+            this.x = x; this.y = y;
             this.options = new ArrayList<>(presets);
             this.width = 140;
         }
 
-        public void render(DrawContext ctx, int mouseX, int mouseY) {
-            int currentY = y;
-            ctx.fill(x - 1, y - 1, x + width + 1, y + (options.size() * itemHeight) + 1,
-                0xFFFFFFFF);
-
+        public void render(Object ctx, int mx, int my) {
+            int cy = y;
+            Object font = screenFont(RenderPipelineScreen.this);
+            fill(ctx, x - 1, y - 1, x + width + 1, y + (options.size() * itemHeight) + 1, 0xFFFFFFFF);
             for (PresetEntry entry : options) {
-                boolean hovered = mouseX >= x && mouseX <= x + width && mouseY >= currentY
-                    && mouseY <= currentY + itemHeight;
-                ctx.fill(x, currentY, x + width, currentY + itemHeight,
-                    hovered ? 0xFF444444 : 0xFF222222);
-                ctx.drawTextWithShadow(textRenderer, Text.translatable(entry.name()), x + 5,
-                    currentY + 5, 0xFFE0E0E0);
-                currentY += itemHeight;
+                boolean hovered = mx >= x && mx <= x + width && my >= cy && my <= cy + itemHeight;
+                fill(ctx, x, cy, x + width, cy + itemHeight, hovered ? 0xFF444444 : 0xFF222222);
+                drawText(ctx, font, txt(entry.name()), x + 5, cy + 5, 0xFFE0E0E0, true);
+                cy += itemHeight;
             }
         }
 
-        public boolean onClick(double mouseX, double mouseY) {
-            if (mouseX < x || mouseX > x + width || mouseY < y || mouseY > y + (options.size()
-                * itemHeight)) {
-                return false;
-            }
-            int index = (int) ((mouseY - y) / itemHeight);
+        public boolean onClick(double mx, double my) {
+            if (mx < x || mx > x + width || my < y || my > y + (options.size() * itemHeight)) return false;
+            int index = (int) ((my - y) / itemHeight);
             if (index >= 0 && index < options.size()) {
                 activePreset = options.get(index);
                 presetScrollY = 0;
@@ -1261,7 +983,7 @@ public class RenderPipelineScreen extends Screen {
         }
     }
 
-    private record PresetRow(AttributeConfig cfg, List<ClickableWidget> widgets) {
+    private record PresetRow(AttributeConfig cfg, List<Object> widgets) {
 
     }
 }

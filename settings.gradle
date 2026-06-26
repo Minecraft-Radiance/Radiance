@@ -4,6 +4,12 @@ pluginManagement {
             name = 'Fabric'
             url = 'https://maven.fabricmc.net/'
         }
+        maven { url 'https://jitpack.io' }
         gradlePluginPortal()
     }
 }
+
+// Multi-version via ReplayMod Preprocessor
+include '1.21.4', '26.2'
+project(':1.21.4').projectDir = file('versions/1.21.4')
+project(':26.2').projectDir = file('versions/26.2')

@@ -1,8 +1,7 @@
 package com.radiance.client.gui;
 
+import com.radiance.client.gui.compat.GuiCompat;
 import com.radiance.client.proxy.vulkan.VRProxy;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
 
 /**
  * Client-side manager for VR performance visualization
@@ -47,29 +46,17 @@ public class VRPerformanceManager {
     /**
      * Render VR performance overlay in F3 debug context
      */
-    public void renderInF3(DrawContext context, int screenWidth, int screenHeight) {
-        if (!enabledInF3 || !shouldShow()) {
-            return;
-        }
-
+    public void renderInF3(Object context, int screenWidth, int screenHeight) {
+        if (!enabledInF3 || !shouldShow()) return;
         renderHUD(context, screenWidth, screenHeight);
     }
 
-    /**
-     * Render VR performance as standalone overlay
-     */
-    public void renderStandalone(DrawContext context, int screenWidth, int screenHeight) {
-        if (!enabledStandalone || !shouldShow()) {
-            return;
-        }
-
+    public void renderStandalone(Object context, int screenWidth, int screenHeight) {
+        if (!enabledStandalone || !shouldShow()) return;
         renderHUD(context, screenWidth, screenHeight);
     }
 
-    /**
-     * Internal HUD rendering
-     */
-    private void renderHUD(DrawContext context, int screenWidth, int screenHeight) {
+    private void renderHUD(Object context, int screenWidth, int screenHeight) {
         // Configure HUD display based on settings
         boolean wasVisible = performanceHUD.isVisible();
         performanceHUD.setVisible(true);
@@ -89,7 +76,7 @@ public class VRPerformanceManager {
      * Check if VR performance display should be shown
      */
     private boolean shouldShow() {
-        return MinecraftClient.getInstance().player != null;
+        return GuiCompat.getClientPlayer(GuiCompat.getMinecraft()) != null;
     }
 
     // Configuration methods

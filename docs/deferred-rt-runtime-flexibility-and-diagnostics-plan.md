@@ -1,6 +1,6 @@
 # Deferred RT Runtime Flexibility and Diagnostics Plan
 
-Status: Step A/B/C/D/E/F/G foundation partially implemented; named resolution domains, the first coordinate contract, scaled queue domains, native output defaults, generated graph/barrier/descriptor plans, compact diagnostics transport, explicit Deferred compute/ray VR execution modes, first active-graph compose/barrier optimizations and direct-light queue/tile scheduling are implemented
+Status: Step A/B/C/G foundation partially implemented; named resolution domains and the first coordinate contract are implemented; scaled queues, output-default optimization and generated barrier plans remain planned
 Scope: MCVR native Deferred RT runtime, shared ShaderPack schema, built-in `vanilla-deferred-rt`, Radiance Java diagnostics handoff  
 Goal: make Deferred RT shaderpacks able to control real resource cost without exposing Vulkan details, while keeping the C++ pipeline efficient, VR-correct and diagnosable.
 
@@ -11,9 +11,8 @@ Goal: make Deferred RT shaderpacks able to control real resource cost without ex
 The current Deferred RT implementation proves the renderer shape, but several costs are still tied to a fixed backbone:
 
 - fixed slots are generally present once declared by the pack,
-- `direct_light` can now use either legacy full-resolution screen dispatch or direct lighting-queue dispatch,
-- `reflection` and `gi` use lighting-queue indirect dispatch, and M3 lets packs bind those queues to full, pass or named
-  resolution domains instead of a fixed full-resolution tile domain,
+- `direct_light` is currently a full-resolution screen dispatch,
+- `reflection` and `gi` use lighting-queue indirect dispatch, but their queue domain is still fixed and full-resolution tile based,
 - ray-query passes only fall back to compute when ray query is unavailable or TLAS is missing,
 - there is no first-class pass/resource resolution domain for half-resolution or quarter-resolution ray work,
 - diagnostics currently rely too much on console output, which is not reliable when running inside the JVM/Minecraft process,
@@ -67,7 +66,7 @@ Missing behavior:
 - scaled dispatch dimensions,
 - scaled queue generation,
 - scaled intermediate resources,
-- targeted output defaults and a future upsample/compose handoff for scaled public outputs,
+- upsample/compose handoff,
 - diagnostics that report actual dispatch resolution and ray-query pixel count.
 
 ### 3.3 Backend and VR selection should reuse PostRender concepts, but not hard-code `auto`
@@ -527,8 +526,7 @@ Scaled effects must also declare or inherit these policies:
 - output upsample policy, initially explicit compose or a named upsample pass; still planned for M4/M8.
 - history resolution, either `dispatch` or `full`; M2 blocks unsafe scaled public writes until explicit history and
   upsample ownership are available.
-- queue domain, either the pass resolution domain, full resolution or an explicitly named resolution domain; implemented
-  in M3 for lighting queues.
+- queue domain, either the pass resolution domain or an explicitly named domain; planned for M3.
 
 Open-ended shader-side guessing is not allowed. A half-resolution GI shader must know how to map its dispatch pixel to full-resolution depth/normal, where its history lives and who upsamples the result.
 
@@ -542,16 +540,14 @@ Example:
 {
   "schedule": {
     "mode": "lighting_queue",
-    "queue": {
-      "name": "gi",
-      "domain": "pass_resolution"
-    }
+    "queue": "gi",
+    "resolution": "gi",
+    "tile_size": 16
   }
 }
 ```
 
 This must reduce launched workgroups. It must not be implemented as full-resolution dispatch with shader early returns.
-The legacy string form, such as `"queue": "gi"`, remains valid and defaults to `full_resolution`.
 
 ### 4.8 Output default policy
 
@@ -575,30 +571,15 @@ Add an output policy layer:
 
 Runtime requirement:
 
-- defaults are applied only for outputs not fully written by an active pass,
-- defaults must avoid full-screen shader work when possible,
+- defaults are applied only for outputs not written by an active pass,
+- defaults must avoid full-screen work when possible,
 - options may include:
   - lazy clear,
   - alias to a zero image,
   - targeted clear,
   - preserved value for history resources when valid.
 
-Implementation status:
-
-- Milestone M4 replaces the `clear_contract` compute pass in the normal runtime graph with native targeted
-  `vkCmdClearColorImage` clears derived from the active Deferred fixed semantics.
-- `clear_contract` remains a compatibility marker in the built-in pack, but it is recorded as an output-default marker;
-  the runtime does not build a pipeline for it and does not dispatch it.
-- Active full writers can suppress their default clear. Screen direct light is treated as a full writer for
-  `first_hit_diffuse_direct_light`; queued direct light, reflection, GI and compose remain partial writers and keep
-  defaults where their shaders can early-return or only write queued/eligible pixels.
-- G-buffer outputs are treated as fully covered only when the current frame actually has a G-buffer view and opaque or
-  cutout draw packets. Empty-scene frames still default-clear G-buffer outputs so stale previous-frame contents cannot
-  leak downstream.
-- Defaults are layer-count aware and use the same public-output default values as the old clear contract, including
-  `normal_roughness = (0, 0, 0, 1)` and `fog_image = (0, 0, 0, -1)`.
-- This is a conservative targeted-clear implementation. Zero-image aliasing, explicit scaled-output upsample ownership
-  and public-output export pruning remain later optimization work.
+The first implementation can be conservative and use targeted clears, but it should stop clearing all public outputs unconditionally.
 
 ---
 
@@ -643,25 +624,6 @@ Runtime plan construction order:
 8. Determine output default policy for unwritten outputs.
 9. Determine runtime requirements.
 10. Build descriptor, barrier and pipeline data only for active nodes.
-
-Implementation status:
-
-- Milestone M5 adds a CPU-testable generated graph plan built from active Deferred runtime pass names, shaderpack pass
-  declarations, fixed semantic resource rules and active queue domains.
-- The graph plan records per-pass logical image/buffer reads and writes, fixed native resource intent, scene-set
-  descriptor intent, no-op fixed passes and summary counts for graph diagnostics.
-- `classify` and `build_lighting_queues` become no-op runtime passes when the active graph has no classification or
-  lighting-queue consumers. They do not create pipelines and do not dispatch.
-- Descriptor update work is now pruned for unused classification masks/stats, visibility masks, lighting queue buffers,
-  fixed direct/reflection/GI uniforms and TLAS bindings, scene-set resources and pass stats bindings.
-- Native resource allocation and initialization for classification masks, visibility masks, lighting queues and
-  G-buffer render-pass/depth resources are skipped when the active graph does not need them.
-- Compute/full-screen pass barriers are generated from the active graph pass resource intent instead of hard-coded
-  semantic branches for queue build, reflection, GI and compose.
-- Public-output aliases such as `gbuffer.depth` and `lighting.gi` are resolved to the module-owned public outputs when
-  generating barriers, while custom runtime resources continue through the shaderpack runtime resource path.
-- The Vulkan descriptor layout ABI intentionally remains fixed in M5; the generated descriptor plan prunes updates and
-  bindings, not set-layout shape. G-buffer render passes still use dedicated render-pass pre/post barriers.
 
 Important requirement:
 
@@ -821,15 +783,6 @@ Add explicit diagnostic sinks:
 
 Console output should be used only for exceptional startup errors or developer builds, not per-frame runtime diagnostics.
 
-Implementation status:
-
-- Milestone M6 adds explicit module attributes for `diagnostics_graph_report`, `diagnostics_stats`,
-  `diagnostics_gpu_timing`, `diagnostics_trace_file` and `diagnostics_log_interval`.
-- The legacy `diagnostics_log` switch now enables graph-report compatibility only. It no longer implicitly enables
-  shader atomic statistics.
-- File trace writes compact snapshot lines only when `diagnostics_trace_file` is non-empty. The sink is off by default
-  and does not collect the string-heavy graph report.
-
 ### 7.3 Native snapshot model
 
 Diagnostics must be split into two layers:
@@ -894,17 +847,6 @@ Frame snapshots must not contain:
 
 String-heavy data belongs in the graph report.
 
-Implementation status:
-
-- Milestone M6 exposes the latest native snapshot to Java as a fixed-order `long[]`.
-- The snapshot contains only numeric fields: validity, sequence, flags, frame index, dimensions, view/draw counts,
-  active graph counts, descriptor/barrier/resource counts, requirement flags, provider counters, visibility counters,
-  optional stats counters, frame GPU time and up to eight compact pass timing slots.
-- The pass timing slots store stable hashed pass ids and microseconds. Pass names remain in graph reports rather than
-  per-frame snapshots.
-- The Java debug text path formats this compact array directly. It calls the old string-heavy native overlay only when
-  the snapshot reports that a graph report is available.
-
 ### 7.4 Graph report model
 
 The graph report is generated on pack load/reload, attribute change or explicit developer request. It is not generated or formatted every frame.
@@ -927,13 +869,6 @@ The graph report should include:
 - unused resources or passes.
 
 The graph report can be exported to file or exposed through a developer UI. It should not be part of the default frame loop.
-
-Implementation status:
-
-- Milestone M6 makes runtime-plan graph report collection optional. It is collected only when
-  `diagnostics_graph_report` or the legacy `diagnostics_log` compatibility flag is enabled.
-- The active graph still builds its CPU graph plan for correctness and command recording, but selected/skipped-candidate
-  strings, graph report lines and formatted native overlays are not produced on the default path.
 
 ### 7.5 Java handoff
 
@@ -963,13 +898,6 @@ Add GPU timestamp support behind a diagnostics flag:
 
 Do not mix required rendering resources with timing resources. Timing allocation should happen only when enabled.
 
-Implementation status:
-
-- Milestone M6 adds a lazy Vulkan timestamp query pool behind `diagnostics_gpu_timing`.
-- When disabled, no query pool is allocated and no reset/timestamp/result commands run.
-- When enabled, the runtime records a frame timing scope plus up to eight active Deferred pass timing scopes per frame
-  and exposes the completed results in the compact snapshot.
-
 ### 7.7 Statistics implementation
 
 Existing shader atomic counters should become optional:
@@ -984,13 +912,6 @@ Preferred first step:
 - stats shader code compiles out when disabled,
 - stats buffers are not allocated when disabled,
 - stats download commands are not recorded when disabled.
-
-Implementation status:
-
-- Milestone M6 separates graph report, stats and timing controls. `diagnostics_stats` is the only public switch that
-  enables stats buffers, stats descriptors, shader atomics, clears and readbacks.
-- Compact snapshots are still maintained without stats enabled, but stats fields are marked valid only after stats
-  readback has completed for a frame.
 
 ---
 
@@ -1141,22 +1062,19 @@ Completion standard:
 
 Current issue:
 
-- Built-in `direct_light` now defaults to the direct lighting queue.
-- Screen scheduling remains valid for external packs, but queued scheduling is the intended sparse-work path.
+- Built-in `direct_light` is full-screen.
 - Even when ray query is enabled, not every pixel needs a direct-light ray.
 
 Required direction:
 
-- Support a direct-light queue or tile schedule in addition to screen schedule, completed in M10.
-- Use classification and visibility mask data to skip sky, invalid and hidden-area tiles before direct-light ray query,
-  first queued tile implementation completed in M10. Back-facing/light-facing refinement remains future shader tuning.
+- Support a direct-light queue or tile schedule in addition to screen schedule.
+- Use classification, visibility mask and simple lighting tests to skip sky, invalid, hidden-area and back-facing pixels before ray query.
 - Permit compute fallback and disabled backend through selection profiles.
 - Report direct-light candidate counts and dispatch dimensions in diagnostics.
 
 Completion standard:
 
-- Direct ray-query work can be made proportional to eligible pixels/tiles rather than always full-screen. M10 implements
-  the runtime queue path; sparse-scene GPU profiling and threshold tuning remain performance follow-up work.
+- Direct ray-query work can be made proportional to eligible pixels/tiles rather than always full-screen.
 
 ### 8.9 Improve queue builder and queue granularity
 
@@ -1187,17 +1105,14 @@ Current issue:
 
 Required direction:
 
-- Generate compose definitions from active graph features. The first fixed compose-feature implementation is complete in
-  M8.
-- Do not read GI, reflection, fog, refraction or clear-layer outputs when the active graph cannot write them. M8 prunes
-  those graph inputs and compiles the built-in compose shader with matching feature macros.
+- Generate compose definitions from active graph features.
+- Do not read GI, reflection, fog, refraction or clear-layer outputs when the active graph cannot write them.
 - Provide a lightweight direct-only or ambient-only compose path.
 - Keep output defaults compatible with the selected compose variant.
 
 Completion standard:
 
-- Disabling GI/reflection removes their compose reads as well as their pass dispatches. Covered for the fixed compose
-  path in M8 graph-plan tests.
+- Disabling GI/reflection removes their compose reads as well as their pass dispatches.
 
 ### 8.11 Delay public output export when possible
 
@@ -1221,29 +1136,9 @@ Required direction:
 - Per-eye execution is a compatibility fallback, not an invisible default.
 - Diagnostics must report pass-level VR execution mode and fallback reason.
 
-Implementation status:
-
-- Milestone M7 implements explicit Deferred compute/ray execution modes:
-  - `view_agnostic` and unspecified policies lower to `layered_single_dispatch`, preserving the existing layer-aware
-    single dispatch behavior.
-  - `per_view` lowers to `per_view_dispatch`; command recording loops each active view with
-    `layerCount = 1`, `baseLayer = viewIndex` and `viewIndex = viewIndex` in the unified resolution push constants.
-  - `mono_replicate` lowers to `mono_dispatch_replicate`; command recording runs layer 0 only, then copies declared
-    image outputs from layer 0 to the remaining active layers. Buffer outputs and native non-image fixed semantics are
-    rejected for `mono_replicate`.
-  - `unsupported` still rejects stereo plans.
-- The push-constant ABI now names the previous reserved words as `baseLayer` and `viewIndex` without changing the block
-  size. Built-in shaders map local dispatch `z` to the actual array layer through shared helpers.
-- Lighting queues now maintain both whole-queue indirect counts and per-kind/per-layer indirect counts. `per_view` and
-  `mono_replicate` queued reflection/GI dispatches use the per-layer indirect offset, so they do not re-dispatch work
-  from other views.
-- Writable shaderpack runtime images include transfer usage so `mono_replicate` can copy layered custom image outputs
-  as well as public outputs.
-
 Completion standard:
 
-- VR performance regressions caused by per-eye fallback are visible in graph reports. Compact snapshot mode still carries
-  aggregate pass timing slots rather than a rich named VR fallback list.
+- VR performance regressions caused by per-eye fallback are visible in frame snapshots and graph reports.
 
 ### 8.13 Use visibility mask before expensive work
 
@@ -1387,160 +1282,85 @@ Tests:
 
 ### Step D: Scaled queues
 
-Implementation status:
-
-- Milestone M3 implements scaled lighting queue domains:
-  - `schedule.queue` now accepts either the legacy string form or an object with `name` and `domain`,
-  - `domain: "full_resolution"` maps to the full-resolution G-buffer domain,
-  - `domain: "pass_resolution"` maps to the selected concrete pass resolution domain,
-  - any other valid domain name is resolved against the shaderpack `resolutions` table,
-  - active runtime plans record one active domain per queue kind and reject unknown or conflicting domains,
-  - inactive or unselected backend candidates do not contribute queue domains, resource capacity or indirect work,
-  - lighting queue headers carry full/dispatch extents, full/dispatch scale factors and enabled flags,
-  - queue record buffer capacity is computed only for active queues and their selected dispatch domains,
-  - the `build_lighting_queues` dispatch uses the maximum active queue dispatch extent instead of the full-resolution
-    pass extent,
-  - disabled queue headers have zero capacity and the build shader skips emission for them,
-  - queued reflection/GI shaders map queued dispatch pixels back to full-resolution G-buffer pixels before sampling.
-- Built-in reflection/GI public output passes still default to full pass resolution because explicit upsample/default
-  ownership is not implemented yet. M3 enables scaled queue and indirect work; it does not enable unsafe scaled public
-  output writes.
-
 Tasks:
 
-- extend lighting queue metadata to include resolution domain, completed in M3,
-- build queue headers/records for selected domain, completed in M3,
-- make indirect args reflect scaled dispatch count, completed in M3,
-- update built-in queue shader or add variants for scaled queue generation, completed in M3,
-- pass full-to-dispatch coordinate mapping to shaders, completed in M3.
+- extend lighting queue metadata to include resolution domain,
+- build queue headers/records for selected domain,
+- make indirect args reflect scaled dispatch count,
+- update built-in queue shader or add variants for scaled queue generation,
+- pass full-to-dispatch coordinate mapping to shaders.
 
 Tests:
 
-- full-res queue emits expected tile count, covered by existing queue tests,
-- half/quarter queue domains have smaller record capacity, covered in M3,
-- inactive queues have zero capacity and disabled flags, covered in M3,
-- indirect dispatch offsets remain correct, covered by existing queue tests,
-- queue object schema, unknown queue domains and conflicting active queue domains are covered in M3 runtime/schema tests.
+- full-res queue emits expected tile count,
+- half-res queue emits fewer records,
+- disabled queue emits zero records and no indirect dispatch,
+- indirect dispatch offset remains correct.
 
 ### Step E: Output default policy and clear optimization
 
-Implementation status:
-
-- Milestone M4 implements the first native output-default plan:
-  - active fixed Deferred semantics are recorded in the runtime plan,
-  - `clear_contract` is lowered to an output-default marker instead of a runtime dispatch pass,
-  - selected logical aliases that point at `clear_contract` are skipped during pipeline registration and execution,
-  - a CPU-testable output-coverage helper classifies fixed semantics as full, partial or no writer,
-  - the module records native targeted clears before runtime passes for outputs that are unwritten or only partially
-    written,
-  - the default plan is frame-aware for G-buffer outputs, so an active G-buffer semantic only suppresses G-buffer
-    defaults when the current frame actually records G-buffer draws,
-  - `compose` is intentionally partial because it returns without writing `radiance` when primary depth is invalid.
-
 Tasks:
 
-- identify active writers for public outputs, completed in M4 for fixed Deferred semantics,
-- apply defaults only for unwritten or partial-writer outputs, completed in M4,
-- stop running blanket `clear_contract` for all outputs by default, completed in M4,
-- skip clears for active pass outputs that are fully overwritten, completed in M4 for direct-light and active
-  G-buffer frames,
-- prefer safe zero/default image aliasing where valid, planned,
+- identify active writers for public outputs,
+- apply defaults only for unwritten outputs,
+- stop running blanket `clear_contract` for all outputs by default,
+- skip clears for active pass outputs that are fully overwritten,
+- prefer safe zero/default image aliasing where valid,
 - keep compatibility with downstream ToneMapping/PostRender/NRD/upscalers.
 
 Tests:
 
-- disabled GI writes or clears `gi_hit_distance` and indirect diffuse to valid defaults, covered by output-default
-  coverage tests,
-- disabled reflection writes or clears specular outputs, covered by output-default coverage tests,
-- active full-writer output is not overwritten by default clear, covered for direct light and G-buffer coverage,
-- outputs remain layer-count correct, covered in command recording through active-layer clear ranges; GPU validation
-  remains a later offline/runtime test item.
+- disabled GI writes or clears `gi_hit_distance` and indirect diffuse to valid defaults,
+- disabled reflection writes or clears specular outputs,
+- active pass output is not overwritten by default clear,
+- outputs remain layer-count correct.
 
 ### Step F: Pipeline baseline optimization
-
-Implementation status:
-
-- Milestone M5 implements the first generated graph/barrier/descriptor plan:
-  - active runtime pass names are expanded into per-pass logical resource intent,
-  - fixed Deferred semantics add native resource reads/writes for G-buffer outputs, classification/visibility masks,
-    lighting queues, direct/reflection/GI uniforms and public outputs,
-  - declared aliases such as `gbuffer.*`, `lighting.*`, `classification.*`, `visibility.*`, `queue.*` and `scene.*`
-    contribute to descriptor and barrier intent,
-  - unused `classify` and `build_lighting_queues` fixed passes become no-op graph nodes,
-  - no-op graph nodes are skipped during pipeline creation and runtime execution,
-  - descriptor updates, initialization and per-pass generated barriers are skipped for inactive resources,
-  - graph reports include compact graph-plan summaries and no-op reasons.
-- The implementation keeps a fixed Vulkan descriptor layout for compatibility. M5 removes unnecessary descriptor writes,
-  uploads, clears, barriers, allocation and dispatch work where possible; it does not yet generate a new pipeline layout
-  ABI per active graph.
-- G-buffer render pass layout transitions remain dedicated render-pass pre/post barriers. Compute and full-screen
-  compute passes use the generated graph pass barrier path.
-- Milestone M8 adds the first deeper active-graph optimization pass:
-  - graph-plan analysis derives compose feature flags from active output writers,
-  - the built-in compose shader receives compile definitions for direct light, GI, specular, clear, emission, fog and
-    refraction feature reads,
-  - disabled or absent lighting/fog/refraction/clear writers are pruned from compose input resource intent before
-    descriptor/barrier summaries are accumulated,
-  - G-buffer render-pass pre/post image barriers now touch only the actual G-buffer attachment outputs instead of every
-    public Deferred output.
 
 Tasks:
 
 - remove stats buffers, atomics and readbacks from the default path,
-- generate barrier plans from active graph resource reads/writes, first compute/full-screen pass version completed in M5,
-- merge compatible barriers, planned,
-- skip descriptor writes and bindings for inactive backends/resources, first fixed-layout pruning completed in M5,
+- generate barrier plans from active graph resource reads/writes,
+- merge compatible barriers,
+- skip descriptor writes and bindings for inactive backends/resources,
 - derive fine-grained scene runtime requirements from active graph,
 - skip TLAS binding/barriers when no ray-query backend is active,
 - skip provider packet enumeration when no scene draw stream is active,
 - cache or incrementally update G-buffer draw packet metadata where practical,
 - review G-buffer internal formats separately from public output formats,
-- add direct-light queue/tile scheduling support, completed in M10,
+- add direct-light queue/tile scheduling support,
 - build only active lighting queues,
-- generate compose variants from active graph feature flags, first fixed compose-feature version completed in M8,
+- generate compose variants from active graph feature flags,
 - delay public output export where downstream graph allows it,
 - prefer layered/multiview VR execution and report per-eye fallback.
 
 Tests:
 
 - stats disabled path records no stats resources or readbacks,
-- inactive backend descriptors are not updated or are bound only to explicit safe defaults, covered in M5 graph-plan tests
-  for fixed and scene descriptors,
-- disabling ray-query backends removes TLAS binding and ray-query barriers, covered in M5 graph-plan tests for TLAS
-  descriptor intent,
+- inactive backend descriptors are not updated or are bound only to explicit safe defaults,
+- disabling ray-query backends removes TLAS binding and ray-query barriers,
 - disabling scene render content removes provider draw-stream requirement,
-- direct-light queue profile dispatches less work than full-screen profile on sparse scenes, runtime graph/dispatch
-  path covered in M10 tests and real sparse-scene GPU profiling still planned,
-- compose variant omits disabled effect reads, covered in M8 graph-plan tests for direct/GI/specular/fog/refraction
-  feature pruning,
+- direct-light queue profile dispatches less work than full-screen profile on sparse scenes,
+- compose variant omits disabled effect reads,
 - VR fallback mode appears in diagnostics.
 
 ### Step G: Diagnostics transport
 
-Implementation status:
-
-- Milestone M6 implements compact native diagnostics snapshots and a Java-visible `long[]` pull path.
-- The old string overlay is retained as the graph-report path and is skipped unless graph reporting is enabled.
-- Optional file trace, optional stats and optional GPU timestamp timing scopes are controlled independently.
-- The default diagnostics path does not allocate timestamp/stat buffers, record stats readbacks, perform file IO, or
-  build per-frame graph-report strings.
-
 Tasks:
 
-- replace console-oriented per-frame logging with native diagnostics snapshots, completed in M6,
-- add Java pull path or reuse existing diagnostics text bridge, completed in M6,
-- keep file trace optional, completed in M6,
-- add GPU timestamp infrastructure behind a flag, completed in M6 for frame and fixed-slot pass timings,
-- compile out or skip stats when disabled, completed in M6.
+- replace console-oriented per-frame logging with native diagnostics snapshots,
+- add Java pull path or reuse existing diagnostics text bridge,
+- keep file trace optional,
+- add GPU timestamp infrastructure behind a flag,
+- compile out or skip stats when disabled.
 
 Tests:
 
 - diagnostics disabled allocates no timestamp/stat buffers,
 - diagnostics disabled records no readbacks,
-- diagnostics enabled produces latest snapshot, covered by diagnostics tests and Java pull-path build coverage,
-- file sink off performs no file IO, covered by the explicit trace-path gate,
-- F3 text can obtain selected backend/resolution/pass summary, implemented through compact Java formatting and optional
-  graph report text.
+- diagnostics enabled produces latest snapshot,
+- file sink off performs no file IO,
+- F3 text can obtain selected backend/resolution/pass summary.
 
 ### Step H: Built-in pack migration
 
@@ -1627,77 +1447,19 @@ Implemented in the current native milestone:
   launches.
 - Deferred compute/ray shaders receive a unified resolution push constant block with full and dispatch dimensions plus
   deterministic pixel-center mapping helpers.
-- Lighting queue schedules can bind queue work to `full_resolution`, `pass_resolution` or a named resolution domain.
-  Active queue headers, record capacity, the queue-builder tile dispatch and queued reflection/GI full-resolution
-  G-buffer pixel mapping are derived from that active queue domain.
-- `clear_contract` is now a compatibility/output-default marker instead of a normal compute dispatch in the active
-  runtime path. Native targeted clears initialize only outputs that are unwritten or only partially written by active
-  fixed semantics, with G-buffer coverage checked against the current frame's draw availability.
-- Per-frame console diagnostics output has been removed from Deferred RT. The JVM-facing diagnostics path now pulls a
-  compact native `long[]` snapshot and formats it in Java.
-- Graph-report strings are collected only when the graph-report compatibility switch is enabled. The old string overlay
-  is a heavy report path, not the default frame snapshot.
-- Stats buffers, stats descriptor binding, atomics, clears and readbacks are gated behind `diagnostics_stats` and the
-  compile-time shader definition `RADIANCE_DEFERRED_ENABLE_STATS`.
-- Optional file trace writes compact snapshot lines only when `diagnostics_trace_file` is configured.
-- Optional GPU timestamp timing records a frame scope plus fixed compact pass scopes only when
-  `diagnostics_gpu_timing` is enabled.
-- Deferred compute/ray `vr` policies now lower to explicit runtime execution modes. `view_agnostic` stays layer-aware
-  single dispatch, `per_view` records one dispatch per active view, `mono_replicate` dispatches layer 0 and copies image
-  outputs to other active layers, and `unsupported` continues to reject stereo plans.
-- Resolution push constants include `baseLayer` and `viewIndex`, and lighting queues carry per-layer indirect counts so
-  queued `per_view` passes dispatch only the selected view's queued records.
-- Scaled output, history and motion coordinate policy are now explicit runtime contracts. Deferred compute/ray/full-screen
-  passes can declare `scaled_output: shader_footprint` or `scaled_output: upsample_pass` with `upsample_pass`, plus
-  `history_resolution: dispatch|full` and `motion_reprojection: full_resolution|dispatch_to_full`.
-- Active runtime-plan validation rejects scaled public-output writers without `scaled_output`, rejects inactive/missing
-  upsample owners, rejects `upsample_pass` handoffs without a real producer-output to upsample-input dependency, rejects
-  handoffs where the resource type does not match, rejects upsample passes that execute before their scaled producer,
-  rejects producer/upsample dependency cycles, rejects upsample passes that do not write the complete public-output set
-  the producer would have owned, rejects multiple final owners for one public output, rejects scaled history readers
-  without `history_resolution`, and rejects scaled motion-vector readers without `motion_reprojection`.
-- `scaled_output: shader_footprint` is writer ownership, not full coverage. It remains allowed for shaders that write a
-  full-resolution public image through their dispatch footprint, but runtime output defaults treat it as partial coverage
-  unless a later full-resolution owner completes the output.
-- Pack-owned scaled history images must declare `history_resolution`; `full` history is allocated at the full domain even
-  when the owning effect dispatches at half/quarter resolution, while `dispatch` history stays in the pass/resource
-  domain.
-- Shader definitions and resolution push-constant flags expose scaled-output, history and motion policies. The resolution
-  push constants also expose `historyValid`, `historyAge` and `historyResetReason`. GLSL helpers provide dispatch
-  footprint bounds, history validity queries and motion-vector conversion between full-resolution and
-  dispatch-resolution history coordinates.
-- The native G-buffer motion ABI is fixed as `previousPixel - currentPixel` in full-resolution pixels, with origin and Y
-  direction matching Vulkan framebuffer coordinates. The current pixel comes from jittered `gl_FragCoord`; the previous
-  pixel comes from the previous view/projection/object transforms, so temporal shaders must not apply jitter deltas a
-  second time.
-- Generated graph plans treat `scaled_output: upsample_pass` as an ownership handoff: the scaled pass no longer owns the
-  public output write; the named active full-resolution upsample pass owns the public writer for barriers and compose
-  feature detection.
-- Runtime history invalidation now resets history on first use, render extent or active-plan/history signature changes,
-  shaderpack rebuild/reload, backend/semantic contract changes, Java-provided world/dimension serial changes, and camera
-  cuts/teleports detected from camera position and direction jumps.
-- Direct light can now use `schedule: { "mode": "lighting_queue", "queue": "direct" }`. The built-in pack uses that
-  schedule by default, the queue builder emits direct tiles from the classification mask, and direct-light shaders map
-  queued dispatch pixels back to full-resolution G-buffer pixels before evaluating lighting or ray-query occlusion.
-- Runtime/schema validation still accepts legacy screen direct light, but rejects `direct_light` bound to reflection/GI
-  queues. Active graph plans add lighting queue reads only when the direct queue is active, and the queue builder remains
-  a no-op when no active queued lighting pass consumes queue records.
-- Output defaults are schedule-aware for direct light: queued direct light is a partial writer and keeps the native
-  default clear for `first_hit_diffuse_direct_light`, while screen direct light remains a full writer.
+- Per-frame console diagnostics output has been removed from Deferred RT. The JVM-facing diagnostics overlay pulls
+  module-owned native state instead.
+- Stats buffers, stats descriptor binding, atomics, clears and readbacks are gated behind the diagnostics stats/log
+  switch and compile-time shader definition.
 
 Still planned after these milestones:
 
-- Real built-in half/quarter lighting variants and concrete upsample shaders for public outputs. The contract and graph
-  ownership are implemented, but `vanilla-deferred-rt` still defaults public lighting outputs to full-resolution passes
-  until quality-preserving upsample shaders are introduced.
-- Zero-image aliasing and delayed public-output export.
-- Generated barrier and descriptor plans for all active compute/full-screen graph resources; M8 narrows render-pass
-  G-buffer image barriers to actual G-buffer attachments, while barrier merging and descriptor-layout ABI generation
-  remain planned.
-- More detailed named/per-pass timing and VR fallback report exports beyond the current compact fixed-slot pass timing
-  fields.
-- Sparse-scene GPU profiling and quality tuning for direct-light queue thresholds. M10 implements the queue/tile runtime
-  path; it does not yet add scene-driven heuristics beyond classification-mask tile eligibility.
-- More precise Java world-state compatibility keys for temporal history. M11 wires a world/dimension serial through the
-  client world object, `setWorld` changes and core dimension/effects fields; future work can include server/dimension
-  registry identifiers directly when that data is exposed in the render bridge.
+- Unified resolution-coordinate push constants, depth/normal sampling policy, upsample ownership, history-resolution
+  policy, motion-vector reprojection coordinates and queue coordinate rules. The push constant ABI and initial nearest
+  full-resolution G-buffer sampling contract are complete; upsample ownership, rich history policy, motion-vector
+  reprojection, compact diagnostics dimensions and queue coordinate rules remain.
+- Scaled lighting queue domains.
+- Output default policy that removes the blanket full-contract clear from the normal path.
+- Generated barrier and descriptor plans for all active graph resources.
+- GPU timestamp timing scopes.
+- Compose variants and delayed public-output export.

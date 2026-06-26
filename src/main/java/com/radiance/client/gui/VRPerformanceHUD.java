@@ -1,11 +1,8 @@
 package com.radiance.client.gui;
 
 import com.radiance.client.config.VRPerformanceConfig;
+import com.radiance.client.gui.compat.GuiCompat;
 import com.radiance.client.proxy.vulkan.VRProxy;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.text.Text;
-import net.minecraft.util.math.MathHelper;
 
 import java.util.ArrayDeque;
 import java.util.Deque;
@@ -108,13 +105,13 @@ public class VRPerformanceHUD {
         int droppedFrames = (int) stats[6];
         float headroom = stats[7];
         // Update smoothed values
-        smoothedGpuTime = MathHelper.lerp(smoothingFactor, smoothedGpuTime, gpuTime);
-        smoothedCpuTime = MathHelper.lerp(smoothingFactor, smoothedCpuTime, cpuTime);
-        smoothedCpuWork = MathHelper.lerp(smoothingFactor, smoothedCpuWork, cpuWork);
-        smoothedCpuWait = MathHelper.lerp(smoothingFactor, smoothedCpuWait, cpuWait);
-        smoothedTargetTime = MathHelper.lerp(smoothingFactor, smoothedTargetTime, targetTime);
-        smoothedFps = MathHelper.lerp(smoothingFactor, smoothedFps, fps);
-        smoothedHeadroom = MathHelper.lerp(smoothingFactor, smoothedHeadroom, headroom);
+        smoothedGpuTime = GuiCompat.lerpF(smoothingFactor, smoothedGpuTime, gpuTime);
+        smoothedCpuTime = GuiCompat.lerpF(smoothingFactor, smoothedCpuTime, cpuTime);
+        smoothedCpuWork = GuiCompat.lerpF(smoothingFactor, smoothedCpuWork, cpuWork);
+        smoothedCpuWait = GuiCompat.lerpF(smoothingFactor, smoothedCpuWait, cpuWait);
+        smoothedTargetTime = GuiCompat.lerpF(smoothingFactor, smoothedTargetTime, targetTime);
+        smoothedFps = GuiCompat.lerpF(smoothingFactor, smoothedFps, fps);
+        smoothedHeadroom = GuiCompat.lerpF(smoothingFactor, smoothedHeadroom, headroom);
         totalDroppedFrames = droppedFrames;
 
         // Update history (maintain fixed size for performance)
@@ -149,45 +146,32 @@ public class VRPerformanceHUD {
     /**
      * Render the performance HUD
      */
-    public void render(DrawContext context, int screenWidth, int screenHeight) {
-        if (!isVisible) {
-            return;
-        }
+    public void render(Object context, int screenWidth, int screenHeight) {
+        if (!isVisible) return;
+        if (!VRPerformanceConfig.showDetailedCharts && !VRPerformanceConfig.showTextMetrics) return;
 
-        // Check configuration settings
-        if (!VRPerformanceConfig.showDetailedCharts && !VRPerformanceConfig.showTextMetrics) {
-            return;
-        }
-
-        // Auto-position in corner to avoid blocking view
         updatePosition(screenWidth, screenHeight);
-
         int currentY = hudY;
 
-        // Background panel with configurable opacity
         int bgColor = (int)(VRPerformanceConfig.getHudOpacityFloat() * 255) << 24;
-        context.fill(hudX, hudY, hudX + hudWidth, hudY + hudHeight, bgColor);
+        GuiCompat.fill(context, hudX, hudY, hudX + hudWidth, hudY + hudHeight, bgColor);
 
-        // Title
+        Object font = GuiCompat.getClientFont();
+
         if (VRPerformanceConfig.showTextMetrics) {
-            context.drawText(MinecraftClient.getInstance().textRenderer,
-                            Text.literal("VR Performance"),
-                            hudX + MARGIN, currentY + MARGIN, COLOR_TEXT, false);
+            GuiCompat.drawText(context, font, GuiCompat.txtLit("VR Performance"),
+                hudX + MARGIN, currentY + MARGIN, COLOR_TEXT, false);
         }
         currentY += 20;
 
-        // Performance metrics text
         if (VRPerformanceConfig.showTextMetrics) {
             renderTextMetrics(context, currentY);
         }
         currentY += 72;
 
-        // Frame time chart
         if (VRPerformanceConfig.showDetailedCharts) {
             renderFrameTimeChart(context, hudX + MARGIN, currentY, CHART_WIDTH, CHART_HEIGHT);
             currentY += CHART_HEIGHT + 10;
-
-            // FPS and headroom chart
             if (VRPerformanceConfig.showFpsChart || VRPerformanceConfig.showHeadroomChart) {
                 renderPerformanceChart(context, hudX + MARGIN, currentY, CHART_WIDTH, CHART_HEIGHT);
             }
@@ -197,195 +181,142 @@ public class VRPerformanceHUD {
     /**
      * Render text-based performance metrics
      */
-    private void renderTextMetrics(DrawContext context, int y) {
-        var textRenderer = MinecraftClient.getInstance().textRenderer;
+    private void renderTextMetrics(Object ctx, int y) {
+        Object font = GuiCompat.getClientFont();
         int lineHeight = 10;
         int xLeft = hudX + MARGIN;
         int xRight = hudX + (CHART_WIDTH / 2) + 8;
 
-        // Left column (5 rows)
         int fpsColor = getFpsColor(smoothedFps);
-        context.drawText(textRenderer,
-                Text.literal(xrSessionRunning ? String.format("FPS: %.1f", smoothedFps) : "FPS: N/A"),
-                xLeft, y, fpsColor, false);
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(xrSessionRunning ? String.format("FPS: %.1f", smoothedFps) : "FPS: N/A"),
+            xLeft, y, fpsColor, false);
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(String.format("GPU: %.1fms", smoothedGpuTime)),
+            xLeft, y + lineHeight, COLOR_GPU_LINE, false);
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(String.format("Frame: %.1fms", smoothedCpuTime)),
+            xLeft, y + lineHeight * 2, COLOR_CPU_LINE, false);
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(renderWidth > 0 ? String.format("Render: %dx%d", renderWidth, renderHeight) : "Render: N/A"),
+            xLeft, y + lineHeight * 3, COLOR_TEXT, false);
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(xrSessionRunning ? String.format("Work: %.1fms", smoothedCpuWork) : "Work: N/A"),
+            xLeft, y + lineHeight * 4, COLOR_CPU_LINE, false);
 
-        context.drawText(textRenderer,
-                        Text.literal(String.format("GPU: %.1fms", smoothedGpuTime)),
-                xLeft, y + lineHeight, COLOR_GPU_LINE, false);
-
-        context.drawText(textRenderer,
-                Text.literal(String.format("Frame: %.1fms", smoothedCpuTime)),
-                xLeft, y + lineHeight * 2, COLOR_CPU_LINE, false);
-
-        context.drawText(textRenderer,
-            Text.literal(renderWidth > 0 && renderHeight > 0 ? String.format("Render: %dx%d", renderWidth, renderHeight) : "Render: N/A"),
-                xLeft, y + lineHeight * 3, COLOR_TEXT, false);
-
-        // Row 4: CPU work vs wait (new metrics)
-        context.drawText(textRenderer,
-                Text.literal(xrSessionRunning ? String.format("Work: %.1fms", smoothedCpuWork) : "Work: N/A"),
-                xLeft, y + lineHeight * 4, COLOR_CPU_LINE, false);
-
-        // Right column (5 rows)
-        context.drawText(textRenderer,
-                Text.literal(xrSessionRunning ? String.format("Target: %.1fms", smoothedTargetTime) : "Target: N/A"),
-                xRight, y, COLOR_TARGET_LINE, false);
-
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(xrSessionRunning ? String.format("Target: %.1fms", smoothedTargetTime) : "Target: N/A"),
+            xRight, y, COLOR_TARGET_LINE, false);
         int headroomColor = getHeadroomColor(smoothedHeadroom);
-        context.drawText(textRenderer,
-                Text.literal(xrSessionRunning ? String.format("Headroom: %.1f%%", smoothedHeadroom * 100) : "Headroom: N/A"),
-                xRight, y + lineHeight, headroomColor, false);
-
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(xrSessionRunning ? String.format("Headroom: %.1f%%", smoothedHeadroom * 100) : "Headroom: N/A"),
+            xRight, y + lineHeight, headroomColor, false);
         int dropColor = totalDroppedFrames > 0 ? COLOR_TEXT_BAD : COLOR_TEXT;
-        context.drawText(textRenderer,
-                Text.literal(xrSessionRunning ? String.format("Drops: %d", totalDroppedFrames) : "Drops: N/A"),
-                xRight, y + lineHeight * 2, dropColor, false);
-
-        context.drawText(textRenderer,
-            Text.literal(displayWidth > 0 && displayHeight > 0 ? String.format("Display: %dx%d", displayWidth, displayHeight) : "Display: N/A"),
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(xrSessionRunning ? String.format("Drops: %d", totalDroppedFrames) : "Drops: N/A"),
+            xRight, y + lineHeight * 2, dropColor, false);
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(displayWidth > 0 ? String.format("Display: %dx%d", displayWidth, displayHeight) : "Display: N/A"),
             xRight, y + lineHeight * 3, COLOR_TEXT, false);
-
-        context.drawText(textRenderer,
-                Text.literal(xrSessionRunning ? String.format("Wait: %.1fms", smoothedCpuWait) : "Wait: N/A"),
-                xRight, y + lineHeight * 4, COLOR_TEXT, false);
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(xrSessionRunning ? String.format("Wait: %.1fms", smoothedCpuWait) : "Wait: N/A"),
+            xRight, y + lineHeight * 4, COLOR_TEXT, false);
     }
 
     /**
      * Render frame time chart (GPU vs CPU vs Target)
      */
-    private void renderFrameTimeChart(DrawContext context, int chartX, int chartY, int chartW, int chartH) {
+    private void renderFrameTimeChart(Object ctx, int chartX, int chartY, int chartW, int chartH) {
         if (gpuFrameHistory.isEmpty()) return;
+        GuiCompat.fill(ctx, chartX, chartY, chartX + chartW, chartY + chartH, 0x40000000);
 
-        // Chart background
-        context.fill(chartX, chartY, chartX + chartW, chartY + chartH, 0x40000000);
+        Object font = GuiCompat.getClientFont();
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(String.format("FT | R %dx%d D %dx%d", renderWidth, renderHeight, displayWidth, displayHeight)),
+            chartX + 3, chartY + 2, COLOR_TEXT, false);
 
-        var textRenderer = MinecraftClient.getInstance().textRenderer;
-        context.drawText(textRenderer,
-                        Text.literal(String.format("FT | R %dx%d D %dx%d", renderWidth, renderHeight, displayWidth, displayHeight)),
-                        chartX + 3, chartY + 2, COLOR_TEXT, false);
-
-        // Calculate scale based on target frame time + some margin
-        float targetMs = VRProxy.isEnabled() ? 16.67f : 16.67f; // Default to 60 FPS target
+        float targetMs = VRProxy.isEnabled() ? 16.67f : 16.67f;
         float[] targetStats = VRProxy.getPerformanceStats();
-        if (targetStats != null && targetStats.length >= 8 && targetStats[4] > 0) {
-            targetMs = targetStats[4];
-        }
+        if (targetStats != null && targetStats.length >= 8 && targetStats[4] > 0) targetMs = targetStats[4];
+        float maxMs = Math.max(targetMs * 1.5f, 30f);
 
-        float maxMs = Math.max(targetMs * 1.5f, 30f); // Scale to show over-target performance
-
-        // Render target line (if enabled)
         if (VRPerformanceConfig.showTargetLine) {
             int targetY = chartY + chartH - (int)((targetMs / maxMs) * chartH);
-            context.fill(chartX, targetY, chartX + chartW, targetY + 1, COLOR_TARGET_LINE);
+            GuiCompat.fill(ctx, chartX, targetY, chartX + chartW, targetY + 1, COLOR_TARGET_LINE);
         }
-
-        // Render GPU and CPU lines (if enabled)
-        if (VRPerformanceConfig.showGpuLine) {
-            renderLineChart(context, chartX, chartY, chartW, chartH, gpuFrameHistory, maxMs, COLOR_GPU_LINE);
-        }
-        if (VRPerformanceConfig.showCpuLine) {
-            renderLineChart(context, chartX, chartY, chartW, chartH, cpuFrameHistory, maxMs, COLOR_CPU_LINE);
-        }
+        if (VRPerformanceConfig.showGpuLine) renderLineChart(ctx, chartX, chartY, chartW, chartH, gpuFrameHistory, maxMs, COLOR_GPU_LINE);
+        if (VRPerformanceConfig.showCpuLine) renderLineChart(ctx, chartX, chartY, chartW, chartH, cpuFrameHistory, maxMs, COLOR_CPU_LINE);
     }
 
-    /**
-     * Render performance chart (FPS and headroom)
-     */
-    private void renderPerformanceChart(DrawContext context, int chartX, int chartY, int chartW, int chartH) {
+    private void renderPerformanceChart(Object ctx, int chartX, int chartY, int chartW, int chartH) {
         if (fpsHistory.isEmpty()) return;
 
-        // Chart background
-        context.fill(chartX, chartY, chartX + chartW, chartY + chartH, 0x40000000);
+        GuiCompat.fill(ctx, chartX, chartY, chartX + chartW, chartY + chartH, 0x40000000);
 
-        var textRenderer = MinecraftClient.getInstance().textRenderer;
-        context.drawText(textRenderer,
-                        Text.literal(String.format("FPS/Headroom | R %dx%d D %dx%d", renderWidth, renderHeight, displayWidth, displayHeight)),
-                        chartX + 3, chartY + 2, COLOR_TEXT, false);
+        Object font = GuiCompat.getClientFont();
+        GuiCompat.drawText(ctx, font,
+            GuiCompat.txtLit(String.format("FPS/Headroom | R %dx%d D %dx%d", renderWidth, renderHeight, displayWidth, displayHeight)),
+            chartX + 3, chartY + 2, COLOR_TEXT, false);
 
         int usedHeight = 0;
-
-        // FPS chart (if enabled)
         if (VRPerformanceConfig.showFpsChart) {
             int fpsChartHeight = VRPerformanceConfig.showHeadroomChart ? chartH / 2 : chartH;
-            renderLineChart(context, chartX, chartY + usedHeight, chartW, fpsChartHeight, fpsHistory, 120f, COLOR_FRAME_GOOD);
+            renderLineChart(ctx, chartX, chartY + usedHeight, chartW, fpsChartHeight, fpsHistory, 120f, COLOR_FRAME_GOOD);
             usedHeight += fpsChartHeight;
         }
-
-        // Headroom chart (if enabled)
         if (VRPerformanceConfig.showHeadroomChart) {
             int headroomChartHeight = VRPerformanceConfig.showFpsChart ? chartH / 2 : chartH;
-            renderHeadroomChart(context, chartX, chartY + usedHeight, chartW, headroomChartHeight);
+            renderHeadroomChart(ctx, chartX, chartY + usedHeight, chartW, headroomChartHeight);
         }
     }
 
-    /**
-     * Render a line chart for the given data
-     */
-    private void renderLineChart(DrawContext context, int chartX, int chartY, int chartW, int chartH,
+    private void renderLineChart(Object ctx, int chartX, int chartY, int chartW, int chartH,
                                 Deque<Float> data, float maxValue, int color) {
         if (data.size() < 2) return;
-
         Float[] values = data.toArray(new Float[0]);
         int dataSize = values.length;
-
-        // Draw lines between consecutive points
         for (int i = 0; i < dataSize - 1; i++) {
-            float val1 = MathHelper.clamp(values[i] / maxValue, 0f, 1f);
-            float val2 = MathHelper.clamp(values[i + 1] / maxValue, 0f, 1f);
-
+            float val1 = GuiCompat.clampF(values[i] / maxValue, 0f, 1f);
+            float val2 = GuiCompat.clampF(values[i + 1] / maxValue, 0f, 1f);
             int x1 = chartX + (i * chartW) / dataSize;
             int x2 = chartX + ((i + 1) * chartW) / dataSize;
             int y1 = chartY + chartH - (int)(val1 * chartH);
             int y2 = chartY + chartH - (int)(val2 * chartH);
-
-            // Simple line drawing using filled rectangles
-            drawLine(context, x1, y1, x2, y2, color);
+            drawLine(ctx, x1, y1, x2, y2, color);
         }
     }
 
-    /**
-     * Render headroom chart with zero line
-     */
-    private void renderHeadroomChart(DrawContext context, int chartX, int chartY, int chartW, int chartH) {
+    private void renderHeadroomChart(Object ctx, int chartX, int chartY, int chartW, int chartH) {
         if (headroomHistory.isEmpty()) return;
-
-        // Zero line (middle of chart)
         int zeroY = chartY + chartH / 2;
-        context.fill(chartX, zeroY, chartX + chartW, zeroY + 1, 0x80FFFFFF);
+        GuiCompat.fill(ctx, chartX, zeroY, chartX + chartW, zeroY + 1, 0x80FFFFFF);
 
         Float[] values = headroomHistory.toArray(new Float[0]);
         int dataSize = values.length;
-
         for (int i = 0; i < dataSize - 1; i++) {
-            float val1 = MathHelper.clamp(values[i], -0.5f, 0.5f); // -50% to +50%
-            float val2 = MathHelper.clamp(values[i + 1], -0.5f, 0.5f);
-
+            float val1 = GuiCompat.clampF(values[i], -0.5f, 0.5f);
+            float val2 = GuiCompat.clampF(values[i + 1], -0.5f, 0.5f);
             int x1 = chartX + (i * chartW) / dataSize;
             int x2 = chartX + ((i + 1) * chartW) / dataSize;
             int y1 = zeroY - (int)(val1 * chartH);
             int y2 = zeroY - (int)(val2 * chartH);
-
             int lineColor = val1 < 0 ? COLOR_FRAME_BAD : COLOR_FRAME_GOOD;
-            drawLine(context, x1, y1, x2, y2, lineColor);
+            drawLine(ctx, x1, y1, x2, y2, lineColor);
         }
     }
 
-    /**
-     * Simple line drawing using filled rectangles
-     */
-    private void drawLine(DrawContext context, int x1, int y1, int x2, int y2, int color) {
-        // Simple implementation - can be optimized further
+    private void drawLine(Object ctx, int x1, int y1, int x2, int y2, int color) {
         if (Math.abs(x2 - x1) > Math.abs(y2 - y1)) {
-            if (x1 > x2) { int tmp = x1; x1 = x2; x2 = tmp; tmp = y1; y1 = y2; y2 = tmp; }
+            if (x1 > x2) { int t = x1; x1 = x2; x2 = t; t = y1; y1 = y2; y2 = t; }
             for (int x = x1; x <= x2; x++) {
                 int y = y1 + (y2 - y1) * (x - x1) / (x2 - x1);
-                context.fill(x, y, x + 1, y + 1, color);
+                GuiCompat.fill(ctx, x, y, x + 1, y + 1, color);
             }
         } else {
-            if (y1 > y2) { int tmp = x1; x1 = x2; x2 = tmp; tmp = y1; y1 = y2; y2 = tmp; }
+            if (y1 > y2) { int t = x1; x1 = x2; x2 = t; t = y1; y1 = y2; y2 = t; }
             for (int y = y1; y <= y2; y++) {
                 int x = x1 + (x2 - x1) * (y - y1) / (y2 - y1);
-                context.fill(x, y, x + 1, y + 1, color);
+                GuiCompat.fill(ctx, x, y, x + 1, y + 1, color);
             }
         }
     }

@@ -3159,14 +3159,6 @@ with optional fallback compute, and `full_screen` `compute_3d` passes through th
 `render` currently supports the hardened `content: minecraft_gbuffer` backend. Unsupported runtime pass content fails
 during module build with a clear runtime-plan error.
 
-The module now builds a generated `DeferredRtGraphPlan` after active runtime selection. The graph plan expands active
-concrete pass names into per-pass image/buffer intent, fixed semantic native resources, scene-set descriptor intent and
-no-op reasons. It is used to prune classification/visibility/lighting-queue/G-buffer allocations, descriptor updates,
-fixed direct/reflection/GI uniform uploads, TLAS bindings, pass stats bindings, pipeline creation for graph no-op fixed
-passes and compute/full-screen pass barriers. M5 deliberately keeps the Vulkan descriptor set layout ABI fixed; the
-generated descriptor plan decides which existing bindings are updated or left untouched, not which set-layout bindings
-exist. G-buffer render-pass transitions still use dedicated render-pass pre/post barriers.
-
 The fixed native shader-source path has been migrated into built-in `vanilla-deferred-rt`: G-buffer, classification,
 queue build, direct lighting, queued reflection/GI and compose are declared by the pack and recorded by the hardened
 Deferred runtime. Runtime synchronization is no longer keyed by pass `name`; fixed C++ hooks use the explicit optional
@@ -3246,13 +3238,6 @@ Remaining implementation steps after Step 41:
 - Explicit resource lifetime policy is complete in Step 41 for `per_frame`, `history`, `persistent` and
   `imported_texture`. Runtime resize and shaderpack reload reset history through resource rebuild/pre-close paths.
   Explicit camera-cut, dimension/world-change and major render-scale reset signals still need engine hooks.
-- Generated graph-plan resource expansion and first descriptor/barrier pruning are complete in the M5 continuation
-  milestone:
-  - fixed semantics expand to public outputs and native module resources,
-  - declared `gbuffer.*`, `lighting.*`, `classification.*`, `visibility.*`, `queue.*` and `scene.*` aliases drive
-    descriptor/barrier intent,
-  - inactive graph resources skip descriptor writes, uploads, initialization and generated compute barriers,
-  - `classify` and `build_lighting_queues` can become no-op nodes with no pipeline or dispatch.
 - `ScenePrepare` lifetime is now `WorldPipeline` scoped through `SharedSceneRuntime`, and provider packet enumeration is lazy behind the `Provider` requirement flag.
 - Expand preset storage/UI so a preset can configure the selected pipeline and each shaderpack-capable module's pack.
 - Define whether cross-module shaderpack resource references are forbidden by validation or represented through explicit
@@ -3774,75 +3759,17 @@ The current Deferred RT native runtime now builds an active shaderpack plan befo
 - Deferred compute/ray pass push constants now expose `fullResolution`, `dispatchResolution`, `scale`, `invScale`,
   `fullToDispatch`, `dispatchToFull`, `layerCount` and `flags`. Shader helpers use pixel-center mapping between
   dispatch and full-resolution pixels, with nearest full-resolution G-buffer sampling as the first scaled-pass policy.
-- Scaled-output, history and motion-vector contracts are explicit on Deferred compute/ray/full-screen passes:
-  `scaled_output`, `upsample_pass`, `history_resolution` and `motion_reprojection`. Active runtime plans record these
-  contracts, shader definitions compile variants from them, and push-constant flags expose them to shared GLSL helpers.
-- Scaled public-output writers must either use `shader_footprint` ownership or name an active full-resolution
-  `upsample_pass`. Writer ownership and coverage completeness are separate: `shader_footprint` can own the write path,
-  but runtime output defaults treat it as partial coverage by default so untouched full-resolution pixels are cleared
-  instead of reusing previous-frame data.
-- `upsample_pass` is now validated as a real data-flow handoff, not just a pass name. The scaled producer must execute
-  before the upsample pass, write a non-public handoff resource, the upsample pass must read that resource, and the
-  upsample pass must write the complete public-output set the scaled producer would have owned. Image handoffs must be
-  read as images, buffer handoffs as buffers, producer/upsample cycles are rejected, and one public output can have only
-  one final owner in the active graph.
-- Scaled history images must declare whether history is stored at `dispatch` or `full` resolution. `history_resolution:
-  full` allocates the history image in the full domain even when the pass/resource declares a scaled domain; `dispatch`
-  keeps the history at the scaled domain. Scaled passes reading history must declare the matching pass contract.
-- Scaled passes reading `gbuffer.motion`, `gbuffer.motion_vector`, `out:motion_vector` or `primary_motion_vector` must
-  declare `motion_reprojection`. Shared GLSL helpers provide full-to-dispatch and dispatch-to-full motion conversion for
-  history reprojection.
-- The native motion-vector ABI is `previousPixel - currentPixel`, measured in full-resolution pixels with Vulkan
-  framebuffer origin/Y direction. Current pixels are jittered `gl_FragCoord`; previous pixels are produced by previous
-  view/projection/object transforms, so temporal passes should use the shared helpers and not apply jitter correction a
-  second time. VR views compute motion independently per layer.
-- Resolution push constants expose `historyValid`, `historyAge` and `historyResetReason`. Runtime history is invalidated
-  on first use, render extent or actual domain/signature changes, active backend/semantic contract changes, shaderpack
-  reload/rebuild, Java world/dimension serial changes, and camera cut/teleport detection from camera position/direction
-  jumps. The Java serial is advanced by `WorldRenderer.setWorld`, client-world object changes and dimension/effects
-  compatibility fields.
-- Lighting queue schedules can now choose a queue domain independently from the pass output policy:
-  `full_resolution`, `pass_resolution` or a named resolution domain. Active queue headers, record capacity and the
-  queue-builder tile dispatch use that domain, and queued reflection/GI shaders map queue dispatch pixels back to
-  full-resolution G-buffer pixels before sampling.
-- Direct lighting now uses the same queue infrastructure with `queue: direct`. The built-in pack schedules
-  `direct_light` through the direct lighting queue by default, the queue builder emits direct tiles from
-  `PIXEL_CLASSIFICATION_DIRECT_LIGHT_ELIGIBLE`, and direct-light shaders support both queued indirect dispatch and
-  legacy screen dispatch.
-- The old blanket `clear_contract` compute pass is now a compatibility marker for native output defaults. The active
-  runtime skips pipeline creation and dispatch for that marker, then records targeted public-output clears only for
-  unwritten or partial-writer outputs. G-buffer defaults are suppressed only on frames that actually render G-buffer
-  draw packets, queued direct light is treated as a partial writer because non-eligible tiles are not dispatched, and
-  `compose` remains a partial writer because invalid-depth pixels are left to the default clear.
-- The runtime now builds a generated graph plan from active pass resources. It prunes unused descriptor updates,
-  classification/visibility/queue/G-buffer resource initialization, fixed lighting uniform uploads, TLAS bindings,
-  pass stats bindings, compute/full-screen barriers and no-op fixed-pass pipelines/dispatches. The descriptor layout ABI
-  remains fixed.
-- The generated graph plan now derives built-in compose feature flags from active output writers. Disabled or absent
-  direct/GI/specular/clear/fog/refraction writers are removed from compose resource intent, and the built-in compose
-  shader is compiled with matching feature definitions so those image loads are not part of the active variant.
-- Dedicated G-buffer render-pass pre/post barriers are still separate from generated compute/full-screen barriers, but
-  they now transition only the actual G-buffer attachment outputs instead of every public Deferred output.
-- Scaled passes are rejected if they directly write public full-resolution outputs without an explicit scaled-output
-  contract.
+- Scaled passes are rejected if they directly write public full-resolution outputs without an explicit future upsample
+  path.
 - Acceleration/provider scene-runtime requirements are derived from the active plan instead of forced for every
   Deferred configuration.
-- Deferred compute/ray `vr: view_agnostic` means layer-aware single dispatch; it does not mean mono. `per_view` now
-  records one dispatch per active view with `baseLayer/viewIndex` push constants, and `mono_replicate` runs layer 0 then
-  copies declared image outputs to the remaining active layers. `unsupported` still rejects stereo plans.
-- Lighting queue buffers include per-layer indirect dispatch entries so queued `per_view` direct-light/reflection/GI
-  passes dispatch only the selected view's queue records instead of replaying the whole stereo queue.
-- Deferred diagnostics no longer depend on console IO. Native stores a compact fixed-field snapshot, Java pulls it as a
-  `long[]` and formats the normal debug text without native string construction.
-- String-heavy graph reports are collected and exposed only when graph-report diagnostics are enabled. File tracing is a
-  separate optional compact snapshot sink and does not force graph-report collection.
-- Stats buffers/readbacks/atomics are disabled unless `diagnostics_stats` is enabled. GPU timestamp queries are disabled
-  unless `diagnostics_gpu_timing` is enabled; when enabled, the snapshot carries a frame timing plus fixed compact pass
-  timing slots.
+- Deferred compute/ray `vr: view_agnostic` means layer-aware single dispatch; it does not mean mono. `per_view` and
+  `mono_replicate` are reserved until explicit command-recording modes are implemented.
+- Deferred diagnostics no longer depend on console IO; compact overlay text is pulled from native state, while stats
+  buffers/readbacks/atomics are disabled unless diagnostics stats are enabled.
 
-The next architecture work is concrete built-in upsample passes, more precise Java world/dimension compatibility keys,
-barrier merging, delayed public-output export, direct-light queue profiling/threshold tuning and deeper scene/runtime
-optimization.
+The next architecture work is scaled queue domains, output default policy, generated barriers, compose variants,
+history/upsample policy and GPU timing scopes.
 
 ---
 

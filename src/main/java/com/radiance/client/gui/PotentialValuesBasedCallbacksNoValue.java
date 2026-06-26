@@ -1,5 +1,6 @@
 package com.radiance.client.gui;
 
+//#if MC<260200
 import com.mojang.serialization.Codec;
 import java.util.List;
 import java.util.Optional;
@@ -43,3 +44,4 @@ public record PotentialValuesBasedCallbacksNoValue<T>(List<T> values, Codec<T> c
             });
     }
 }
+//#endif

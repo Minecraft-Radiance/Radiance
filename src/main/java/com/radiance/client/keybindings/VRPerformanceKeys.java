@@ -2,6 +2,7 @@ package com.radiance.client.keybindings;
 
 import com.radiance.client.gui.VRPerformanceManager;
 import com.radiance.client.option.Options;
+import java.util.List;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.util.InputUtil;
 import org.lwjgl.glfw.GLFW;
@@ -95,11 +96,11 @@ public class VRPerformanceKeys {
     /**
      * Get all keybindings for registration with Minecraft
      */
-    public static KeyBinding[] getAllKeybindings() {
-        return new KeyBinding[] {
+    public static List<KeyBinding> getAllKeybindings() {
+        return List.of(
             TOGGLE_VR_PERFORMANCE,
             TOGGLE_VR_CHARTS,
             CYCLE_VR_POSITION
-        };
+        );
     }
 }
