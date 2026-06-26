@@ -11,8 +11,12 @@ package com.radiance.client.gui.compat;
 //$$ import net.minecraft.client.gui.components.Renderable;
 //$$ import net.minecraft.client.gui.components.events.GuiEventListener;
 //$$ import net.minecraft.client.gui.narration.NarratableEntry;
+//$$ import net.minecraft.client.input.MouseButtonEvent;
+//$$ import net.minecraft.client.input.MouseButtonInfo;
+//$$ import net.minecraft.client.renderer.RenderPipelines;
 //$$ import net.minecraft.client.gui.screens.Screen;
 //$$ import net.minecraft.network.chat.Component;
+//$$ import net.minecraft.network.chat.MutableComponent;
 //$$ import net.minecraft.resources.Identifier;
 //$$ import net.minecraft.util.Mth;
 //#else
@@ -84,11 +88,11 @@ public final class GuiCompat {
     //$$ }
     //$$
     //$$ public static void drawTexture(Object ctx, Object texId, int x, int y, float u, float v, int w, int h, int tw, int th) {
-    //$$     ((GuiGraphicsExtractor) ctx).blitSprite((Identifier) texId, x, y, w, h);
+    //$$     ((GuiGraphicsExtractor) ctx).blit(RenderPipelines.GUI_TEXTURED, (Identifier) texId, x, y, u, v, w, h, tw, th);
     //$$ }
     //$$
     //$$ public static void drawTooltip(Object ctx, Object font, Object text, int mx, int my) {
-    //$$     ((GuiGraphicsExtractor) ctx).renderTooltip((Font) font, (Component) text, mx, my);
+    //$$     ((GuiGraphicsExtractor) ctx).setTooltipForNextFrame((Font) font, (Component) text, mx, my);
     //$$ }
     //#else
     public static void fill(Object ctx, int x0, int y0, int x1, int y1, int color) {
@@ -111,7 +115,8 @@ public final class GuiCompat {
     }
 
     public static void drawTexture(Object ctx, Object texId, int x, int y, float u, float v, int w, int h, int tw, int th) {
-        ((DrawContext) ctx).drawTexture((Identifier) texId, x, y, u, v, w, h, tw, th);
+        ((DrawContext) ctx).drawTexture(net.minecraft.client.render.RenderLayer::getGuiTextured,
+            (Identifier) texId, x, y, u, v, w, h, tw, th);
     }
 
     public static void drawTooltip(Object ctx, Object font, Object text, int mx, int my) {
@@ -129,10 +134,10 @@ public final class GuiCompat {
     //$$     ((GuiGraphicsExtractor) ctx).pose().popMatrix();
     //$$ }
     //$$ public static void matricesTranslate(Object ctx, float x, float y, float z) {
-    //$$     ((GuiGraphicsExtractor) ctx).pose().translate(x, y, z);
+    //$$     ((GuiGraphicsExtractor) ctx).pose().translate(x, y);
     //$$ }
     //$$ public static void matricesScale(Object ctx, float sx, float sy, float sz) {
-    //$$     ((GuiGraphicsExtractor) ctx).pose().scale(sx, sy, sz);
+    //$$     ((GuiGraphicsExtractor) ctx).pose().scale(sx, sy);
     //$$ }
     //#else
     public static void matricesPush(Object ctx)       { ((DrawContext) ctx).getMatrices().push(); }
@@ -196,14 +201,18 @@ public final class GuiCompat {
     // ======================== Widget mouse events ========================
 
     //#if MC>=260200
+    //$$ private static MouseButtonEvent mouseButtonEvent(double mx, double my, int btn) {
+    //$$     return new MouseButtonEvent(mx, my, new MouseButtonInfo(btn, 0));
+    //$$ }
+    //$$
     //$$ public static boolean widgetMouseClicked(Object w, double mx, double my, int btn) {
-    //$$     return ((AbstractWidget) w).mouseClicked(mx, my, btn);
+    //$$     return ((AbstractWidget) w).mouseClicked(mouseButtonEvent(mx, my, btn), false);
     //$$ }
     //$$ public static boolean widgetMouseDragged(Object w, double mx, double my, int btn, double dx, double dy) {
-    //$$     return ((AbstractWidget) w).mouseDragged(mx, my, btn, dx, dy);
+    //$$     return ((AbstractWidget) w).mouseDragged(mouseButtonEvent(mx, my, btn), dx, dy);
     //$$ }
     //$$ public static boolean widgetMouseReleased(Object w, double mx, double my, int btn) {
-    //$$     return ((AbstractWidget) w).mouseReleased(mx, my, btn);
+    //$$     return ((AbstractWidget) w).mouseReleased(mouseButtonEvent(mx, my, btn));
     //$$ }
     //#else
     public static boolean widgetMouseClicked(Object w, double mx, double my, int btn) {
@@ -340,20 +349,21 @@ public final class GuiCompat {
     //#if MC>=260200
     //$$ @SuppressWarnings("unchecked")
     //$$ public static <T> T screenAddChild(Object screen, Object widget) {
-    //$$     return (T) ((Screen) screen).addRenderableWidget((GuiEventListener & Renderable & NarratableEntry) widget);
+    //$$     return (T) ((PlatformScreen) screen).compatAddRenderableWidget((GuiEventListener & Renderable & NarratableEntry) widget);
     //$$ }
     //$$ public static Object screenFont(Object screen)       { return ((Screen) screen).getFont(); }
-    //$$ public static Object screenClient(Object screen)     { return ((Screen) screen).minecraft; }
-    //$$ public static void   screenClearChildren(Object scr) { ((Screen) scr).clearWidgets(); }
+    //$$ public static Object screenClient(Object screen)     { return ((PlatformScreen) screen).compatMinecraft(); }
+    //$$ public static void   screenClearChildren(Object scr) { ((PlatformScreen) scr).compatClearWidgets(); }
     //$$ public static java.util.List<?> screenChildren(Object screen) { return ((Screen) screen).children(); }
     //#else
     @SuppressWarnings("unchecked")
     public static <T> T screenAddChild(Object screen, Object widget) {
-        return (T) ((Screen) screen).addDrawableChild((net.minecraft.client.gui.Element) widget);
+        return (T) ((PlatformScreen) screen).compatAddDrawableChild(
+            (net.minecraft.client.gui.Element & net.minecraft.client.gui.Drawable & net.minecraft.client.gui.Selectable) widget);
     }
-    public static Object screenFont(Object screen)       { return ((Screen) screen).textRenderer; }
-    public static Object screenClient(Object screen)     { return ((Screen) screen).client; }
-    public static void   screenClearChildren(Object scr) { ((Screen) scr).clearChildren(); }
+    public static Object screenFont(Object screen)       { return ((PlatformScreen) screen).compatTextRenderer(); }
+    public static Object screenClient(Object screen)     { return ((PlatformScreen) screen).compatClient(); }
+    public static void   screenClearChildren(Object scr) { ((PlatformScreen) scr).compatClearChildren(); }
     public static java.util.List<?> screenChildren(Object screen) { return ((Screen) screen).children(); }
     //#endif
 
@@ -362,19 +372,21 @@ public final class GuiCompat {
     //#if MC>=260200
     //$$ public static Object getMinecraft()                       { return Minecraft.getInstance(); }
     //$$ public static Object getClientFont()                      { return Minecraft.getInstance().font; }
-    //$$ public static void   setScreen(Object cl, Object screen)  { ((Minecraft) cl).setScreen((Screen) screen); }
-    //#else
+    //$$ public static Object getClientPlayer(Object cl)           { return ((Minecraft) cl).player; }
+    //$$ public static void   setScreen(Object cl, Object screen)  { ((Minecraft) cl).gui.setScreen((Screen) screen); }
+//#else
     public static Object getMinecraft()                       { return MinecraftClient.getInstance(); }
     public static Object getClientFont()                      { return MinecraftClient.getInstance().textRenderer; }
+    public static Object getClientPlayer(Object cl)           { return ((MinecraftClient) cl).player; }
     public static void   setScreen(Object cl, Object screen)  { ((MinecraftClient) cl).setScreen((Screen) screen); }
     //#endif
 
     // ======================== Identifier ========================
 
     //#if MC>=260200
-    //$$ public static Object id(String namespace, String path) { return Identifier.of(namespace, path); }
+    //$$ public static Object id(String namespace, String path) { return Identifier.fromNamespaceAndPath(namespace, path); }
     //#else
-    public static Object id(String namespace, String path) { return new Identifier(namespace, path); }
+    public static Object id(String namespace, String path) { return Identifier.of(namespace, path); }
     //#endif
 
     // ======================== Custom draw (drawBezier via IDrawContextExt) ========================
@@ -421,13 +433,7 @@ public final class GuiCompat {
     //$$                     result.append(Component.literal(segment.toString()).setStyle((net.minecraft.network.chat.Style) style));
     //$$                     segment.setLength(0);
     //$$                 }
-    //$$                 if (fmt == net.minecraft.ChatFormatting.RESET) {
-    //$$                     style = net.minecraft.network.chat.Style.EMPTY;
-    //$$                 } else if (fmt.isColor()) {
-    //$$                     style = ((net.minecraft.network.chat.Style) style).applyFormat(fmt);
-    //$$                 } else {
-    //$$                     style = ((net.minecraft.network.chat.Style) style).applyFormat(fmt);
-    //$$                 }
+    //$$                 style = ((net.minecraft.network.chat.Style) style).applyLegacyFormat(fmt);
     //$$                 i++;
     //$$                 continue;
     //$$             }

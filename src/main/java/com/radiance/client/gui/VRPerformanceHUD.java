@@ -2,7 +2,11 @@ package com.radiance.client.gui;
 
 import com.radiance.client.config.VRPerformanceConfig;
 import com.radiance.client.gui.compat.GuiCompat;
+//#if MC>=260200
+//$$ import com.radiance.client.blaze3d.abi.VRProxy;
+//#else
 import com.radiance.client.proxy.vulkan.VRProxy;
+//#endif
 
 import java.util.ArrayDeque;
 import java.util.Deque;

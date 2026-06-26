@@ -3,9 +3,6 @@ package com.radiance.client.keybindings;
 import com.radiance.client.gui.VRPerformanceManager;
 import com.radiance.client.option.Options;
 import java.util.List;
-import net.minecraft.client.option.KeyBinding;
-import net.minecraft.client.util.InputUtil;
-import org.lwjgl.glfw.GLFW;
 
 /**
  * Keybinding registry for VR performance monitoring controls
@@ -16,24 +13,21 @@ import org.lwjgl.glfw.GLFW;
 public class VRPerformanceKeys {
 
     // Keybindings
-    public static final KeyBinding TOGGLE_VR_PERFORMANCE = new KeyBinding(
+    public static final Object TOGGLE_VR_PERFORMANCE = KeybindingBridge.newKey(
         "key.radiance.toggle_vr_performance",
-        InputUtil.Type.KEYSYM,
-        GLFW.GLFW_KEY_F4, // F4 to toggle VR performance overlay
+        KeybindingBridge.KEY_F4,
         "category.radiance.vr"
     );
 
-    public static final KeyBinding TOGGLE_VR_CHARTS = new KeyBinding(
+    public static final Object TOGGLE_VR_CHARTS = KeybindingBridge.newKey(
         "key.radiance.toggle_vr_charts",
-        InputUtil.Type.KEYSYM,
-        GLFW.GLFW_KEY_F5, // F5 to toggle detailed charts
+        KeybindingBridge.KEY_F5,
         "category.radiance.vr"
     );
 
-    public static final KeyBinding CYCLE_VR_POSITION = new KeyBinding(
+    public static final Object CYCLE_VR_POSITION = KeybindingBridge.newKey(
         "key.radiance.cycle_vr_position",
-        InputUtil.Type.KEYSYM,
-        GLFW.GLFW_KEY_F6, // F6 to cycle HUD position
+        KeybindingBridge.KEY_F6,
         "category.radiance.vr"
     );
 
@@ -43,7 +37,7 @@ public class VRPerformanceKeys {
      */
     public static void handleKeyPresses() {
         // Toggle VR performance display in F3
-        if (TOGGLE_VR_PERFORMANCE.wasPressed()) {
+        if (KeybindingBridge.wasPressed(TOGGLE_VR_PERFORMANCE)) {
             VRPerformanceManager.getInstance().toggleF3Display();
 
             // Could add chat message or sound feedback here
@@ -55,12 +49,12 @@ public class VRPerformanceKeys {
         }
 
         // Toggle detailed charts
-        if (TOGGLE_VR_CHARTS.wasPressed()) {
+        if (KeybindingBridge.wasPressed(TOGGLE_VR_CHARTS)) {
             Options.setVRF3Charts(!Options.vrF3Charts, true);
         }
 
         // Cycle HUD position
-        if (CYCLE_VR_POSITION.wasPressed()) {
+        if (KeybindingBridge.wasPressed(CYCLE_VR_POSITION)) {
             cycleHudPosition();
         }
     }
@@ -96,7 +90,7 @@ public class VRPerformanceKeys {
     /**
      * Get all keybindings for registration with Minecraft
      */
-    public static List<KeyBinding> getAllKeybindings() {
+    public static List<Object> getAllKeybindings() {
         return List.of(
             TOGGLE_VR_PERFORMANCE,
             TOGGLE_VR_CHARTS,

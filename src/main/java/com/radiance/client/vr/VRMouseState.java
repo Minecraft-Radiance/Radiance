@@ -1,6 +1,10 @@
 package com.radiance.client.vr;
 
+//#if MC>=260200
+//$$ import com.radiance.client.blaze3d.abi.VRProxy;
+//#else
 import com.radiance.client.proxy.vulkan.VRProxy;
+//#endif
 
 /**
  * Tracks the accumulated mouse yaw for keyboard+mouse VR mode.

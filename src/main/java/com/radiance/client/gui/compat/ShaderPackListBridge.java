@@ -11,6 +11,7 @@ import java.util.List;
 //$$ import net.minecraft.client.gui.GuiGraphicsExtractor;
 //$$ import net.minecraft.client.gui.components.ObjectSelectionList;
 //$$ import net.minecraft.client.gui.components.events.GuiEventListener;
+//$$ import net.minecraft.client.input.MouseButtonEvent;
 //$$ import net.minecraft.network.chat.Component;
 //#else
 import net.minecraft.client.MinecraftClient;
@@ -56,13 +57,13 @@ import net.minecraft.text.Text;
 //$$     }
 //$$
 //$$     @Override
-//$$     public boolean mouseClicked(double mx, double my, int button) {
-//$$         Entry entry = getEntryAtPosition(mx, my);
+//$$     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+//$$         Entry entry = getEntryAtPosition(event.x(), event.y());
 //$$         if (entry != null && !Pipeline.isShaderPackSelectable(entry.choice)) return true;
-//$$         return super.mouseClicked(mx, my, button);
+//$$         return super.mouseClicked(event, doubleClick);
 //$$     }
 //$$
-//$$     protected Object getHoveredTooltip() {
+//$$     public Object getHoveredTooltip() {
 //$$         Entry entry = getHovered();
 //$$         return entry == null ? null : entry.getUnavailableReason();
 //$$     }
@@ -73,20 +74,18 @@ import net.minecraft.text.Text;
 //$$
 //$$     protected abstract Object buildLabelImpl(Pipeline.ShaderPackChoice choice);
 //$$
-//$$     public static class Entry extends ObjectSelectionList.Entry<Entry> {
+//$$     public class Entry extends ObjectSelectionList.Entry<Entry> {
 //$$         public final Pipeline.ShaderPackChoice choice;
 //$$         public Entry(Pipeline.ShaderPackChoice choice) { this.choice = choice; }
 //$$
 //$$         @Override
-//$$         public void render(GuiGraphicsExtractor ctx, int index, int y, int x,
-//$$                            int entryWidth, int entryHeight, int mx, int my,
-//$$                            boolean hovered, float tickDelta) {
+//$$         public void extractContent(GuiGraphicsExtractor ctx, int mx, int my, boolean hovered, float tickDelta) {
 //$$             int textColor = Pipeline.isShaderPackSelectable(choice) ? 0xFFFFFF : 0x9A9A9A;
 //$$             Font font = ((Minecraft) GuiCompat.getMinecraft()).font;
-//$$             Object label = ShaderPackListBridge.this.buildLabel(choice);
+//$$             Object label = buildLabel(choice);
 //$$             GuiCompat.drawCenteredText(ctx, font, label,
-//$$                 ShaderPackListBridge.this.width / 2,
-//$$                 y + entryHeight / 2 - 9 / 2, textColor);
+//$$                 ShaderPackListBridge.this.getWidth() / 2,
+//$$                 getContentYMiddle() - 9 / 2, textColor);
 //$$         }
 //$$
 //$$         private Object getUnavailableReason() {
@@ -95,16 +94,16 @@ import net.minecraft.text.Text;
 //$$         }
 //$$
 //$$         @Override
-//$$         public boolean mouseClicked(double mx, double my, int button) {
+//$$         public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
 //$$             if (!Pipeline.isShaderPackSelectable(choice)) return true;
-//$$             ShaderPackListBridge.this.setSelected(this);
+//$$             setSelected(this);
 //$$             Pipeline.setShaderPack(choice, false);
-//$$             return super.mouseClicked(mx, my, button);
+//$$             return true;
 //$$         }
 //$$
 //$$         @Override
 //$$         public Component getNarration() {
-//$$             return Component.translatable("narrator.select", (Component) ShaderPackListBridge.this.buildLabel(choice));
+//$$             return Component.translatable("narrator.select", (Component) buildLabel(choice));
 //$$         }
 //$$     }
 //$$ }
@@ -148,7 +147,7 @@ public abstract class ShaderPackListBridge extends AlwaysSelectedEntryListWidget
         return super.mouseClicked(mx, my, button);
     }
 
-    protected Object getHoveredTooltip() {
+    public Object getHoveredTooltip() {
         Entry entry = getHoveredEntry();
         return entry == null ? null : entry.getUnavailableReason();
     }
@@ -159,19 +158,19 @@ public abstract class ShaderPackListBridge extends AlwaysSelectedEntryListWidget
 
     protected abstract Object buildLabelImpl(Pipeline.ShaderPackChoice choice);
 
-    public static class Entry extends AlwaysSelectedEntryListWidget.Entry<Entry> {
+    public class Entry extends AlwaysSelectedEntryListWidget.Entry<Entry> {
         public final Pipeline.ShaderPackChoice choice;
         public Entry(Pipeline.ShaderPackChoice choice) { this.choice = choice; }
 
         @Override
         public void render(DrawContext ctx, int index, int y, int x,
                            int entryWidth, int entryHeight, int mx, int my,
-                           boolean hovered, float tickDelta) {
+            boolean hovered, float tickDelta) {
             int textColor = Pipeline.isShaderPackSelectable(choice) ? 0xFFFFFF : 0x9A9A9A;
-            Object label = ((ShaderPackListBridge) getListWidget()).buildLabel(choice);
+            Object label = buildLabel(choice);
             ctx.drawCenteredTextWithShadow(
                 MinecraftClient.getInstance().textRenderer, (Text) label,
-                ((ShaderPackListBridge) getListWidget()).width / 2,
+                ShaderPackListBridge.this.width / 2,
                 y + entryHeight / 2 - 9 / 2, textColor);
         }
 
@@ -183,14 +182,14 @@ public abstract class ShaderPackListBridge extends AlwaysSelectedEntryListWidget
         @Override
         public boolean mouseClicked(double mx, double my, int button) {
             if (!Pipeline.isShaderPackSelectable(choice)) return true;
-            ((ShaderPackListBridge) getListWidget()).setSelected(this);
+            setSelected(this);
             Pipeline.setShaderPack(choice, false);
             return super.mouseClicked(mx, my, button);
         }
 
         @Override
         public Text getNarration() {
-            return Text.translatable("narrator.select", (Text) ((ShaderPackListBridge) getListWidget()).buildLabel(choice));
+            return Text.translatable("narrator.select", (Text) buildLabel(choice));
         }
     }
 }

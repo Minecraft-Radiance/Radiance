@@ -1,7 +1,11 @@
 package com.radiance.client.texture;
 
 import com.mojang.blaze3d.platform.TextureUtil;
+//#if MC>=260200
+//$$ import com.radiance.client.blaze3d.abi.TextureProxy;
+//#else
 import com.radiance.client.proxy.vulkan.TextureProxy;
+//#endif
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import java.io.IOException;
 import java.io.InputStream;

@@ -58,6 +58,7 @@ public class VulkanConstants {
             return name;
         }
 
+        //#if MC<260200
         public NativeImage.InternalFormat getNativeImageInternalFormat() {
             return switch (this) {
                 case VK_FORMAT_R8_UNORM -> NativeImage.InternalFormat.RED;
@@ -67,7 +68,9 @@ public class VulkanConstants {
                 default -> throw new IllegalStateException("Unexpected value: " + this.value);
             };
         }
+        //#endif
 
+        //#if MC<260200
         public NativeImage.Format getNativeImageFormat() {
             return switch (this) {
                 case VK_FORMAT_R8G8B8_UNORM -> NativeImage.Format.RGB;
@@ -75,6 +78,7 @@ public class VulkanConstants {
                 default -> throw new IllegalStateException("Unexpected value: " + this.value);
             };
         }
+        //#endif
     }
 
     public enum VkFilter {

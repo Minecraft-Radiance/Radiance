@@ -1,7 +1,11 @@
 package com.radiance.client.vr;
 
 import com.radiance.client.option.Options;
+//#if MC>=260200
+//$$ import com.radiance.client.blaze3d.abi.VRProxy;
+//#else
 import com.radiance.client.proxy.vulkan.VRProxy;
+//#endif
 import net.minecraft.client.MinecraftClient;
 
 public final class XRSessionController {

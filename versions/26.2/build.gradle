@@ -48,6 +48,14 @@ sourceSets {
     main {
         java.exclude("com/radiance/mixins/**", "com/radiance/mixin_related/**")
         java.exclude("com/radiance/client/proxy/**")
+        java.exclude("com/radiance/client/shader/**", "com/radiance/client/texture/**")
+        java.exclude("com/radiance/client/util/**", "com/radiance/client/vertex/**", "com/radiance/client/vr/**")
+        java.exclude("com/radiance/client/constant/Constants.java")
+        java.exclude("com/radiance/client/option/DLSSMode.java",
+                     "com/radiance/client/option/DenoiserMode.java",
+                     "com/radiance/client/option/UpscalerQuality.java",
+                     "com/radiance/client/option/UpscalerType.java")
+        java.exclude("com/radiance/client/VRPerformanceClient.java")
         resources.exclude("radiance.mixins.json")
         resources.exclude("radiance.accesswidener")
     }

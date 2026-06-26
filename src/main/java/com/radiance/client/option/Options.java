@@ -3,9 +3,15 @@ package com.radiance.client.option;
 import com.radiance.client.RadianceClient;
 import com.radiance.client.config.VRPerformanceConfig;
 import com.radiance.client.pipeline.Pipeline;
+//#if MC>=260200
+//$$ import com.radiance.client.blaze3d.abi.ChunkProxy;
+//$$ import com.radiance.client.blaze3d.abi.TextureProxy;
+//$$ import com.radiance.client.blaze3d.abi.VRProxy;
+//#else
 import com.radiance.client.proxy.vulkan.TextureProxy;
 import com.radiance.client.proxy.vulkan.VRProxy;
 import com.radiance.client.proxy.world.ChunkProxy;
+//#endif
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;

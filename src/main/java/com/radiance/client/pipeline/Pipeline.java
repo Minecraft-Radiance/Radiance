@@ -6,9 +6,17 @@ import com.radiance.client.constant.VulkanConstants;
 import com.radiance.client.option.Options;
 import com.radiance.client.pipeline.config.AttributeConfig;
 import com.radiance.client.pipeline.config.ImageConfig;
+//#if MC>=260200
+//$$ import com.radiance.client.blaze3d.abi.VRProxy;
+//#else
 import com.radiance.client.proxy.vulkan.VRProxy;
+//#endif
 import com.radiance.client.replay.hook.ReplayCaptureHooks;
+//#if MC>=260200
+//$$ import net.minecraft.client.Minecraft;
+//#else
 import net.minecraft.client.MinecraftClient;
+//#endif
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -632,12 +640,21 @@ public class Pipeline {
     }
 
     private static Path getMinecraftShaderPackDirectory() {
+        //#if MC>=260200
+        //$$ Minecraft client = Minecraft.getInstance();
+        //$$ if (client == null || client.gameDirectory == null) {
+        //$$     return null;
+        //$$ }
+        //$$
+        //$$ Path shaderPackDirectory = client.gameDirectory.toPath().resolve(MINECRAFT_SHADER_PACK_DIRECTORY);
+        //#else
         MinecraftClient client = MinecraftClient.getInstance();
         if (client == null || client.runDirectory == null) {
             return null;
         }
 
         Path shaderPackDirectory = client.runDirectory.toPath().resolve(MINECRAFT_SHADER_PACK_DIRECTORY);
+        //#endif
         try {
             Files.createDirectories(shaderPackDirectory);
         } catch (IOException e) {
@@ -2472,6 +2489,21 @@ public class Pipeline {
     }
 
     private static String getCurrentLanguageCode() {
+        //#if MC>=260200
+        //$$ Minecraft client = Minecraft.getInstance();
+        //$$ if (client != null) {
+        //$$     var languageManager = client.getLanguageManager();
+        //$$     if (languageManager != null) {
+        //$$         String language = languageManager.getSelected();
+        //$$         if (language != null && !language.isBlank()) {
+        //$$             return language.toLowerCase(Locale.ROOT);
+        //$$         }
+        //$$     }
+        //$$     if (client.options != null && client.options.languageCode != null && !client.options.languageCode.isBlank()) {
+        //$$         return client.options.languageCode.toLowerCase(Locale.ROOT);
+        //$$     }
+        //$$ }
+        //#else
         MinecraftClient client = MinecraftClient.getInstance();
         if (client != null) {
             var languageManager = client.getLanguageManager();
@@ -2485,6 +2517,7 @@ public class Pipeline {
                 return client.options.language.toLowerCase(Locale.ROOT);
             }
         }
+        //#endif
 
         String fallback = Locale.getDefault().toString();
         return fallback == null || fallback.isBlank()
