@@ -5,65 +5,50 @@ import com.mojang.blaze3d.systems.GpuSurface;
 import com.mojang.blaze3d.systems.GpuSurfaceBackend;
 import com.mojang.blaze3d.systems.SurfaceException;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.radiance.client.blaze3d.abi.NativeBridge;
+import com.radiance.client.blaze3d.abi.Blaze3DProxy;
 import java.util.Collection;
 import java.util.List;
 
 public final class RadianceGpuSurfaceBackend implements GpuSurfaceBackend {
-    private final long windowHandle;
-    private GpuSurface.Configuration configuration;
-    private boolean closed;
+    private final long handle;
 
-    RadianceGpuSurfaceBackend(long windowHandle) {
-        this.windowHandle = windowHandle;
+    RadianceGpuSurfaceBackend(long windowHandle, long handle) {
+        this.handle = handle;
     }
 
     @Override
     public void configure(GpuSurface.Configuration config) throws SurfaceException {
-        if (this.closed) {
-            throw new SurfaceException("Radiance surface is closed");
-        }
-        this.configuration = config;
+        Blaze3DProxy.configureSurfaceNative(this.handle, config.width(), config.height(), 0, config.presentMode().ordinal());
     }
 
     @Override
     public boolean isSuboptimal() {
-        return false;
+        return Blaze3DProxy.isSurfaceSuboptimalNative(this.handle);
     }
 
     @Override
     public void acquireNextTexture() throws SurfaceException {
-        if (this.closed) {
-            throw new SurfaceException("Radiance surface is closed");
-        }
-        NativeBridge.acquireContextNative();
+        Blaze3DProxy.acquireNextTextureNative(this.handle);
     }
 
     @Override
     public void blitFromTexture(CommandEncoderBackend commandEncoder, GpuTextureView textureView) {
-        // First version presents the Radiance renderer output; this call only satisfies GpuSurface lifecycle.
+        long encoderHandle = commandEncoder instanceof RadianceCommandEncoderBackend radiance ? radiance.handle() : 0L;
+        Blaze3DProxy.blitSurfaceFromTextureNative(this.handle, encoderHandle, RadianceBackendUtil.textureViewHandle(textureView));
     }
 
     @Override
     public void present() {
-        NativeBridge.presentNative();
+        Blaze3DProxy.presentSurfaceNative(this.handle);
     }
 
     @Override
     public void close() {
-        this.closed = true;
+        Blaze3DProxy.closeSurfaceNative(this.handle);
     }
 
     @Override
     public Collection<GpuSurface.PresentMode> supportedPresentModes() {
         return List.of(GpuSurface.PresentMode.FIFO, GpuSurface.PresentMode.MAILBOX, GpuSurface.PresentMode.IMMEDIATE);
-    }
-
-    long windowHandle() {
-        return this.windowHandle;
-    }
-
-    GpuSurface.Configuration configuration() {
-        return this.configuration;
     }
 }

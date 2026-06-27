@@ -3,7 +3,7 @@ package com.radiance.client.texture.compat;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 //#if MC>=260200
-//$$ import com.radiance.client.blaze3d.abi.NativeBridge;
+//$$ import com.radiance.client.blaze3d.abi.Blaze3DProxy;
 //#endif
 
 public final class TextureMaterialCompat {
@@ -65,7 +65,7 @@ public final class TextureMaterialCompat {
     private static int registerPbrMaterialNative(String spriteId, String albedoPath,
         String normalPath, String specularPath, String flagPath) {
         //#if MC>=260200
-        //$$ return NativeBridge.registerPbrMaterialNative(spriteId, albedoPath, normalPath,
+        //$$ return Blaze3DProxy.registerPbrMaterialNative(spriteId, albedoPath, normalPath,
         //$$     specularPath, flagPath);
         //#else
         return 0;
@@ -74,13 +74,13 @@ public final class TextureMaterialCompat {
 
     private static void clearAtlasNative(long atlasTexture) {
         //#if MC>=260200
-        //$$ NativeBridge.clearAtlasNative(atlasTexture);
+        //$$ Blaze3DProxy.clearAtlasNative(atlasTexture);
         //#endif
     }
 
     private static void syncAtlasSpriteNative(AtlasSpriteRecord record) {
         //#if MC>=260200
-        //$$ NativeBridge.syncAtlasSpriteNative(record.atlasTexture(), record.atlasTextureView(),
+        //$$ Blaze3DProxy.syncAtlasSpriteNative(record.atlasTexture(), record.atlasTextureView(),
         //$$     record.atlasId(), record.spriteId(), record.u0(), record.v0(), record.u1(),
         //$$     record.v1(), record.pixelX(), record.pixelY(), record.pixelWidth(),
         //$$     record.pixelHeight(), record.materialId());

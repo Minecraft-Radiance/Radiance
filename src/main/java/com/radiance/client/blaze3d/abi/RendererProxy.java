@@ -11,7 +11,7 @@ public final class RendererProxy {
 
     public static void initFolderPath(String path) {
         folderPath = path == null ? "" : path;
-        NativeBridge.initFolderPathNative(folderPath);
+        Blaze3DProxy.initFolderPathNative(folderPath);
         ReplayCaptureHooks.rendererFolderPath(folderPath);
     }
 
@@ -25,25 +25,25 @@ public final class RendererProxy {
     }
 
     public static int maxSupportedTextureSize() {
-        return NativeBridge.maxSupportedTextureSizeNative();
+        return Blaze3DProxy.maxSupportedTextureSizeNative();
     }
 
     public static void acquireContext() {
         ReplayCaptureHooks.frameAcquireContext();
-        NativeBridge.acquireContextNative();
+        Blaze3DProxy.acquireContextNative();
     }
 
     public static void submitCommand() {
         ReplayCaptureHooks.frameSubmitCommand();
-        NativeBridge.submitCommandNative();
+        Blaze3DProxy.submitCommandNative();
     }
 
     public static void present() {
         ReplayCaptureHooks.framePresent();
-        NativeBridge.presentNative();
+        Blaze3DProxy.presentNative();
     }
 
     public static void close() {
-        NativeBridge.closeNative();
+        Blaze3DProxy.closeNative();
     }
 }

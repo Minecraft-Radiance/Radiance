@@ -10,23 +10,25 @@ import com.mojang.blaze3d.systems.RenderPassBackend;
 import com.mojang.blaze3d.systems.RenderPassDescriptor;
 import com.mojang.blaze3d.systems.TransientMemory;
 import com.mojang.blaze3d.textures.GpuTexture;
-import com.radiance.client.blaze3d.abi.NativeBridge;
+import com.radiance.client.blaze3d.abi.Blaze3DProxy;
 import java.nio.ByteBuffer;
 import org.joml.Vector4fc;
 
 public final class RadianceCommandEncoderBackend implements CommandEncoderBackend {
-    private final RadianceGpuDeviceBackend device;
-    private final RadianceTransientMemory transientMemory;
-    private RadianceRenderPassBackend activeRenderPass;
+    private final long handle;
+    private final RadianceTransientMemory transientMemory = new RadianceTransientMemory();
 
-    RadianceCommandEncoderBackend(RadianceGpuDeviceBackend device) {
-        this.device = device;
-        this.transientMemory = new RadianceTransientMemory(device);
+    RadianceCommandEncoderBackend(long handle) {
+        this.handle = handle;
+    }
+
+    long handle() {
+        return this.handle;
     }
 
     @Override
     public void submit() {
-        NativeBridge.submitCommandNative();
+        Blaze3DProxy.submitCommandEncoderNative(this.handle);
     }
 
     @Override
@@ -54,7 +56,6 @@ public final class RadianceCommandEncoderBackend implements CommandEncoderBacken
                 clearA = value.w();
             }
         }
-
         long depthView = 0L;
         boolean hasClearDepth = false;
         double clearDepth = 0.0;
@@ -63,91 +64,96 @@ public final class RadianceCommandEncoderBackend implements CommandEncoderBacken
             hasClearDepth = descriptor.depthAttachment().clearValue().isPresent();
             clearDepth = descriptor.depthAttachment().clearValue().orElse(0.0);
         }
-
         RenderPass.RenderArea area = descriptor.renderArea;
-        long handle = NativeBridge.createRenderPassNative(descriptor.label().get(), colorView, hasClearColor,
+        long renderPass = Blaze3DProxy.createRenderPassNative(descriptor.label().get(), colorView, hasClearColor,
             clearR, clearG, clearB, clearA, depthView, hasClearDepth, clearDepth,
             area == null ? 0 : area.x(), area == null ? 0 : area.y(), area == null ? 0 : area.width(), area == null ? 0 : area.height());
-        this.activeRenderPass = new RadianceRenderPassBackend(this.device, handle);
-        NativeBridge.beginRenderPassNative(handle);
-        return this.activeRenderPass;
+        return new RadianceRenderPassBackend(renderPass);
     }
 
     @Override
     public void submitRenderPass() {
-        if (this.activeRenderPass != null) {
-            NativeBridge.endRenderPassNative();
-            this.activeRenderPass = null;
-        }
+        Blaze3DProxy.submitRenderPassNative(this.handle);
     }
 
     @Override
     public void clearColorTexture(GpuTexture colorTexture, Vector4fc clearColor) {
+        Blaze3DProxy.clearColorTextureNative(RadianceBackendUtil.textureHandle(colorTexture), clearColor.x(), clearColor.y(), clearColor.z(), clearColor.w());
     }
 
     @Override
     public void clearColorAndDepthTextures(GpuTexture colorTexture, Vector4fc clearColor, GpuTexture depthTexture, double clearDepth) {
+        Blaze3DProxy.clearColorAndDepthTexturesNative(RadianceBackendUtil.textureHandle(colorTexture), clearColor.x(), clearColor.y(), clearColor.z(), clearColor.w(),
+            RadianceBackendUtil.textureHandle(depthTexture), clearDepth);
     }
 
     @Override
     public void clearColorAndDepthTextures(GpuTexture colorTexture, Vector4fc clearColor, GpuTexture depthTexture,
                                            double clearDepth, int regionX, int regionY, int regionWidth, int regionHeight) {
+        Blaze3DProxy.clearColorAndDepthTexturesRegionNative(RadianceBackendUtil.textureHandle(colorTexture), clearColor.x(), clearColor.y(), clearColor.z(), clearColor.w(),
+            RadianceBackendUtil.textureHandle(depthTexture), clearDepth, regionX, regionY, regionWidth, regionHeight);
     }
 
     @Override
     public void clearDepthTexture(GpuTexture depthTexture, double clearDepth) {
+        Blaze3DProxy.clearDepthTextureNative(RadianceBackendUtil.textureHandle(depthTexture), clearDepth);
     }
 
     @Override
     public void writeToBuffer(GpuBufferSlice destination, ByteBuffer data) {
-        if (destination.buffer() instanceof RadianceGpuBuffer buffer) {
-            buffer.write(destination.offset(), data);
-        }
+        ByteBuffer bytes = data.duplicate();
+        Blaze3DProxy.writeToBufferNative(RadianceBackendUtil.bufferHandle(destination), destination.offset(), bytes, bytes.position(), bytes.remaining());
     }
 
     @Override
     public void copyToBuffer(GpuBufferSlice source, GpuBufferSlice target) {
-        if (source.buffer() instanceof RadianceGpuBuffer sourceBuffer && target.buffer() instanceof RadianceGpuBuffer targetBuffer) {
-            targetBuffer.copyFrom(sourceBuffer, source.offset(), target.offset(), source.length());
-        }
+        Blaze3DProxy.copyToBufferNative(RadianceBackendUtil.bufferHandle(source), source.offset(), RadianceBackendUtil.bufferHandle(target), target.offset(), source.length());
     }
 
     @Override
     public void writeToTexture(GpuTexture destination, ByteBuffer source, int mipLevel, int depthOrLayer,
                                int destX, int destY, int width, int height) {
+        ByteBuffer bytes = source.duplicate();
+        Blaze3DProxy.writeToTextureNative(RadianceBackendUtil.textureHandle(destination), bytes, mipLevel, depthOrLayer, destX, destY, width, height, bytes.position());
     }
 
     @Override
     public void copyBufferToTexture(GpuBufferSlice source, int sourceX, int sourceY, int sourceWidth, int sourceHeight,
                                     GpuTexture destination, int destinationX, int destinationY, int copyWidth,
                                     int copyHeight, int mipLevel, int arrayLayer) {
+        Blaze3DProxy.copyBufferToTextureNative(RadianceBackendUtil.bufferHandle(source), source.offset(), sourceX, sourceY, sourceWidth, sourceHeight,
+            RadianceBackendUtil.textureHandle(destination), destinationX, destinationY, copyWidth, copyHeight, mipLevel, arrayLayer);
     }
 
     @Override
     public void copyTextureToBuffer(GpuTexture source, GpuBuffer destination, long offset, Runnable callback, int mipLevel) {
+        Blaze3DProxy.copyTextureToBufferNative(RadianceBackendUtil.textureHandle(source), RadianceBackendUtil.bufferHandle(destination), offset, mipLevel, 0, 0,
+            source.getWidth(mipLevel), source.getHeight(mipLevel));
         callback.run();
     }
 
     @Override
     public void copyTextureToBuffer(GpuTexture source, GpuBuffer destination, long offset, Runnable callback,
                                     int mipLevel, int x, int y, int width, int height) {
+        Blaze3DProxy.copyTextureToBufferNative(RadianceBackendUtil.textureHandle(source), RadianceBackendUtil.bufferHandle(destination), offset, mipLevel, x, y, width, height);
         callback.run();
     }
 
     @Override
     public void copyTextureToTexture(GpuTexture source, GpuTexture destination, int mipLevel,
                                      int destX, int destY, int sourceX, int sourceY, int width, int height) {
+        Blaze3DProxy.copyTextureToTextureNative(RadianceBackendUtil.textureHandle(source), RadianceBackendUtil.textureHandle(destination), mipLevel,
+            destX, destY, sourceX, sourceY, width, height);
     }
 
     @Override
     public GpuFence createFence() {
-        return new RadianceGpuFence();
+        return new RadianceGpuFence(Blaze3DProxy.createFenceNative());
     }
 
     @Override
     public void writeTimestamp(GpuQueryPool pool, int index) {
-        if (pool instanceof RadianceGpuQueryPool radiancePool) {
-            radiancePool.write(index);
-        }
+        long poolHandle = pool instanceof RadianceGpuQueryPool radiance ? radiance.handle() : 0L;
+        Blaze3DProxy.writeTimestampNative(poolHandle, index);
     }
 }

@@ -1,45 +1,43 @@
 package com.radiance.client.blaze3d.backend;
 
 import com.mojang.blaze3d.systems.GpuQueryPool;
-import java.util.Arrays;
+import com.radiance.client.blaze3d.abi.Blaze3DProxy;
 import java.util.OptionalLong;
 
 public final class RadianceGpuQueryPool implements GpuQueryPool {
-    private final OptionalLong[] values;
-    private boolean closed;
+    private final long handle;
+    private final int size;
 
-    RadianceGpuQueryPool(int size) {
-        this.values = new OptionalLong[size];
-        Arrays.fill(this.values, OptionalLong.empty());
+    RadianceGpuQueryPool(long handle, int size) {
+        this.handle = handle;
+        this.size = size;
     }
 
-    void write(int index) {
-        if (!this.closed && index >= 0 && index < this.values.length) {
-            this.values[index] = OptionalLong.of(System.nanoTime());
-        }
+    long handle() {
+        return this.handle;
     }
 
     @Override
     public int size() {
-        return this.values.length;
+        return this.size;
     }
 
     @Override
     public OptionalLong getValue(int index) {
-        return index >= 0 && index < this.values.length ? this.values[index] : OptionalLong.empty();
+        return OptionalLong.empty();
     }
 
     @Override
     public OptionalLong[] getValues(int index, int count) {
-        OptionalLong[] out = new OptionalLong[count];
+        OptionalLong[] values = new OptionalLong[count];
         for (int i = 0; i < count; i++) {
-            out[i] = this.getValue(index + i);
+            values[i] = OptionalLong.empty();
         }
-        return out;
+        return values;
     }
 
     @Override
     public void close() {
-        this.closed = true;
+        Blaze3DProxy.closeTimestampQueryPoolNative(this.handle);
     }
 }

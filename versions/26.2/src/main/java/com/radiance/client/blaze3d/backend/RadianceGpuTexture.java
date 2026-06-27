@@ -2,16 +2,16 @@ package com.radiance.client.blaze3d.backend;
 
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.textures.GpuTexture;
-import com.radiance.client.blaze3d.abi.NativeBridge;
+import com.radiance.client.blaze3d.abi.Blaze3DProxy;
 
 public final class RadianceGpuTexture extends GpuTexture {
     private final long handle;
     private boolean closed;
 
-    RadianceGpuTexture(@GpuTexture.Usage int usage, String label, GpuFormat format, int width, int height, int depthOrLayers, int mipLevels) {
-        super(usage, RadianceBackendUtil.label(label), format, width, height, depthOrLayers, mipLevels);
-        this.handle = NativeBridge.createTextureNative(
-            RadianceBackendUtil.label(label), usage, RadianceBackendUtil.gpuFormat(format), width, height, depthOrLayers, mipLevels);
+    RadianceGpuTexture(long handle, @GpuTexture.Usage int usage, String label, GpuFormat format,
+                       int width, int height, int depthOrLayers, int mipLevels) {
+        super(usage, label, format, width, height, depthOrLayers, mipLevels);
+        this.handle = handle;
     }
 
     long handle() {
@@ -20,7 +20,10 @@ public final class RadianceGpuTexture extends GpuTexture {
 
     @Override
     public void close() {
-        this.closed = true;
+        if (!this.closed) {
+            this.closed = true;
+            Blaze3DProxy.closeTextureNative(this.handle);
+        }
     }
 
     @Override

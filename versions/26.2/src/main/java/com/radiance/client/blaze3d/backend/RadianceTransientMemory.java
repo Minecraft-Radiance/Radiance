@@ -8,87 +8,65 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class RadianceTransientMemory implements TransientMemory {
-    private final RadianceGpuDeviceBackend device;
-
-    RadianceTransientMemory(RadianceGpuDeviceBackend device) {
-        this.device = device;
-    }
-
     @Override
     public ByteBuffer allocateCpu(long size, long alignment, long minimumAllocation, long elementSize) {
-        return ByteBuffer.allocateDirect(Math.toIntExact(alignedSize(size, alignment, minimumAllocation, elementSize)));
+        return ByteBuffer.allocateDirect(Math.toIntExact(Math.max(size, minimumAllocation)));
     }
 
     @Override
     public GpuBufferSlice.MappedView allocateStaging(long size, long alignment, @GpuBuffer.Usage int usage,
                                                      long minimumAllocation, long elementSize) {
-        RadianceGpuBuffer buffer = (RadianceGpuBuffer)this.device.createBuffer("Radiance staging", usage | GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_COPY_SRC,
-            alignedSize(size, alignment, minimumAllocation, elementSize));
+        RadianceGpuBuffer buffer = new RadianceGpuBuffer(0L, usage | GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_COPY_SRC, Math.max(size, minimumAllocation));
         return buffer.map(0L, size, false, true);
     }
 
     @Override
     public GpuBufferSlice allocateGpu(long size, long alignment, @GpuBuffer.Usage int usage, long minimumAllocation, long elementSize) {
-        return this.device.createBuffer("Radiance transient gpu", usage, alignedSize(size, alignment, minimumAllocation, elementSize)).slice(0L, size);
+        return new RadianceGpuBuffer(0L, usage, Math.max(size, minimumAllocation)).slice(0L, size);
     }
 
     @Override
     public GpuBufferSlice.MappedView allocateGpuMapped(long size, long alignment, @GpuBuffer.Usage int usage,
                                                        long minimumAllocation, long elementSize) {
-        RadianceGpuBuffer buffer = (RadianceGpuBuffer)this.device.createBuffer("Radiance transient mapped gpu",
-            usage | GpuBuffer.USAGE_MAP_WRITE | GpuBuffer.USAGE_COPY_SRC, alignedSize(size, alignment, minimumAllocation, elementSize));
+        RadianceGpuBuffer buffer = new RadianceGpuBuffer(0L, usage | GpuBuffer.USAGE_MAP_WRITE, Math.max(size, minimumAllocation));
         return buffer.map(0L, size, false, true);
     }
 
     @Override
     public GpuBufferSlice uploadStaging(List<ByteBuffer> data, long alignment, @GpuBuffer.Usage int usage,
                                         long minimumAllocation, long elementSize) {
-        return this.upload(data, alignment, usage | GpuBuffer.USAGE_COPY_SRC, minimumAllocation, elementSize);
+        return new RadianceGpuBuffer(0L, usage | GpuBuffer.USAGE_COPY_SRC, totalSize(data, minimumAllocation)).slice(0L, totalSize(data, 0L));
     }
 
     @Override
     public GpuBufferSlice uploadGpu(List<ByteBuffer> data, long alignment, @GpuBuffer.Usage int usage,
                                     long minimumAllocation, long elementSize) {
-        return this.upload(data, alignment, usage, minimumAllocation, elementSize);
+        return new RadianceGpuBuffer(0L, usage, totalSize(data, minimumAllocation)).slice(0L, totalSize(data, 0L));
     }
 
     @Override
     public List<GpuBufferSlice> multiUploadStaging(List<ByteBuffer> data, long alignment, @GpuBuffer.Usage int usage) {
-        return this.multiUpload(data, alignment, usage | GpuBuffer.USAGE_COPY_SRC);
+        List<GpuBufferSlice> out = new ArrayList<>(data.size());
+        for (ByteBuffer item : data) {
+            out.add(this.uploadStaging(List.of(item), alignment, usage, item.remaining(), 1L));
+        }
+        return out;
     }
 
     @Override
     public List<GpuBufferSlice> multiUploadGpu(List<ByteBuffer> data, long alignment, @GpuBuffer.Usage int usage) {
-        return this.multiUpload(data, alignment, usage);
+        List<GpuBufferSlice> out = new ArrayList<>(data.size());
+        for (ByteBuffer item : data) {
+            out.add(this.uploadGpu(List.of(item), alignment, usage, item.remaining(), 1L));
+        }
+        return out;
     }
 
-    private GpuBufferSlice upload(List<ByteBuffer> data, long alignment, @GpuBuffer.Usage int usage,
-                                  long minimumAllocation, long elementSize) {
+    private static long totalSize(List<ByteBuffer> data, long minimumAllocation) {
         long total = 0L;
         for (ByteBuffer item : data) {
             total += item.remaining();
         }
-        long allocationSize = alignedSize(total, alignment, minimumAllocation, elementSize);
-        ByteBuffer merged = ByteBuffer.allocateDirect(Math.toIntExact(allocationSize));
-        for (ByteBuffer item : data) {
-            merged.put(item.duplicate());
-        }
-        merged.flip();
-        RadianceGpuBuffer buffer = (RadianceGpuBuffer)this.device.createBuffer("Radiance transient upload", usage, merged);
-        return buffer.slice(0L, total);
-    }
-
-    private List<GpuBufferSlice> multiUpload(List<ByteBuffer> data, long alignment, @GpuBuffer.Usage int usage) {
-        List<GpuBufferSlice> slices = new ArrayList<>(data.size());
-        for (ByteBuffer item : data) {
-            slices.add(this.upload(List.of(item), alignment, usage, item.remaining(), 1L));
-        }
-        return slices;
-    }
-
-    private static long alignedSize(long size, long alignment, long minimumAllocation, long elementSize) {
-        long target = Math.max(size, minimumAllocation);
-        long elementAligned = elementSize <= 1L ? target : ((target + elementSize - 1L) / elementSize) * elementSize;
-        return alignment <= 1L ? elementAligned : ((elementAligned + alignment - 1L) / alignment) * alignment;
+        return Math.max(total, minimumAllocation);
     }
 }

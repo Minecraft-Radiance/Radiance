@@ -2,15 +2,15 @@ package com.radiance.client.blaze3d.backend;
 
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.mojang.blaze3d.textures.GpuTextureView;
-import com.radiance.client.blaze3d.abi.NativeBridge;
+import com.radiance.client.blaze3d.abi.Blaze3DProxy;
 
 public final class RadianceGpuTextureView extends GpuTextureView {
     private final long handle;
     private boolean closed;
 
-    RadianceGpuTextureView(GpuTexture texture, int baseMipLevel, int mipLevels) {
+    RadianceGpuTextureView(long handle, GpuTexture texture, int baseMipLevel, int mipLevels) {
         super(texture, baseMipLevel, mipLevels);
-        this.handle = NativeBridge.createTextureViewNative(RadianceBackendUtil.textureHandle(texture), baseMipLevel, mipLevels);
+        this.handle = handle;
     }
 
     long handle() {
@@ -19,7 +19,10 @@ public final class RadianceGpuTextureView extends GpuTextureView {
 
     @Override
     public void close() {
-        this.closed = true;
+        if (!this.closed) {
+            this.closed = true;
+            Blaze3DProxy.closeTextureViewNative(this.handle);
+        }
     }
 
     @Override
