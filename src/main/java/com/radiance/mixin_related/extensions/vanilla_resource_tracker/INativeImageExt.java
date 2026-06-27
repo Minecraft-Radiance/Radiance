@@ -1,7 +1,12 @@
 package com.radiance.mixin_related.extensions.vanilla_resource_tracker;
 
+//#if MC>=260200
+//$$ import com.mojang.blaze3d.platform.NativeImage;
+//$$ import net.minecraft.resources.Identifier;
+//#else
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.util.Identifier;
+//#endif
 
 public interface INativeImageExt {
 

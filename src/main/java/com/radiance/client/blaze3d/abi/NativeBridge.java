@@ -57,6 +57,15 @@ public final class NativeBridge {
 
     public static native void endFrameNative();
 
+    public static native int registerPbrMaterialNative(String spriteId, String albedoPath,
+        String normalPath, String specularPath, String flagPath);
+
+    public static native void clearAtlasNative(long atlasTexture);
+
+    public static native void syncAtlasSpriteNative(long atlasTexture, long atlasTextureView,
+        String atlasId, String spriteId, float u0, float v0, float u1, float v1, int pixelX,
+        int pixelY, int pixelWidth, int pixelHeight, int materialId);
+
     public static native void beginRenderPassNative(long renderPass);
 
     public static native void endRenderPassNative();

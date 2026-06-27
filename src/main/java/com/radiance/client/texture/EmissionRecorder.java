@@ -1,8 +1,13 @@
 package com.radiance.client.texture;
 
+import com.radiance.client.texture.compat.TextureCompat;
+//#if MC>=260200
+//$$ import com.mojang.blaze3d.platform.NativeImage;
+//#else
+import net.minecraft.client.texture.NativeImage;
+//#endif
 import java.util.ArrayList;
 import java.util.List;
-import net.minecraft.client.texture.NativeImage;
 import org.jetbrains.annotations.Nullable;
 
 public final class EmissionRecorder {
@@ -11,6 +16,10 @@ public final class EmissionRecorder {
     private static final int TILE_SUBDIVISIONS = 8;
 
     private EmissionRecorder() {}
+
+    private static int readColor(NativeImage image, int x, int y) {
+        return TextureCompat.readColor(image, x, y);
+    }
 
     @Nullable
     public static TileUpdate buildTileUpdate(int textureId, NativeImage albedo,
@@ -95,14 +104,14 @@ public final class EmissionRecorder {
                         int sampleX = startX + localX;
                         int sampleY = startY + localY;
 
-                        int argb = albedo.getColorArgb(sampleX, sampleY);
+                        int argb = readColor(albedo, sampleX, sampleY);
                         float alphaCoverage = decodeAlphaCoverage(argb);
                         if (alphaCoverage <= 0.0f) {
                             continue;
                         }
 
                         float emission = decodeLabPbrEmission(
-                            specular.getColorArgb(sampleX, sampleY));
+                            readColor(specular, sampleX, sampleY));
                         if (emission <= 0.0f) {
                             continue;
                         }

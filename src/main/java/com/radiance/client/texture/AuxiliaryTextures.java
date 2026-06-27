@@ -1,10 +1,14 @@
 package com.radiance.client.texture;
 
-import com.mojang.blaze3d.platform.TextureUtil;
+import com.radiance.client.texture.compat.TextureCompat;
+import com.radiance.client.texture.compat.TextureResourceCompat;
+import com.radiance.client.texture.compat.TextureUploadCompat;
 //#if MC>=260200
-//$$ import com.radiance.client.blaze3d.abi.TextureProxy;
+//$$ import com.mojang.blaze3d.platform.NativeImage;
+//$$ import net.minecraft.resources.Identifier;
 //#else
-import com.radiance.client.proxy.vulkan.TextureProxy;
+import net.minecraft.client.texture.NativeImage;
+import net.minecraft.util.Identifier;
 //#endif
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import java.io.IOException;
@@ -18,11 +22,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.atlas.AtlasSource;
-import net.minecraft.resource.Resource;
-import net.minecraft.resource.ResourceManager;
-import net.minecraft.util.Identifier;
 
 public enum AuxiliaryTextures {
     SPECULAR("specular", "_s", (identifier, source) -> {
@@ -35,7 +34,7 @@ public enum AuxiliaryTextures {
 
         pathComponents[pathComponents.length - 1] = specularFileName;
         String specularPath = String.join("/", pathComponents);
-        Identifier specularIdentifier = Identifier.of(namespace, specularPath);
+        Identifier specularIdentifier = TextureCompat.id(namespace, specularPath);
         return List.of(specularIdentifier);
     }, INativeImageExt::radiance$getSpecularNativeImage,
         INativeImageExt::radiance$setSpecularNativeImage, source -> 0,
@@ -50,11 +49,10 @@ public enum AuxiliaryTextures {
 
         pathComponents[pathComponents.length - 1] = normalFileName;
         String normalPath = String.join("/", pathComponents);
-        Identifier normalIdentifier = Identifier.of(namespace, normalPath);
+        Identifier normalIdentifier = TextureCompat.id(namespace, normalPath);
         return List.of(normalIdentifier);
     }, INativeImageExt::radiance$getNormalNativeImage,
-        INativeImageExt::radiance$setNormalNativeImage,
-        source -> source.getFormat().hasAlpha() ? 255 << source.getFormat().getAlphaOffset() : 0,
+        INativeImageExt::radiance$setNormalNativeImage, TextureCompat::opaqueAlphaOrZero,
         TextureTracker.GLID2NormalGLID),
     FLAG(
         "flag", "_f", (identifier, source) -> {
@@ -68,7 +66,7 @@ public enum AuxiliaryTextures {
         pathComponents[pathComponents.length - 1] = flagFileName;
         String flagPath = String.join("/", pathComponents)
             .replace("textures/", "textures/flag/");
-        Identifier flagIdentifier = Identifier.of(namespace, flagPath);
+        Identifier flagIdentifier = TextureCompat.id(namespace, flagPath);
         return List.of(flagIdentifier);
     }, INativeImageExt::radiance$getFlagNativeImage,
         INativeImageExt::radiance$setFlagNativeImage, source -> 0,
@@ -110,8 +108,7 @@ public enum AuxiliaryTextures {
         return ALL_TEXTURES.stream().anyMatch(texture -> texture.matchesSuffix(baseName));
     }
 
-    public static boolean shouldSkipAtlasSprite(ResourceManager resourceManager,
-        Identifier spriteId) {
+    public static boolean shouldSkipAtlasSprite(Object resourceManager, Identifier spriteId) {
         String spritePath = spriteId.getPath();
         for (AuxiliaryTextures auxiliaryTexture : ALL_TEXTURES) {
             if (!auxiliaryTexture.matchesSuffix(spritePath)) {
@@ -119,9 +116,7 @@ public enum AuxiliaryTextures {
             }
 
             Identifier baseSpriteId = auxiliaryTexture.toBaseSpriteId(spriteId);
-            if (resourceManager.getResource(
-                    AtlasSource.RESOURCE_FINDER.toResourcePath(baseSpriteId))
-                .isPresent()) {
+            if (TextureResourceCompat.hasBaseSpriteResource(resourceManager, baseSpriteId)) {
                 return true;
             }
         }
@@ -148,101 +143,9 @@ public enum AuxiliaryTextures {
     public static void loadAndUpload(NativeImage source, INativeImageExt sourceExt, int level,
         int offsetX, int offsetY, int unpackSkipPixels, int unpackSkipRows, int regionWidth,
         int regionHeight, boolean blur) {
-        int targetId = sourceExt.radiance$getTargetID();
-        Identifier identifier = sourceExt.radiance$getIdentifier();
-
-        if (identifier != null) {
-            if (isAuxiliaryTexture(identifier)) {
-                return;
-            }
-
-            for (AuxiliaryTextures auxiliaryTexture : ALL_TEXTURES) {
-                NativeImage auxiliaryTemplateImage = null;
-                int auxiliaryTargetId;
-
-                // ensure the texture exists
-                TextureTracker.Texture texture = TextureTracker.GLID2Texture.get(targetId);
-                if (!auxiliaryTexture.GLIDMapping.containsKey(targetId)) {
-                    auxiliaryTargetId = TextureProxy.generateTextureId();
-//                    System.out.println(
-//                        "generate " + auxiliaryTexture.name + " texture for " + targetId + ": "
-//                            + auxiliaryTargetId);
-
-                    TextureUtil.prepareImage(texture.format().getNativeImageInternalFormat(),
-                        auxiliaryTargetId, texture.maxLayer(), texture.width(), texture.height());
-                    auxiliaryTexture.GLIDMapping.put(targetId, auxiliaryTargetId);
-                } else {
-                    auxiliaryTargetId = auxiliaryTexture.GLIDMapping.get(targetId);
-
-                    TextureTracker.Texture auxiliaryTrackerTexture = TextureTracker.GLID2Texture.get(
-                        auxiliaryTargetId);
-                    if (texture.width() != auxiliaryTrackerTexture.width()
-                        || texture.height() != auxiliaryTrackerTexture.height()
-                        || texture.format() != auxiliaryTrackerTexture.format()) {
-                        TextureUtil.prepareImage(texture.format().getNativeImageInternalFormat(),
-                            auxiliaryTargetId, texture.maxLayer(), texture.width(),
-                            texture.height());
-                    }
-                }
-
-                if (auxiliaryTemplateImage == null && (
-                    identifier.getPath().contains("textures/block") || identifier.getPath()
-                        .contains("textures/item") || identifier.getPath()
-                        .contains("textures/entity"))) {
-                    NativeImage preparedLevelCopy = auxiliaryTexture.copyPreparedImage(identifier,
-                        level);
-                    if (preparedLevelCopy != null) {
-                        auxiliaryTemplateImage = preparedLevelCopy;
-                    } else {
-                        int defaultValue = auxiliaryTexture.defaultValueProvider.get(source);
-                        auxiliaryTemplateImage = source.applyToCopy(i -> defaultValue);
-                    }
-                }
-
-                if (auxiliaryTemplateImage == null) {
-                    continue;
-                }
-
-                NativeImage auxiliaryImage = null;
-                try {
-                    auxiliaryImage = ((com.radiance.mixin_related.extensions.vulkan_render_integration.INativeImageExt) (Object) auxiliaryTemplateImage).radiance$alignTo(
-                        source);
-                    if (auxiliaryTemplateImage != auxiliaryImage) {
-                        auxiliaryTemplateImage.close();
-                    }
-
-                    ((INativeImageExt) (Object) auxiliaryImage).radiance$setTargetID(
-                        auxiliaryTargetId);
-
-                    if (auxiliaryImage.getWidth() != source.getWidth()
-                        || auxiliaryImage.getHeight() != source.getHeight()
-                        || auxiliaryImage.getFormat() != source.getFormat()) {
-                        throw new RuntimeException(
-                            auxiliaryTexture.name + " image size / format mismatch");
-                    }
-
-                    if (level == 0 && auxiliaryTexture == SPECULAR) {
-                        long tileKey = EmissionRecorder.buildTileKey(offsetX, offsetY,
-                            regionWidth, regionHeight);
-                        if (TextureProxy.hasEmissionTile(targetId, tileKey)) {
-                            auxiliaryImage.upload(level, offsetX, offsetY, unpackSkipPixels,
-                                unpackSkipRows, regionWidth, regionHeight, blur);
-                            continue;
-                        }
-
-                        TextureProxy.uploadEmissionTile(EmissionRecorder.buildTileUpdate(targetId,
-                            source, auxiliaryImage, offsetX, offsetY, unpackSkipPixels,
-                            unpackSkipRows, regionWidth, regionHeight));
-                    }
-
-                    auxiliaryImage.upload(level, offsetX, offsetY, unpackSkipPixels, unpackSkipRows,
-                        regionWidth, regionHeight, blur);
-                } finally {
-                    if (auxiliaryImage != null) {
-                        auxiliaryImage.close();
-                    }
-                }
-            }
+        for (AuxiliaryTextures auxiliaryTexture : ALL_TEXTURES) {
+            TextureUploadCompat.loadAndUpload(auxiliaryTexture, source, sourceExt, level, offsetX,
+                offsetY, unpackSkipPixels, unpackSkipRows, regionWidth, regionHeight, blur);
         }
     }
 
@@ -253,6 +156,28 @@ public enum AuxiliaryTextures {
     private Identifier toBaseSpriteId(Identifier spriteId) {
         String spritePath = spriteId.getPath();
         return spriteId.withPath(spritePath.substring(0, spritePath.length() - suffix.length()));
+    }
+
+    private Identifier toAuxiliaryIdentifier(Identifier baseIdentifier) {
+        String path = baseIdentifier.getPath();
+        int dotIndex = path.lastIndexOf('.');
+        String baseName = dotIndex != -1 ? path.substring(0, dotIndex) : path;
+        String extension = dotIndex != -1 ? path.substring(dotIndex) : "";
+        if (this == FLAG) {
+            baseName = baseName.replaceFirst("^textures/", "textures/flag/");
+        }
+        return TextureCompat.id(baseIdentifier.getNamespace(), baseName + suffix + extension);
+    }
+
+    private static Identifier toSpriteId(Identifier texturePath) {
+        String path = texturePath.getPath();
+        if (path.startsWith("textures/")) {
+            path = path.substring("textures/".length());
+        }
+        if (path.endsWith(".png")) {
+            path = path.substring(0, path.length() - ".png".length());
+        }
+        return TextureCompat.id(texturePath.getNamespace(), path);
     }
 
     private CacheKey toBaseCacheKey(Identifier auxiliaryIdentifier) {
@@ -267,7 +192,7 @@ public enum AuxiliaryTextures {
             throw new IllegalArgumentException("Unexpected auxiliary path: " + auxiliaryIdentifier);
         }
         baseName = baseName.substring(0, baseName.length() - suffix.length());
-        return new CacheKey(this, Identifier.of(auxiliaryIdentifier.getNamespace(),
+        return new CacheKey(this, TextureCompat.id(auxiliaryIdentifier.getNamespace(),
             baseName + path.substring(dotIndex)));
     }
 
@@ -275,18 +200,27 @@ public enum AuxiliaryTextures {
         return DECODED_IMAGE_CACHE.getOrDefault(new CacheKey(this, identifier), CacheEntry.MISSING);
     }
 
-    private NativeImage copyPreparedImage(Identifier identifier, int level) {
+    public NativeImage copyPreparedImage(Identifier identifier, int level) {
         synchronized (DECODED_IMAGE_CACHE_LOCK) {
             NativeImage preparedLevel = this.getPreparedEntry(identifier).getImage(level);
             if (preparedLevel == null) {
                 return null;
             }
 
-            NativeImage copied = new NativeImage(preparedLevel.getFormat(),
-                preparedLevel.getWidth(), preparedLevel.getHeight(), false);
-            copied.copyFrom(preparedLevel);
-            return copied;
+            return TextureCompat.copyLike(preparedLevel);
         }
+    }
+
+    public int defaultValue(Object source) {
+        return this.defaultValueProvider.get(source);
+    }
+
+    public Map<Integer, Integer> glIdMapping() {
+        return this.GLIDMapping;
+    }
+
+    public String textureName() {
+        return this.name;
     }
 
     private static AuxiliaryTextures classifyAuxiliaryResource(Identifier id) {
@@ -307,18 +241,19 @@ public enum AuxiliaryTextures {
     }
 
     public static CompletableFuture<PreparedImages> prepareDecodedImagesAsync(
-        ResourceManager resourceManager, Executor prepareExecutor) {
+        Object resourceManager, Executor prepareExecutor) {
         List<CompletableFuture<DecodedEntry>> futures = new ArrayList<>();
-        Map<Identifier, Resource> resources = resourceManager.findResources("textures",
+        Map<Identifier, ?> resources = TextureResourceCompat.listTextureResources(
+            resourceManager,
             id -> classifyAuxiliaryResource(id) != null);
 
-        for (Map.Entry<Identifier, Resource> entry : resources.entrySet()) {
+        for (Map.Entry<Identifier, ?> entry : resources.entrySet()) {
             AuxiliaryTextures auxiliaryTexture = classifyAuxiliaryResource(entry.getKey());
             if (auxiliaryTexture == null) {
                 continue;
             }
             CacheKey cacheKey = auxiliaryTexture.toBaseCacheKey(entry.getKey());
-            Resource resource = entry.getValue();
+            Object resource = entry.getValue();
             futures.add(CompletableFuture.supplyAsync(
                 () -> decodePreparedEntry(cacheKey, resource), prepareExecutor));
         }
@@ -334,9 +269,9 @@ public enum AuxiliaryTextures {
         });
     }
 
-    private static DecodedEntry decodePreparedEntry(CacheKey cacheKey, Resource resource) {
-        try (InputStream inputStream = resource.getInputStream()) {
-            NativeImage image = NativeImage.read(inputStream);
+    private static DecodedEntry decodePreparedEntry(CacheKey cacheKey, Object resource) {
+        try (InputStream inputStream = TextureResourceCompat.open(resource)) {
+            NativeImage image = TextureCompat.readImage(inputStream);
             NativeImage[] levels = MipmapUtil.buildMipmapChain(image);
             return new DecodedEntry(cacheKey, new CacheEntry(levels));
         } catch (IOException e) {
@@ -348,7 +283,28 @@ public enum AuxiliaryTextures {
         synchronized (DECODED_IMAGE_CACHE_LOCK) {
             clearDecodedImageCache();
             DECODED_IMAGE_CACHE.putAll(prepared.entries);
+            syncPreparedMaterials();
         }
+    }
+
+    private static void syncPreparedMaterials() {
+        TextureTracker.clearPbrMaterials();
+        DECODED_IMAGE_CACHE.keySet().stream()
+            .map(CacheKey::identifier)
+            .distinct()
+            .forEach(baseIdentifier -> TextureTracker.registerPbrMaterial(
+                toSpriteId(baseIdentifier),
+                baseIdentifier,
+                findAuxiliaryIdentifier(NORMAL, baseIdentifier),
+                findAuxiliaryIdentifier(SPECULAR, baseIdentifier),
+                findAuxiliaryIdentifier(FLAG, baseIdentifier)));
+    }
+
+    private static Identifier findAuxiliaryIdentifier(AuxiliaryTextures texture,
+        Identifier baseIdentifier) {
+        return DECODED_IMAGE_CACHE.containsKey(new CacheKey(texture, baseIdentifier))
+            ? texture.toAuxiliaryIdentifier(baseIdentifier)
+            : null;
     }
 
     private static boolean isTrackedTexturePath(String path) {
@@ -425,6 +381,6 @@ public enum AuxiliaryTextures {
 
     public interface DefaultValueProvider {
 
-        int get(NativeImage source);
+        int get(Object source);
     }
 }
