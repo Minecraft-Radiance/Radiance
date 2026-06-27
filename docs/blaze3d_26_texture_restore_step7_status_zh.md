@@ -66,6 +66,8 @@ new FileToIdConverter("textures", ".png").idToFile(spriteId)
 com/radiance/client/texture/compat/TextureCompat.java
 com/radiance/client/texture/compat/TextureResourceCompat.java
 com/radiance/client/texture/compat/TextureUploadCompat.java
+com/radiance/client/texture/compat/TextureMaterialCompat.java
+com/radiance/client/texture/compat/TextureReloadRegistrationCompat.java
 com/radiance/client/texture/compat/AuxiliaryTextureReloaderCompat.java
 ```
 
@@ -162,6 +164,10 @@ TextureMaterialCompat:
 TextureAtlasSync:
   从 TextureAtlas#getTexture / getTextureView 得到 Radiance backend handle。
   从 TextureAtlasSprite 读取 U/V 和 pixel rect。
+
+TextureReloadRegistrationCompat:
+  26.2 使用 Fabric ResourceLoader 注册 AuxiliaryTextureReloader。
+  1.21.4 保持 no-op，仍由旧 MinecraftClient mixin 注册。
 ```
 
 Native 侧：

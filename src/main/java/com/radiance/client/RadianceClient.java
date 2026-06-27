@@ -3,6 +3,7 @@ package com.radiance.client;
 import com.mojang.logging.LogUtils;
 import com.radiance.client.option.Options;
 import com.radiance.client.pipeline.Pipeline;
+import com.radiance.client.texture.compat.TextureReloadRegistrationCompat;
 //#if MC>=260200
 //$$ import com.radiance.client.blaze3d.abi.RendererProxy;
 //#else
@@ -65,6 +66,7 @@ public class RadianceClient implements ClientModInitializer {
             throw new RuntimeException(e);
         }
         ReplayCaptureHooks.installDiscoveredSink();
+        TextureReloadRegistrationCompat.registerClientReloaders();
 
         // core lib
         String osName = System.getProperty("os.name");
