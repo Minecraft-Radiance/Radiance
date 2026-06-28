@@ -2,8 +2,10 @@ package com.radiance.client.blaze3d.backend;
 
 import com.mojang.blaze3d.GpuFormat;
 import com.mojang.blaze3d.buffers.GpuBuffer;
+import com.mojang.blaze3d.pipeline.BlendFunction;
 import com.mojang.blaze3d.pipeline.ColorTargetState;
 import com.mojang.blaze3d.pipeline.CompiledRenderPipeline;
+import com.mojang.blaze3d.pipeline.DepthStencilState;
 import com.mojang.blaze3d.pipeline.RenderPipeline;
 import com.mojang.blaze3d.shaders.ShaderSource;
 import com.mojang.blaze3d.systems.CommandEncoderBackend;
@@ -24,13 +26,17 @@ import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
 import com.radiance.client.blaze3d.abi.Blaze3DProxy;
 import java.nio.ByteBuffer;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.OptionalDouble;
 import java.util.Set;
 import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 
 public final class RadianceGpuDeviceBackend implements GpuDeviceBackend {
+    private static final Map<RenderPipeline, Long> PIPELINE_HANDLES = new IdentityHashMap<>();
+
     private final DeviceInfo deviceInfo;
     private boolean closed;
 
@@ -118,6 +124,27 @@ public final class RadianceGpuDeviceBackend implements GpuDeviceBackend {
 
     @Override
     public CompiledRenderPipeline precompilePipeline(RenderPipeline pipeline, @Nullable ShaderSource shaderSource) {
+        Long cached = PIPELINE_HANDLES.get(pipeline);
+        if (cached != null && cached != 0L) {
+            return new RadianceCompiledRenderPipeline(cached);
+        }
+
+        long handle = registerPipeline(pipeline);
+        PIPELINE_HANDLES.put(pipeline, handle);
+        return new RadianceCompiledRenderPipeline(handle);
+    }
+
+    static long pipelineHandle(RenderPipeline pipeline) {
+        Long handle = PIPELINE_HANDLES.get(pipeline);
+        if (handle != null) {
+            return handle;
+        }
+        long nativeHandle = registerPipeline(pipeline);
+        PIPELINE_HANDLES.put(pipeline, nativeHandle);
+        return nativeHandle;
+    }
+
+    private static long registerPipeline(RenderPipeline pipeline) {
         VertexFormat[] bindings = pipeline.getVertexFormatBindings();
         int slot = 0;
         int stride = 0;
@@ -145,16 +172,52 @@ public final class RadianceGpuDeviceBackend implements GpuDeviceBackend {
             }
         }
         ColorTargetState[] colorTargets = pipeline.getColorTargetStates();
-        GpuFormat colorFormat = colorTargets != null && colorTargets.length > 0 && colorTargets[0] != null ? colorTargets[0].format() : GpuFormat.RGBA8_UNORM;
-        long handle = Blaze3DProxy.registerPipelineNative(pipeline.getLocation().toString(), pipeline.getVertexShader().toString(),
+        ColorTargetState colorTarget = colorTargets != null && colorTargets.length > 0 ? colorTargets[0] : null;
+        GpuFormat colorFormat = colorTarget != null ? colorTarget.format() : GpuFormat.RGBA8_UNORM;
+        BlendFunction blend = colorTarget != null && colorTarget.blendFunction().isPresent() ? colorTarget.blendFunction().get() : null;
+        DepthStencilState depthStencil = pipeline.getDepthStencilState();
+        return Blaze3DProxy.registerPipelineNative(pipeline.getLocation().toString(), pipeline.getVertexShader().toString(),
             pipeline.getFragmentShader().toString(), RadianceBackendUtil.topology(pipeline.getPrimitiveTopology()),
             RadianceBackendUtil.polygonMode(pipeline.getPolygonMode()), pipeline.isCull(), slot, stride, names, formats, offsets,
-            RadianceBackendUtil.gpuFormat(colorFormat), pipeline.getDepthStencilState() != null);
-        return new RadianceCompiledRenderPipeline(handle);
+            RadianceBackendUtil.gpuFormat(colorFormat), blend != null, blendName(blend),
+            colorTarget == null ? 15 : colorTarget.writeMask(), depthStencil != null,
+            depthStencil != null && depthStencil.writeDepth(), pipeline.getSortKey());
+    }
+
+    private static String blendName(@Nullable BlendFunction blend) {
+        if (blend == null) {
+            return "";
+        }
+        if (blend == BlendFunction.TRANSLUCENT) {
+            return "TRANSLUCENT";
+        }
+        if (blend == BlendFunction.TRANSLUCENT_PREMULTIPLIED_ALPHA) {
+            return "TRANSLUCENT_PREMULTIPLIED_ALPHA";
+        }
+        if (blend == BlendFunction.ADDITIVE) {
+            return "ADDITIVE";
+        }
+        if (blend == BlendFunction.LIGHTNING) {
+            return "LIGHTNING";
+        }
+        if (blend == BlendFunction.GLINT) {
+            return "GLINT";
+        }
+        if (blend == BlendFunction.OVERLAY) {
+            return "OVERLAY";
+        }
+        if (blend == BlendFunction.ENTITY_OUTLINE_BLIT) {
+            return "ENTITY_OUTLINE_BLIT";
+        }
+        if (blend == BlendFunction.INVERT) {
+            return "INVERT";
+        }
+        return blend.toString();
     }
 
     @Override
     public void clearPipelineCache() {
+        PIPELINE_HANDLES.clear();
         Blaze3DProxy.clearPipelineCacheNative();
     }
 

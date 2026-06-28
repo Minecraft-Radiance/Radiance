@@ -1,106 +1,176 @@
 package com.radiance.client.blaze3d.abi;
 
 public final class VRProxy {
-
-    private static boolean enabled;
-    private static float renderScale = 1.0f;
-    private static float ipd = 0.063f;
-    private static float worldScale = 1.0f;
-    private static final float[] WORLD_POSITION = new float[] {0.0f, 0.0f, 0.0f};
-    private static final float[] WORLD_ORIENTATION = new float[] {0.0f, 0.0f, 0.0f, 1.0f};
-
     private VRProxy() {
     }
 
+    public static native void nativeSetEnabled(boolean enabled);
+
+    public static native boolean nativeStartXRSession();
+
+    public static native void nativeStopXRSession();
+
+    public static native void nativeSetRenderScale(float renderScale);
+
+    public static native void nativeSetIPD(float ipd);
+
+    public static native void nativeSetWorldScale(float worldScale);
+
+    public static native void nativeSetWorldOrientation(float qx, float qy, float qz, float qw);
+
+    public static native void nativeSetWorldPosition(float x, float y, float z);
+
+    public static native float[] nativeGetWorldPosition();
+
+    public static native void nativeRecenter();
+
+    public static native float nativeGetFloorHeight();
+
+    public static native int nativeGetSessionState();
+
+    public static native String nativeGetSystemName();
+
+    public static native boolean nativeIsEnabled();
+
+    public static native int nativeGetEyeCount();
+
+    public static native int nativeGetEyeRenderWidth();
+
+    public static native int nativeGetEyeRenderHeight();
+
+    public static native float nativeGetRefreshRate();
+
+    public static native float[] nativeGetHeadPose();
+
+    public static native float[] nativeGetEyeFov(int eye);
+
+    public static native int[] nativeGetRecommendedResolution();
+
+    public static native float[] nativeGetControllerPose(int hand);
+
+    public static native float[] nativeGetControllerButtons(int hand);
+
+    public static native void nativeVibrate(int hand, float amplitude, long durationNs,
+        float frequency);
+
+    public static native void nativeStopVibration(int hand);
+
+    public static native float[] nativeGetPerformanceStats();
+
     public static void setEnabled(boolean enabled) {
-        VRProxy.enabled = enabled;
-    }
-
-    public static boolean isEnabled() {
-        return enabled;
-    }
-
-    public static boolean startXRSession() {
-        return false;
-    }
-
-    public static void stopXRSession() {
-    }
-
-    public static boolean isSessionRunning() {
-        return false;
-    }
-
-    public static boolean isDesktopPathActive() {
-        return true;
-    }
-
-    public static int getEyeCount() {
-        return 1;
-    }
-
-    public static int getEyeRenderWidth() {
-        return 0;
-    }
-
-    public static int getEyeRenderHeight() {
-        return 0;
-    }
-
-    public static int[] getRecommendedResolution() {
-        return new int[] {0, 0};
-    }
-
-    public static float[] getPerformanceStats() {
-        return new float[] {0.0f, 0.0f, 0.0f, 0.0f, 16.67f, 0.0f, 0.0f, 0.0f};
+        nativeSetEnabled(enabled);
     }
 
     public static void setRenderScale(float renderScale) {
-        VRProxy.renderScale = Math.max(0.1f, Math.min(2.0f, renderScale));
-    }
-
-    public static float getRenderScale() {
-        return renderScale;
+        nativeSetRenderScale(Math.max(0.1f, Math.min(2.0f, renderScale)));
     }
 
     public static void setIPD(float ipd) {
-        VRProxy.ipd = Math.max(0.0f, ipd);
-    }
-
-    public static float getIPD() {
-        return ipd;
+        nativeSetIPD(Math.max(0.0f, ipd));
     }
 
     public static void setWorldScale(float worldScale) {
-        VRProxy.worldScale = Math.max(0.01f, worldScale);
+        nativeSetWorldScale(Math.max(0.01f, worldScale));
     }
 
-    public static float getWorldScale() {
-        return worldScale;
+    public static void setWorldOrientation(org.joml.Quaternionfc q) {
+        nativeSetWorldOrientation(q.x(), q.y(), q.z(), q.w());
     }
 
-    public static void nativeSetWorldOrientation(float qx, float qy, float qz, float qw) {
-        WORLD_ORIENTATION[0] = qx;
-        WORLD_ORIENTATION[1] = qy;
-        WORLD_ORIENTATION[2] = qz;
-        WORLD_ORIENTATION[3] = qw;
+    public static boolean isEnabled() {
+        return nativeIsEnabled();
     }
 
-    public static float[] getWorldOrientation() {
-        return WORLD_ORIENTATION.clone();
+    public static int getEyeCount() {
+        return nativeGetEyeCount();
+    }
+
+    public static int getEyeRenderWidth() {
+        return nativeGetEyeRenderWidth();
+    }
+
+    public static int getEyeRenderHeight() {
+        return nativeGetEyeRenderHeight();
+    }
+
+    public static float getRefreshRate() {
+        return nativeGetRefreshRate();
     }
 
     public static float[] getHeadPose() {
-        return new float[] {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f};
+        return nativeGetHeadPose();
+    }
+
+    public static float[] getEyeFov(int eye) {
+        return nativeGetEyeFov(eye);
+    }
+
+    public static int[] getRecommendedResolution() {
+        return nativeGetRecommendedResolution();
+    }
+
+    public static float[] getControllerPose(int hand) {
+        return nativeGetControllerPose(hand);
+    }
+
+    public static float[] getControllerButtons(int hand) {
+        return nativeGetControllerButtons(hand);
+    }
+
+    public static void vibrate(int hand, float amplitude, long durationNs, float frequency) {
+        nativeVibrate(hand, amplitude, durationNs, frequency);
+    }
+
+    public static void vibrate(int hand, float amplitude, int durationMs) {
+        nativeVibrate(hand, amplitude, (long) durationMs * 1_000_000L, 0.0f);
+    }
+
+    public static void stopVibration(int hand) {
+        nativeStopVibration(hand);
+    }
+
+    public static float[] getPerformanceStats() {
+        return nativeGetPerformanceStats();
     }
 
     public static void setWorldPosition(float x, float y, float z) {
-        WORLD_POSITION[0] = x;
-        WORLD_POSITION[1] = y;
-        WORLD_POSITION[2] = z;
+        nativeSetWorldPosition(x, y, z);
     }
 
     public static float[] getWorldPosition() {
-        return WORLD_POSITION.clone();
+        return nativeGetWorldPosition();
+    }
+
+    public static void recenter() {
+        nativeRecenter();
+    }
+
+    public static float getFloorHeight() {
+        return nativeGetFloorHeight();
+    }
+
+    public static int getSessionState() {
+        return nativeGetSessionState();
+    }
+
+    public static boolean isSessionRunning() {
+        int state = getSessionState();
+        return state >= 2 && state <= 5;
+    }
+
+    public static boolean isDesktopPathActive() {
+        return !isEnabled() || !isSessionRunning();
+    }
+
+    public static boolean startXRSession() {
+        return nativeStartXRSession();
+    }
+
+    public static void stopXRSession() {
+        nativeStopXRSession();
+    }
+
+    public static String getSystemName() {
+        return nativeGetSystemName();
     }
 }

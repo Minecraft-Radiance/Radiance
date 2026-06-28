@@ -56,6 +56,10 @@ final class RadianceBackendUtil {
         return texture instanceof RadianceGpuTexture radiance ? radiance.handle() : 0L;
     }
 
+    static int textureId(GpuTexture texture) {
+        return texture instanceof RadianceGpuTexture radiance ? radiance.textureId() : 0;
+    }
+
     static long textureViewHandle(GpuTextureView view) {
         return view instanceof RadianceGpuTextureView radiance ? radiance.handle() : 0L;
     }

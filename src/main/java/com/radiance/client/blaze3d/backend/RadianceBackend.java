@@ -8,6 +8,8 @@ import com.mojang.blaze3d.systems.GpuBackend;
 import com.mojang.blaze3d.systems.GpuDevice;
 import com.radiance.client.blaze3d.abi.Blaze3DProxy;
 import com.radiance.client.blaze3d.abi.RendererProxy;
+import com.radiance.client.pipeline.Pipeline;
+import com.radiance.client.pipeline.Presets;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.glfw.GLFW;
 
@@ -34,6 +36,9 @@ public final class RadianceBackend implements GpuBackend {
                                   Runnable criticalShaderLoader) throws BackendCreationException {
         try {
             Blaze3DProxy.initRendererNative(RendererProxy.glfwLibraryCandidates(), window);
+            Pipeline.collectNativeModules();
+            Pipeline.switchToPresetMode(Presets.DEFERRED_RT_NRD_FSR.key, false);
+            Pipeline.build();
             return new GpuDevice(new RadianceGpuDeviceBackend(), criticalShaderLoader);
         } catch (Throwable throwable) {
             throw new BackendCreationException("Failed to initialize Radiance Blaze3D backend: " + throwable.getMessage(),

@@ -3,10 +3,11 @@ package com.radiance.client.vr;
 import com.radiance.client.option.Options;
 //#if MC>=260200
 //$$ import com.radiance.client.blaze3d.abi.VRProxy;
+//$$ import net.minecraft.client.Minecraft;
 //#else
 import com.radiance.client.proxy.vulkan.VRProxy;
-//#endif
 import net.minecraft.client.MinecraftClient;
+//#endif
 
 public final class XRSessionController {
 
@@ -16,12 +17,20 @@ public final class XRSessionController {
     private XRSessionController() {
     }
 
+    //#if MC>=260200
+    //$$ public static void tick(Minecraft client) {
+    //#else
     public static void tick(MinecraftClient client) {
+    //#endif
         if (client == null) {
             return;
         }
 
+        //#if MC>=260200
+        //$$ boolean inWorld = client.level != null && client.isGameLoadFinished();
+        //#else
         boolean inWorld = client.world != null && client.isFinishedLoading();
+        //#endif
         boolean targetActive = Options.vrEnabled && inWorld;
 
         // Keep runtime prepared according to user setting, but only run XR session in-world.

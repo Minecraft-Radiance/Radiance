@@ -46,24 +46,25 @@ dependencies {
 
 sourceSets {
     main {
-        java.exclude("com/radiance/mixins/**")
         java.exclude("com/radiance/mixin_related/MixinPlugin.java")
         java.exclude("com/radiance/mixin_related/extensions/vulkan_render_integration/**")
         java.exclude("com/radiance/mixin_related/extensions/vanilla_resource_tracker/IGlyphAtlasTextureExt.java",
                      "com/radiance/mixin_related/extensions/vanilla_resource_tracker/IRenderableGlyphExt.java")
-        java.exclude("com/radiance/client/proxy/**")
+        java.exclude("com/radiance/client/proxy/world/**")
+        java.exclude("com/radiance/client/proxy/vulkan/DrawCommandProxy.java",
+                     "com/radiance/client/proxy/vulkan/PipelineStateProxy.java",
+                     "com/radiance/client/proxy/vulkan/RendererProxy.java",
+                     "com/radiance/client/proxy/vulkan/ShaderProxy.java",
+                     "com/radiance/client/proxy/vulkan/VRProxy.java",
+                     "com/radiance/client/proxy/vulkan/WindowProxy.java")
         java.exclude("com/radiance/client/shader/**")
         java.exclude("com/radiance/client/util/**")
         java.exclude("com/radiance/client/vertex/**")
-        java.exclude("com/radiance/client/vr/**")
-        java.exclude("com/radiance/client/constant/Constants.java")
-        java.exclude("com/radiance/client/option/DLSSMode.java",
-                     "com/radiance/client/option/DenoiserMode.java",
-                     "com/radiance/client/option/UpscalerQuality.java",
-                     "com/radiance/client/option/UpscalerType.java")
-        java.exclude("com/radiance/client/VRPerformanceClient.java")
-        resources.exclude("radiance.mixins.json")
-        resources.exclude("radiance.accesswidener")
+        java.exclude("com/radiance/mixins/vanilla_resource_tracker/**")
+        java.exclude("com/radiance/mixins/vr_debug/**")
+        java.exclude("com/radiance/mixins/vr_input/**")
+        java.exclude("com/radiance/mixins/vulkan_options/**")
+        java.exclude("com/radiance/mixins/vulkan_render_integration/**")
     }
     replayCommon {
         java.setSrcDirs(["src/replayCommon/java"])

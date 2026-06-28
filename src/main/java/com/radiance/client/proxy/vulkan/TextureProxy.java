@@ -9,7 +9,11 @@ import com.radiance.client.texture.EmissionRecorder;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+//#if MC>=260200
+//$$ import com.mojang.blaze3d.platform.NativeImage;
+//#else
 import net.minecraft.client.texture.NativeImage;
+//#endif
 import org.lwjgl.system.MemoryUtil;
 
 public class TextureProxy {
@@ -172,7 +176,11 @@ public class TextureProxy {
         }
     }
 
+    //#if MC>=260200
+    //$$ public static void prepareImage(NativeImage.Format internalFormat, int id,
+    //#else
     public static void prepareImage(NativeImage.InternalFormat internalFormat, int id,
+    //#endif
         int mipLevels, int width, int height) {
         switch (internalFormat) {
             case RGBA:
@@ -183,11 +191,19 @@ public class TextureProxy {
                 prepareImage(id, mipLevels, width, height,
                     VulkanConstants.VkFormat.VK_FORMAT_R8G8B8_UNORM);
                 break;
+            //#if MC>=260200
+            //$$ case LUMINANCE_ALPHA:
+            //#else
             case RG:
+            //#endif
                 prepareImage(id, mipLevels, width, height,
                     VulkanConstants.VkFormat.VK_FORMAT_R8G8_UNORM);
                 break;
+            //#if MC>=260200
+            //$$ case LUMINANCE:
+            //#else
             case RED:
+            //#endif
                 prepareImage(id, mipLevels, width, height,
                     VulkanConstants.VkFormat.VK_FORMAT_R8_UNORM);
                 break;

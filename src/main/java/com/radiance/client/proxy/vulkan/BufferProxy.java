@@ -6,13 +6,14 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.system.MemoryUtil.memSet;
 
-import com.mojang.blaze3d.systems.RenderSystem;
-import com.radiance.client.constant.Constants;
 import com.radiance.client.replay.hook.ReplayCaptureHooks;
 import com.radiance.client.texture.TextureTracker;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Map;
+//#if MC<260200
+import com.mojang.blaze3d.systems.RenderSystem;
+import com.radiance.client.constant.Constants;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.Camera;
@@ -22,8 +23,61 @@ import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.world.ClientWorld;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
+//#endif
 import org.lwjgl.system.MemoryStack;
 
+//#if MC>=260200
+//$$ public class BufferProxy {
+//$$
+//$$     private static native void updateWorldUniformNative(long ptr);
+//$$
+//$$     public static void updateWorldUniform(long ptr) {
+//$$         updateWorldUniformNative(ptr);
+//$$     }
+//$$
+//$$     private static native void updateSkyUniformNative(long ptr);
+//$$
+//$$     public static void updateSkyUniform(long ptr) {
+//$$         updateSkyUniformNative(ptr);
+//$$     }
+//$$
+//$$     private static native void updateMappingNative(long ptr);
+//$$
+//$$     public static void updateMapping(long ptr) {
+//$$         updateMappingNative(ptr);
+//$$     }
+//$$
+//$$     public static void updateMapping() {
+//$$         try (MemoryStack stack = stackPush()) {
+//$$             final int elementCount = com.radiance.client.texture.EmissionRecorder.MAX_TEXTURES;
+//$$             int size = elementCount * Integer.BYTES * 3;
+//$$             ByteBuffer bb = stack.malloc(size);
+//$$             long addr = memAddress(bb);
+//$$             memSet(addr, -1, size);
+//$$             IntBuffer intView = bb.asIntBuffer();
+//$$
+//$$             writeMapping("Specular", TextureTracker.GLID2SpecularGLID, intView, elementCount, 0);
+//$$             writeMapping("Normal", TextureTracker.GLID2NormalGLID, intView, elementCount, 1);
+//$$             writeMapping("Flag", TextureTracker.GLID2FlagGLID, intView, elementCount, 2);
+//$$
+//$$             updateMapping(addr);
+//$$         }
+//$$     }
+//$$
+//$$     private static void writeMapping(String name, Map<Integer, Integer> entries,
+//$$         IntBuffer intView, int elementCount, int componentOffset) {
+//$$         for (Map.Entry<Integer, Integer> entry : entries.entrySet()) {
+//$$             int sourceID = entry.getKey();
+//$$             int targetID = entry.getValue();
+//$$             if (sourceID < 0 || sourceID >= elementCount) {
+//$$                 throw new RuntimeException(name + " mapping sourceID " + sourceID
+//$$                     + " out of index [0, " + (elementCount - 1) + "]");
+//$$             }
+//$$             intView.put(sourceID * 3 + componentOffset, targetID);
+//$$         }
+//$$     }
+//$$ }
+//#else
 public class BufferProxy {
 
     private static final int WORLD_UBO_SIZE = 896;
@@ -376,3 +430,4 @@ public class BufferProxy {
         }
     }
 }
+//#endif

@@ -86,6 +86,8 @@ public final class Blaze3DProxy {
 
     public static native void closeTextureNative(long texture);
 
+    public static native void registerTextureRadianceIdNative(long texture, int radianceTextureId);
+
     public static native long createTextureViewNative(long texture, int baseMip, int mipCount);
 
     public static native void closeTextureViewNative(long textureView);
@@ -100,7 +102,8 @@ public final class Blaze3DProxy {
     public static native long registerPipelineNative(String location, String vertexShader,
         String fragmentShader, int primitiveTopology, int polygonMode, boolean cull, int slot,
         int stride, String[] attributeNames, int[] attributeFormats, int[] attributeOffsets,
-        int colorFormat, boolean hasDepth);
+        int colorFormat, boolean hasBlend, String blendName, int colorWriteMask,
+        boolean hasDepth, boolean depthWrite, int sortKey);
 
     public static native void clearPipelineCacheNative();
 
@@ -162,6 +165,8 @@ public final class Blaze3DProxy {
     public static native int registerPbrMaterialNative(String spriteId, String albedoPath,
         String normalPath, String specularPath, String flagPath);
 
+    public static native void clearPbrMaterialsNative();
+
     public static native void clearAtlasNative(long atlasTexture);
 
     public static native void syncAtlasSpriteNative(long atlasTexture, long atlasTextureView,
@@ -178,6 +183,8 @@ public final class Blaze3DProxy {
     public static native void setWorldNative(long gameTime, long dayTime, float skyAngle,
         float[] fogColor, float fogStart, float fogEnd, int fogType, float rainLevel,
         float thunderLevel);
+
+    public static native void setWorldSerialNative(long serial);
 
     public static native void setLightmapNative(long textureView);
 

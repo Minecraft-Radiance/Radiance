@@ -18,7 +18,7 @@ compileJava {
 }
 
 loom {
-    accessWidenerPath = project.rootProject.file("src/main/resources/radiance.accesswidener")
+    accessWidenerPath = project.file("src/main/resources/radiance.accesswidener")
 }
 
 tasks.named("runClient", JavaExec) {
@@ -41,6 +41,11 @@ dependencies {
 }
 
 sourceSets {
+    main {
+        java.srcDir("src/main/java")
+        resources.srcDir("src/main/resources")
+        java.exclude("com/radiance/client/blaze3d/**")
+    }
     replayCommon {
         java.setSrcDirs(["src/replayCommon/java"])
         resources.setSrcDirs(["src/replayCommon/resources"])

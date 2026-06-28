@@ -17,6 +17,8 @@ public final class TextureMaterialCompat {
 
     public static void clearPbrMaterials() {
         SPRITE_MATERIALS.clear();
+        ATLAS_SPRITES.clear();
+        clearPbrMaterialsNative();
     }
 
     public static void registerPbrMaterial(Object spriteId, Object albedoPath, Object normalPath,
@@ -69,6 +71,12 @@ public final class TextureMaterialCompat {
         //$$     specularPath, flagPath);
         //#else
         return 0;
+        //#endif
+    }
+
+    private static void clearPbrMaterialsNative() {
+        //#if MC>=260200
+        //$$ Blaze3DProxy.clearPbrMaterialsNative();
         //#endif
     }
 

@@ -11,7 +11,9 @@ import com.mojang.blaze3d.systems.RenderPassDescriptor;
 import com.mojang.blaze3d.systems.TransientMemory;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.radiance.client.blaze3d.abi.Blaze3DProxy;
+import com.radiance.client.proxy.vulkan.TextureProxy;
 import java.nio.ByteBuffer;
+import org.lwjgl.system.MemoryUtil;
 import org.joml.Vector4fc;
 
 public final class RadianceCommandEncoderBackend implements CommandEncoderBackend {
@@ -115,6 +117,15 @@ public final class RadianceCommandEncoderBackend implements CommandEncoderBacken
                                int destX, int destY, int width, int height) {
         ByteBuffer bytes = source.duplicate();
         Blaze3DProxy.writeToTextureNative(RadianceBackendUtil.textureHandle(destination), bytes, mipLevel, depthOrLayer, destX, destY, width, height, bytes.position());
+        int textureId = RadianceBackendUtil.textureId(destination);
+        if (textureId != 0 && depthOrLayer == 0) {
+            ByteBuffer uploadBytes = source.duplicate();
+            long pointer = MemoryUtil.memAddress(uploadBytes) + uploadBytes.position();
+            int uploadBytesPerRow = width * destination.getFormat().blockSize();
+            int uploadSize = Math.min(uploadBytes.remaining(), uploadBytesPerRow * height);
+            TextureProxy.queueUpload(pointer, uploadSize, width, textureId, 0, 0,
+                destX, destY, width, height, mipLevel);
+        }
     }
 
     @Override

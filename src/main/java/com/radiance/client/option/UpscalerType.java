@@ -4,15 +4,13 @@ import static com.radiance.client.option.Options.UPSCALER_TYPE_FSR3;
 import static com.radiance.client.option.Options.UPSCALER_TYPE_NATIVE;
 
 import com.mojang.serialization.Codec;
-import net.minecraft.util.StringIdentifiable;
-import net.minecraft.util.TranslatableOption;
+import com.radiance.client.option.compat.RadianceOptionEnum;
 
-public enum UpscalerType implements TranslatableOption, StringIdentifiable {
+public enum UpscalerType implements RadianceOptionEnum {
     NATIVE(0, "native", UPSCALER_TYPE_NATIVE),
     FSR3(1, "fsr3", UPSCALER_TYPE_FSR3);
 
-    public static final Codec<UpscalerType> Codec =
-        StringIdentifiable.createCodec(UpscalerType::values);
+    public static final Codec<UpscalerType> Codec = RadianceOptionEnum.codec(UpscalerType::values);
     private final int ordinal;
     private final String name;
     private final String translationKey;
@@ -23,18 +21,15 @@ public enum UpscalerType implements TranslatableOption, StringIdentifiable {
         this.translationKey = translationKey;
     }
 
-    @Override
-    public String asString() {
+    public String serializedName() {
         return this.name;
     }
 
-    @Override
-    public int getId() {
+    public int optionId() {
         return this.ordinal;
     }
 
-    @Override
-    public String getTranslationKey() {
+    public String translationKey() {
         return this.translationKey;
     }
 }

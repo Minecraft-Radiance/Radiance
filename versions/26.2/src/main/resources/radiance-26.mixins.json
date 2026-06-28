@@ -4,9 +4,20 @@
   "package": "com.radiance.mixins.blaze3d_26",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "DirectoryListerMixin",
     "PreferredGraphicsApiMixin",
     "LevelRendererFrameObserverMixin",
-    "TextureAtlasSyncMixin"
+    "NativeImageMixin",
+    "PalettedPermutationsMixin",
+    "ReloadableTextureMixin",
+    "SingleFileMixin",
+    "SpriteAnimatedTextureAccessor",
+    "SpriteAnimationStateMixin",
+    "SpriteContentsAccessor",
+    "SpriteFrameInfoAccessor",
+    "TextureAtlasSpriteAccessor",
+    "TextureAtlasSyncMixin",
+    "UnstitcherMixin"
   ],
   "injectors": {
     "defaultRequire": 1
