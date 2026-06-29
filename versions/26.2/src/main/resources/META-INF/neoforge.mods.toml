@@ -1,0 +1,27 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "GPL-3.0"
+issueTrackerURL = "https://github.com/Minecraft-Radiance/Radiance/issues"
+
+[[mods]]
+modId = "radiance"
+version = "${version}"
+displayName = "Radiance"
+displayURL = "https://www.minecraft-radiance.com/"
+logoFile = "assets/radiance/icon.png"
+authors = "LJIONG, Interstellarss"
+description = '''A Minecraft mod that uses modern Vulkan C++ as backend renderer.'''
+
+[[dependencies.radiance]]
+modId = "neoforge"
+type = "required"
+versionRange = "[${neoforge_version},)"
+ordering = "NONE"
+side = "CLIENT"
+
+[[dependencies.radiance]]
+modId = "minecraft"
+type = "required"
+versionRange = "[${minecraft_version}]"
+ordering = "NONE"
+side = "CLIENT"

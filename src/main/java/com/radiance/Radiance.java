@@ -1,12 +1,9 @@
 package com.radiance;
 
-import net.fabricmc.api.ModInitializer;
-
-public class Radiance implements ModInitializer {
+public final class Radiance {
 
     public static final String MOD_ID = "radiance";
 
-    @Override
-    public void onInitialize() {
+    private Radiance() {
     }
 }

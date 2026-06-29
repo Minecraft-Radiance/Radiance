@@ -18,10 +18,10 @@
   "environment": "client",
   "entrypoints": {
     "client": [
-      "com.radiance.client.RadianceClient"
+      "com.radiance.loader.fabric.RadianceFabricClient"
     ],
     "main": [
-      "com.radiance.Radiance"
+      "com.radiance.loader.fabric.RadianceFabric"
     ]
   },
   "mixins": [

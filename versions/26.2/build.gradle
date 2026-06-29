@@ -27,6 +27,7 @@ tasks.named("runClient", JavaExec) {
 
 repositories {
     maven { name = "Fabric"; url = "https://maven.fabricmc.net/" }
+    maven { name = "NeoForge"; url = "https://maven.neoforged.net/releases" }
     maven { name = "Mojang"; url = "https://libraries.minecraft.net/" }
     mavenCentral()
 }
@@ -40,6 +41,10 @@ dependencies {
     }
     modImplementation "net.fabricmc:fabric-loader:${loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+    compileOnly "net.neoforged:neoforge:${neoforge_version}:universal@jar"
+    compileOnly "net.neoforged.fancymodloader:loader:${neoforge_fml_version}"
+    compileOnly "net.neoforged:bus:${neoforge_bus_version}"
+    compileOnly "net.neoforged:mergetool:${neoforge_mergetool_version}:api@jar"
     implementation "org.yaml:snakeyaml:2.5"
     include "org.yaml:snakeyaml:2.5"
 }
@@ -109,11 +114,13 @@ processResources {
     inputs.property "version", project.version
     inputs.property "minecraft_version", minecraft_version
     inputs.property "loader_version", loader_version
+    inputs.property "neoforge_version", neoforge_version
     filteringCharset "UTF-8"
-    filesMatching("fabric.mod.json") {
+    filesMatching(["fabric.mod.json", "META-INF/neoforge.mods.toml"]) {
         expand "version": project.version,
                 "minecraft_version": minecraft_version,
-                "loader_version": loader_version
+                "loader_version": loader_version,
+                "neoforge_version": neoforge_version
     }
 }
 
@@ -138,7 +145,7 @@ jar {
 }
 
 tasks.named("remapJar") {
-    archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${minecraft_version}.jar")
+    archiveFileName.set("${project.archives_base_name}-${project.version}-${minecraft_version}.jar")
 }
 
 tasks.named("remapSourcesJar") {
@@ -149,11 +156,13 @@ tasks.named("processReplayResources") {
     inputs.property "version", project.version
     inputs.property "minecraft_version", minecraft_version
     inputs.property "loader_version", loader_version
+    inputs.property "neoforge_version", neoforge_version
     filteringCharset "UTF-8"
-    filesMatching("fabric.mod.json") {
+    filesMatching(["fabric.mod.json", "META-INF/neoforge.mods.toml"]) {
         expand "version": project.version,
                 "minecraft_version": minecraft_version,
-                "loader_version": loader_version
+                "loader_version": loader_version,
+                "neoforge_version": neoforge_version
     }
 }
 
