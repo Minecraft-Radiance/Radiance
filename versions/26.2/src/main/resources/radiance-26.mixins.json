@@ -2,7 +2,7 @@
   "required": true,
   "minVersion": "0.8",
   "package": "com.radiance.mixins.blaze3d_26",
-  "compatibilityLevel": "JAVA_21",
+  "compatibilityLevel": "JAVA_25",
   "client": [
     "DirectoryListerMixin",
     "PreferredGraphicsApiMixin",

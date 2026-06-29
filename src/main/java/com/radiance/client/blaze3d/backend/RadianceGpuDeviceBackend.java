@@ -25,7 +25,10 @@ import com.mojang.blaze3d.textures.GpuTextureView;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormatElement;
 import com.radiance.client.blaze3d.abi.Blaze3DProxy;
+import com.radiance.loader.neoforge.scene_import.plugin.SceneImportPipelineClassificationReport;
+import com.radiance.loader.neoforge.scene_import.plugin.SceneImportPipelineRules;
 import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
@@ -176,12 +179,51 @@ public final class RadianceGpuDeviceBackend implements GpuDeviceBackend {
         GpuFormat colorFormat = colorTarget != null ? colorTarget.format() : GpuFormat.RGBA8_UNORM;
         BlendFunction blend = colorTarget != null && colorTarget.blendFunction().isPresent() ? colorTarget.blendFunction().get() : null;
         DepthStencilState depthStencil = pipeline.getDepthStencilState();
+        SceneImportPipelineRules.MatchResult sceneImport = classifySceneImportPipeline(
+            pipeline, slot, stride, names, formats, offsets, blend, depthStencil);
+        SceneImportPipelineClassificationReport.record(sceneImport);
+        SceneImportPipelineRules.Rule sceneImportRule = sceneImport.rule();
         return Blaze3DProxy.registerPipelineNative(pipeline.getLocation().toString(), pipeline.getVertexShader().toString(),
             pipeline.getFragmentShader().toString(), RadianceBackendUtil.topology(pipeline.getPrimitiveTopology()),
             RadianceBackendUtil.polygonMode(pipeline.getPolygonMode()), pipeline.isCull(), slot, stride, names, formats, offsets,
             RadianceBackendUtil.gpuFormat(colorFormat), blend != null, blendName(blend),
             colorTarget == null ? 15 : colorTarget.writeMask(), depthStencil != null,
-            depthStencil != null && depthStencil.writeDepth(), pipeline.getSortKey());
+            depthStencil != null && depthStencil.writeDepth(), pipeline.getSortKey(),
+            sceneImportRule.sceneRouteMask(), sceneImportRule.formatId(), sceneImportRule.importKernelId(),
+            sceneImportRule.rasterClassId(), sceneImportRule.materialPolicyId(),
+            sceneImportRule.transformPolicyId());
+    }
+
+    private static SceneImportPipelineRules.MatchResult classifySceneImportPipeline(
+        RenderPipeline pipeline, int slot, int stride, String[] names, int[] formats, int[] offsets,
+        @Nullable BlendFunction blend, @Nullable DepthStencilState depthStencil) {
+        List<SceneImportPipelineRules.Attribute> attributes = new ArrayList<>(names.length);
+        for (int i = 0; i < names.length; i++) {
+            attributes.add(new SceneImportPipelineRules.Attribute(
+                names[i],
+                offsets[i],
+                gpuFormatName(formats[i])));
+        }
+        SceneImportPipelineRules.PipelineInfo info = new SceneImportPipelineRules.PipelineInfo(
+            pipeline.getLocation().toString(),
+            pipeline.getPrimitiveTopology() == null ? "" : pipeline.getPrimitiveTopology().name(),
+            slot,
+            stride,
+            attributes,
+            blend != null,
+            blendName(blend),
+            depthStencil != null,
+            depthStencil != null && depthStencil.writeDepth(),
+            pipeline.isCull());
+        return SceneImportPipelineRules.active().classify(info);
+    }
+
+    private static String gpuFormatName(int format) {
+        GpuFormat[] values = GpuFormat.values();
+        if (format < 0 || format >= values.length) {
+            return "UNKNOWN";
+        }
+        return values[format].name();
     }
 
     private static String blendName(@Nullable BlendFunction blend) {

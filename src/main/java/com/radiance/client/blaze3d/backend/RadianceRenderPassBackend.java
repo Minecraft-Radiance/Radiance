@@ -16,12 +16,24 @@ import java.util.function.Supplier;
 import org.jspecify.annotations.Nullable;
 import org.lwjgl.PointerBuffer;
 
-public final class RadianceRenderPassBackend implements RenderPassBackend {
+public final class RadianceRenderPassBackend implements RenderPassBackend, SceneImportClassifiedRenderPassBackend {
     private final long handle;
     private IndexType currentIndexType = IndexType.INT;
 
     RadianceRenderPassBackend(long handle) {
         this.handle = handle;
+    }
+
+    @Override
+    public void radiance$setSceneImportClassification(int sceneRouteMask, int formatId,
+        int importKernelId, int rasterClass, int materialPolicy, int transformPolicy) {
+        Blaze3DProxy.setSceneImportClassificationNative(this.handle, sceneRouteMask, formatId,
+            importKernelId, rasterClass, materialPolicy, transformPolicy);
+    }
+
+    @Override
+    public void radiance$clearSceneImportClassification() {
+        Blaze3DProxy.clearSceneImportClassificationNative(this.handle);
     }
 
     @Override

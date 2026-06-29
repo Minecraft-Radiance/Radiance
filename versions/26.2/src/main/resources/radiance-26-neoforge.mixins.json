@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.radiance.mixins.blaze3d_26.neoforge",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "WindowEarlyLoadingScreenBypassMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

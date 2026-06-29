@@ -21,7 +21,8 @@ public final class RadianceBackend implements GpuBackend {
 
     @Override
     public void setWindowHints() {
-        GLFW.glfwWindowHint(139265, 0);
+        RadianceBackendWindowCreation.markRadianceWindowHintsApplied();
+        GLFW.glfwWindowHint(GLFW.GLFW_CLIENT_API, GLFW.GLFW_NO_API);
     }
 
     @Override
@@ -35,11 +36,20 @@ public final class RadianceBackend implements GpuBackend {
     public GpuDevice createDevice(long window, ShaderSource defaultShaderSource, GpuDebugOptions debugOptions,
                                   Runnable criticalShaderLoader) throws BackendCreationException {
         try {
+            int clientApi = GLFW.glfwGetWindowAttrib(window, GLFW.GLFW_CLIENT_API);
+            if (clientApi != GLFW.GLFW_NO_API) {
+                throw new BackendCreationException(
+                    "Radiance Blaze3D requires a GLFW_NO_API window, got GLFW_CLIENT_API=0x"
+                        + Integer.toHexString(clientApi),
+                    BackendCreationException.Reason.GLFW_ERROR);
+            }
             Blaze3DProxy.initRendererNative(RendererProxy.glfwLibraryCandidates(), window);
             Pipeline.collectNativeModules();
             Pipeline.switchToPresetMode(Presets.DEFERRED_RT_NRD_FSR.key, false);
             Pipeline.build();
             return new GpuDevice(new RadianceGpuDeviceBackend(), criticalShaderLoader);
+        } catch (BackendCreationException exception) {
+            throw exception;
         } catch (Throwable throwable) {
             throw new BackendCreationException("Failed to initialize Radiance Blaze3D backend: " + throwable.getMessage(),
                 BackendCreationException.Reason.OTHER);

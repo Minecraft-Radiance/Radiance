@@ -45,13 +45,16 @@ dependencies {
     compileOnly "net.neoforged.fancymodloader:loader:${neoforge_fml_version}"
     compileOnly "net.neoforged:bus:${neoforge_bus_version}"
     compileOnly "net.neoforged:mergetool:${neoforge_mergetool_version}:api@jar"
+    implementation "org.ow2.asm:asm:9.7.1"
+    implementation "org.ow2.asm:asm-tree:9.7.1"
     implementation "org.yaml:snakeyaml:2.5"
-    include "org.yaml:snakeyaml:2.5"
 }
 
 sourceSets {
     main {
+        java.srcDir("src/plugin/java")
         java.exclude("com/radiance/mixin_related/MixinPlugin.java")
+        java.exclude("com/radiance/loader/neoforge/scene_import/SceneImportCallsiteClassProcessorProvider.java")
         java.exclude("com/radiance/mixin_related/extensions/vulkan_render_integration/**")
         java.exclude("com/radiance/mixin_related/extensions/vanilla_resource_tracker/IGlyphAtlasTextureExt.java",
                      "com/radiance/mixin_related/extensions/vanilla_resource_tracker/IRenderableGlyphExt.java")
@@ -92,6 +95,7 @@ sourceSets {
 }
 
 configurations {
+    sceneImportJarJar
     replayCommonImplementation.extendsFrom implementation
     replayCommonCompileOnly.extendsFrom compileOnly
     replayCommonRuntimeOnly.extendsFrom runtimeOnly
@@ -104,6 +108,7 @@ configurations {
 }
 
 dependencies {
+    sceneImportJarJar "org.yaml:snakeyaml:2.5"
     replayImplementation sourceSets.replayCommon.output
     replayCliImplementation sourceSets.replayCommon.output
     replayImplementation "org.xerial:sqlite-jdbc:3.46.1.3"
@@ -121,6 +126,120 @@ processResources {
                 "minecraft_version": minecraft_version,
                 "loader_version": loader_version,
                 "neoforge_version": neoforge_version
+    }
+}
+
+def sceneImportPluginClassesDir = layout.buildDirectory.dir("classes/java/sceneImportPlugin")
+def sceneImportPluginResourcesDir = layout.buildDirectory.dir("resources/sceneImportPlugin")
+def sceneImportBundleZip = layout.buildDirectory.file("generated/sceneImportBundle/radiance/scene_import/default-scene-import-bundle.zip")
+
+tasks.register("sceneImportBundleZip", Zip) {
+    archiveFileName.set("default-scene-import-bundle.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("generated/sceneImportBundle/radiance/scene_import"))
+    from("src/sceneImportBundle")
+}
+
+tasks.register("compileSceneImportPluginJava", JavaCompile) {
+    source = fileTree("src/plugin/java") {
+        include "**/*.java"
+    }
+    classpath = sourceSets.main.compileClasspath
+    destinationDirectory.set(sceneImportPluginClassesDir)
+}
+
+tasks.register("processSceneImportPluginResources", Copy) {
+    dependsOn tasks.named("sceneImportBundleZip")
+    from("src/plugin/resources")
+    from(sceneImportBundleZip) {
+        into("radiance/scene_import")
+    }
+    into(sceneImportPluginResourcesDir)
+}
+
+tasks.named("processResources", ProcessResources) {
+    dependsOn tasks.named("sceneImportBundleZip")
+    from(sceneImportBundleZip) {
+        into("radiance/scene_import")
+    }
+}
+
+def sceneImportPluginJar = tasks.register("sceneImportPluginJar", Jar) {
+    dependsOn tasks.named("compileSceneImportPluginJava"),
+        tasks.named("processSceneImportPluginResources")
+    archiveFileName.set("radiance-neoforge-scene-import-plugin.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("sceneImportPlugin"))
+    from(sceneImportPluginClassesDir)
+    from(sceneImportPluginResourcesDir)
+    manifest {
+        attributes(
+            "FMLModType": "LIBRARY",
+            "Automatic-Module-Name": "radiance.neoforge.sceneimport.plugin"
+        )
+    }
+}
+
+def sceneImportPluginMetadata = layout.buildDirectory.file("generated/sceneImportPluginJarJar/META-INF/jarjar/metadata.json")
+def snakeyamlJarJar = configurations.sceneImportJarJar
+
+tasks.register("generateSceneImportPluginJarJarMetadata") {
+    inputs.file(sceneImportPluginJar.flatMap { it.archiveFile })
+    inputs.files(snakeyamlJarJar)
+    outputs.file(sceneImportPluginMetadata)
+    doLast {
+        def pluginFile = sceneImportPluginJar.get().archiveFile.get().asFile
+        def sha256 = { File file ->
+            def digest = java.security.MessageDigest.getInstance("SHA-256")
+            file.withInputStream { input ->
+                byte[] buffer = new byte[8192]
+                int read
+                while ((read = input.read(buffer)) != -1) {
+                    digest.update(buffer, 0, read)
+                }
+            }
+            digest.digest().collect { String.format("%02x", it & 0xff) }.join("")
+        }
+        def hash = sha256(pluginFile)
+        def snakeyamlArtifact = snakeyamlJarJar.resolvedConfiguration.resolvedArtifacts.find {
+            it.moduleVersion.id.group == "org.yaml" && it.name == "snakeyaml"
+        }
+        if (snakeyamlArtifact == null) {
+            throw new GradleException("Unable to resolve org.yaml:snakeyaml for NeoForge jarjar packaging")
+        }
+        def snakeyamlVersion = snakeyamlArtifact.moduleVersion.id.version
+        def snakeyamlFileName = snakeyamlArtifact.file.name
+        def snakeyamlHash = sha256(snakeyamlArtifact.file)
+        def metadataFile = sceneImportPluginMetadata.get().asFile
+        metadataFile.parentFile.mkdirs()
+        metadataFile.text = """{
+  "jars": [
+    {
+      "identifier": {
+        "group": "com.radiance",
+        "artifact": "radiance-neoforge-scene-import-plugin"
+      },
+      "version": {
+        "range": "[${hash}]",
+        "artifactVersion": "${hash}"
+      },
+      "path": "META-INF/jarjar/radiance-neoforge-scene-import-plugin.jar",
+      "isObfuscated": false
+    },
+    {
+      "identifier": {
+        "group": "org.yaml",
+        "artifact": "snakeyaml"
+      },
+      "version": {
+        "range": "[${snakeyamlVersion},${snakeyamlVersion}]",
+        "artifactVersion": "${snakeyamlVersion}"
+      },
+      "path": "META-INF/jarjar/${snakeyamlFileName}",
+      "isObfuscated": false
+    }
+  ]
+}
+"""
+        logger.lifecycle("Packaged NeoForge jarjar dependency org.yaml:snakeyaml:${snakeyamlVersion} (${snakeyamlHash})")
     }
 }
 
@@ -142,6 +261,16 @@ java {
 
 jar {
     from("LICENSE") { rename { "${it}_${project.archivesBaseName}" } }
+    dependsOn sceneImportPluginJar, tasks.named("generateSceneImportPluginJarJarMetadata")
+    from(sceneImportPluginJar.flatMap { it.archiveFile }) {
+        into("META-INF/jarjar")
+    }
+    from(snakeyamlJarJar) {
+        into("META-INF/jarjar")
+    }
+    from(sceneImportPluginMetadata) {
+        into("META-INF/jarjar")
+    }
 }
 
 tasks.named("remapJar") {

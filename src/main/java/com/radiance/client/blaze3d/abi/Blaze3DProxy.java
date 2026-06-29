@@ -9,6 +9,8 @@ public final class Blaze3DProxy {
 
     public static native void initFolderPathNative(String folderPath);
 
+    public static native void initSceneImportBundlePathNative(String bundlePath);
+
     public static native void initRendererNative(String[] glfwLibCandidates, long windowHandle);
 
     public static native int maxSupportedTextureSizeNative();
@@ -103,7 +105,8 @@ public final class Blaze3DProxy {
         String fragmentShader, int primitiveTopology, int polygonMode, boolean cull, int slot,
         int stride, String[] attributeNames, int[] attributeFormats, int[] attributeOffsets,
         int colorFormat, boolean hasBlend, String blendName, int colorWriteMask,
-        boolean hasDepth, boolean depthWrite, int sortKey);
+        boolean hasDepth, boolean depthWrite, int sortKey, int sceneRouteMask, int formatId,
+        int importKernelId, int rasterClass, int materialPolicy, int transformPolicy);
 
     public static native void clearPipelineCacheNative();
 
@@ -117,6 +120,12 @@ public final class Blaze3DProxy {
     public static native void popDebugGroupNative(long renderPass);
 
     public static native void setPipelineNative(long renderPass, long pipeline);
+
+    public static native void setSceneImportClassificationNative(long renderPass,
+        int sceneRouteMask, int formatId, int importKernelId, int rasterClass,
+        int materialPolicy, int transformPolicy);
+
+    public static native void clearSceneImportClassificationNative(long renderPass);
 
     public static native void bindTextureNative(long renderPass, String name, long textureView,
         long sampler);

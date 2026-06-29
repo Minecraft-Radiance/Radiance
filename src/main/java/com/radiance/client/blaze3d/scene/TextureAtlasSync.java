@@ -111,35 +111,42 @@ public final class TextureAtlasSync {
             (com.mojang.blaze3d.platform.NativeImage[]) spriteImages.radiance$getByMipLevel();
         int padding = ((TextureAtlasSpriteInfo) sprite).radiance$getPadding();
 
-        for (AuxiliaryTextures auxiliaryTexture : AuxiliaryTextures.values()) {
-            for (int level = 0; level < images.length; level++) {
-                com.mojang.blaze3d.platform.NativeImage albedoLevel = images[level];
-                com.mojang.blaze3d.platform.NativeImage auxiliary =
-                    auxiliaryTexture.copyPreparedImage(textureId, level);
-                if (auxiliary == null) {
-                    int defaultValue = auxiliaryTexture.defaultValue(albedoLevel);
-                    auxiliary = TextureCompat.mappedCopy(albedoLevel, ignored -> defaultValue);
-                }
+        for (int level = 0; level < images.length; level++) {
+            com.mojang.blaze3d.platform.NativeImage albedoLevel = images[level];
+            com.mojang.blaze3d.platform.NativeImage albedoUploadImage =
+                buildAtlasUploadImage(sprite, albedoLevel, padding, level, currentFrameX,
+                    currentFrameY, nextFrameX, nextFrameY, frameProgress);
+            try {
+                int atlasX = sprite.getX() >> level;
+                int atlasY = sprite.getY() >> level;
+                TextureUploadCompat.uploadPreparedAtlasAlbedoRegion(atlasTextureId,
+                    albedoUploadImage, level, atlasX, atlasY);
 
-                com.mojang.blaze3d.platform.NativeImage albedoUploadImage = null;
-                com.mojang.blaze3d.platform.NativeImage auxiliaryUploadImage = null;
-                try {
-                    albedoUploadImage = buildAtlasUploadImage(sprite, albedoLevel, padding, level,
-                        currentFrameX, currentFrameY, nextFrameX, nextFrameY, frameProgress);
-                    auxiliaryUploadImage = buildAtlasUploadImage(sprite, auxiliary, padding, level,
-                        currentFrameX, currentFrameY, nextFrameX, nextFrameY, frameProgress);
-                    TextureUploadCompat.uploadPreparedAtlasRegion(auxiliaryTexture, atlasTextureId,
-                        albedoUploadImage, auxiliaryUploadImage, level, sprite.getX() >> level,
-                        sprite.getY() >> level);
-                } finally {
-                    if (albedoUploadImage != null) {
-                        albedoUploadImage.close();
+                for (AuxiliaryTextures auxiliaryTexture : AuxiliaryTextures.values()) {
+                    com.mojang.blaze3d.platform.NativeImage auxiliary =
+                        auxiliaryTexture.copyPreparedImage(textureId, level);
+                    if (auxiliary == null) {
+                        int defaultValue = auxiliaryTexture.defaultValue(albedoLevel);
+                        auxiliary = TextureCompat.mappedCopy(albedoLevel, ignored -> defaultValue);
                     }
-                    if (auxiliaryUploadImage != null) {
-                        auxiliaryUploadImage.close();
+
+                    com.mojang.blaze3d.platform.NativeImage auxiliaryUploadImage = null;
+                    try {
+                        auxiliaryUploadImage = buildAtlasUploadImage(sprite, auxiliary, padding,
+                            level, currentFrameX, currentFrameY, nextFrameX, nextFrameY,
+                            frameProgress);
+                        TextureUploadCompat.uploadPreparedAtlasRegion(auxiliaryTexture,
+                            atlasTextureId, albedoUploadImage, auxiliaryUploadImage, level,
+                            atlasX, atlasY);
+                    } finally {
+                        if (auxiliaryUploadImage != null) {
+                            auxiliaryUploadImage.close();
+                        }
+                        auxiliary.close();
                     }
-                    auxiliary.close();
                 }
+            } finally {
+                albedoUploadImage.close();
             }
         }
     }

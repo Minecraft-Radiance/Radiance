@@ -66,6 +66,15 @@ public final class TextureUploadCompat {
             auxiliaryTargetId);
     }
 
+    public static void uploadPreparedAtlasAlbedoRegion(int atlasTextureId, NativeImage albedoImage,
+        int level, int atlasX, int atlasY) {
+        if (!TextureTracker.GLID2Texture.containsKey(atlasTextureId)) {
+            return;
+        }
+        upload(albedoImage, level, atlasX, atlasY, 0, 0, albedoImage.getWidth(),
+            albedoImage.getHeight(), false, atlasTextureId);
+    }
+
     private static void loadAndUploadLegacy(AuxiliaryTextures auxiliaryTexture, NativeImage source,
         INativeImageExt sourceExt, int level, int offsetX, int offsetY, int unpackSkipPixels,
         int unpackSkipRows, int regionWidth, int regionHeight, boolean blur) {
@@ -162,6 +171,7 @@ public final class TextureUploadCompat {
         TextureUtil.prepareImage(texture.format().getNativeImageInternalFormat(), textureId,
             texture.maxLayer(), texture.width(), texture.height());
         //#endif
+        TextureTracker.GLID2Texture.put(textureId, texture);
     }
 
     private static void upload(NativeImage image, int level, int offsetX, int offsetY,

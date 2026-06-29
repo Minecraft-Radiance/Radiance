@@ -12,6 +12,12 @@ logoFile = "assets/radiance/icon.png"
 authors = "LJIONG, Interstellarss"
 description = '''A Minecraft mod that uses modern Vulkan C++ as backend renderer.'''
 
+[[mixins]]
+config = "radiance-26.mixins.json"
+
+[[mixins]]
+config = "radiance-26-neoforge.mixins.json"
+
 [[dependencies.radiance]]
 modId = "neoforge"
 type = "required"
