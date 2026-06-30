@@ -191,7 +191,7 @@ public final class RadianceGpuDeviceBackend implements GpuDeviceBackend {
             depthStencil != null && depthStencil.writeDepth(), pipeline.getSortKey(),
             sceneImportRule.sceneRouteMask(), sceneImportRule.formatId(), sceneImportRule.importKernelId(),
             sceneImportRule.rasterClassId(), sceneImportRule.materialPolicyId(),
-            sceneImportRule.transformPolicyId());
+            sceneImportRule.transformRecipeId());
     }
 
     private static SceneImportPipelineRules.MatchResult classifySceneImportPipeline(
@@ -267,6 +267,7 @@ public final class RadianceGpuDeviceBackend implements GpuDeviceBackend {
     public void close() {
         if (!this.closed) {
             this.closed = true;
+            RadianceTransientMemory.closeAll();
             Blaze3DProxy.closeNative();
         }
     }

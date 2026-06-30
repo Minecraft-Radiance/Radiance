@@ -28,9 +28,7 @@ public final class SceneImportIds {
     public static final int MATERIAL_PARTICLE = 3;
     public static final int MATERIAL_PORTAL = 4;
 
-    public static final int TRANSFORM_DEFAULT = 0;
-    public static final int TRANSFORM_CHUNK_SECTION = 1;
-    public static final int TRANSFORM_DYNAMIC_TRANSFORMS = 2;
+    public static final int TRANSFORM_RECIPE_DEFAULT = 0;
 
     private SceneImportIds() {
     }
@@ -97,14 +95,13 @@ public final class SceneImportIds {
         };
     }
 
-    public static int transformPolicy(String value) {
+    public static int transformRecipeId(String value) {
         String text = normalize(value);
-        return switch (text) {
-            case "chunk_section", "chunksection" -> TRANSFORM_CHUNK_SECTION;
-            case "dynamic_transforms", "dynamictransform", "dynamic_transforms_ubo" ->
-                TRANSFORM_DYNAMIC_TRANSFORMS;
-            default -> TRANSFORM_DEFAULT;
-        };
+        if (text.isBlank() || "unknown".equals(text) || "default".equals(text)
+            || "identity".equals(text)) {
+            return TRANSFORM_RECIPE_DEFAULT;
+        }
+        return stableCustomId(text);
     }
 
     private static String normalize(String value) {

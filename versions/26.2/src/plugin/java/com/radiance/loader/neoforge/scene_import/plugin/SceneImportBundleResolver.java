@@ -2,23 +2,27 @@ package com.radiance.loader.neoforge.scene_import.plugin;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import org.yaml.snakeyaml.Yaml;
 
 public final class SceneImportBundleResolver {
     public static final String ACTIVE_BUNDLE_PROPERTY = "radiance.sceneImport.bundleDir";
     public static final String ACTIVE_RULES_PROPERTY = "radiance.sceneImport.rulesPath";
     public static final String DEFAULT_BUNDLE_RESOURCE =
         "/radiance/scene_import/default-scene-import-bundle.zip";
-    private static final int DERIVED_FORMAT_VERSION = 2;
+    private static final int DERIVED_FORMAT_VERSION = 3;
 
     private SceneImportBundleResolver() {
     }
@@ -53,8 +57,11 @@ public final class SceneImportBundleResolver {
             }
             Files.deleteIfExists(bundleDir.resolve("native_scene_import_rules.json"));
             Files.deleteIfExists(bundleDir.resolve("native_scene_import_kernels.json"));
+            Files.deleteIfExists(bundleDir.resolve("native_scene_import_transforms.json"));
             generateNativeKernels(bundleDir.resolve("kernels.yml"),
                 bundleDir.resolve("native_scene_import_kernels.json"));
+            generateNativeTransforms(bundleDir.resolve("rules.yml"),
+                bundleDir.resolve("native_scene_import_transforms.json"));
             Files.writeString(marker,
                 "sha256: " + hash + "\n"
                     + "derivedFormat: " + DERIVED_FORMAT_VERSION + "\n",
@@ -80,7 +87,8 @@ public final class SceneImportBundleResolver {
     private static boolean isCacheCurrent(Path bundleDir, Path marker) throws IOException {
         if (!Files.isRegularFile(marker)
             || !Files.isRegularFile(bundleDir.resolve("rules.yml"))
-            || !Files.isRegularFile(bundleDir.resolve("native_scene_import_kernels.json"))) {
+            || !Files.isRegularFile(bundleDir.resolve("native_scene_import_kernels.json"))
+            || !Files.isRegularFile(bundleDir.resolve("native_scene_import_transforms.json"))) {
             return false;
         }
         String text = Files.readString(marker, StandardCharsets.UTF_8);
@@ -133,6 +141,44 @@ public final class SceneImportBundleResolver {
         Files.writeString(output, json.toString(), StandardCharsets.UTF_8);
     }
 
+    private static void generateNativeTransforms(Path rulesYml, Path output) throws IOException {
+        if (!Files.isRegularFile(rulesYml)) {
+            Files.writeString(output, "{\n  \"transforms\": []\n}\n", StandardCharsets.UTF_8);
+            return;
+        }
+        List<TransformRecipe> transforms = parseTransforms(rulesYml);
+        StringBuilder json = new StringBuilder();
+        json.append("{\n  \"transforms\": [\n");
+        for (int i = 0; i < transforms.size(); i++) {
+            TransformRecipe transform = transforms.get(i);
+            if (i > 0) {
+                json.append(",\n");
+            }
+            json.append("    {\n");
+            json.append("      \"id\": \"").append(j(transform.id)).append("\",\n");
+            json.append("      \"uniform\": \"").append(j(transform.uniform)).append("\",\n");
+            json.append("      \"op\": \"").append(j(transform.op)).append("\",\n");
+            json.append("      \"fields\": {");
+            int fieldIndex = 0;
+            for (Field field : transform.fields) {
+                if (fieldIndex > 0) {
+                    json.append(",");
+                }
+                json.append("\n        \"").append(j(field.name)).append("\": { \"type\": \"")
+                    .append(j(field.type)).append("\", \"offset\": ").append(field.offset)
+                    .append(" }");
+                fieldIndex++;
+            }
+            if (fieldIndex > 0) {
+                json.append("\n      ");
+            }
+            json.append("}\n");
+            json.append("    }");
+        }
+        json.append("\n  ]\n}\n");
+        Files.writeString(output, json.toString(), StandardCharsets.UTF_8);
+    }
+
     private static List<Kernel> parseKernels(List<String> lines) {
         java.util.ArrayList<Kernel> kernels = new java.util.ArrayList<>();
         Kernel current = null;
@@ -173,6 +219,63 @@ public final class SceneImportBundleResolver {
             kernels.add(current);
         }
         return kernels;
+    }
+
+    private static List<TransformRecipe> parseTransforms(Path rulesYml) throws IOException {
+        Object document;
+        try (Reader reader = Files.newBufferedReader(rulesYml, StandardCharsets.UTF_8)) {
+            document = new Yaml().load(reader);
+        }
+        if (!(document instanceof Map<?, ?> root)) {
+            return List.of();
+        }
+        Object transformsValue = root.get("transforms");
+        if (!(transformsValue instanceof List<?> entries)) {
+            return List.of();
+        }
+        ArrayList<TransformRecipe> transforms = new ArrayList<>();
+        for (Object entry : entries) {
+            if (!(entry instanceof Map<?, ?> transformMap)) {
+                continue;
+            }
+            TransformRecipe transform = new TransformRecipe();
+            transform.id = stringValue(transformMap.get("id"));
+            if (transform.id.isBlank()) {
+                continue;
+            }
+            transform.uniform = stringValue(transformMap.get("uniform"));
+            String op = stringValue(transformMap.get("op"));
+            if (!op.isBlank()) {
+                transform.op = op;
+            }
+            Object fieldsValue = transformMap.get("fields");
+            if (fieldsValue instanceof Map<?, ?> fieldsMap) {
+                for (Map.Entry<?, ?> fieldEntry : fieldsMap.entrySet()) {
+                    String name = stringValue(fieldEntry.getKey());
+                    if (!(fieldEntry.getValue() instanceof Map<?, ?> fieldMap)) {
+                        continue;
+                    }
+                    String type = stringValue(fieldMap.get("type"));
+                    int offset = numberValue(fieldMap.get("offset"), 0);
+                    if (!name.isBlank() && !type.isBlank()) {
+                        transform.fields.add(new Field(name, type, offset));
+                    }
+                }
+            }
+            transforms.add(transform);
+        }
+        return transforms;
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : value.toString();
+    }
+
+    private static int numberValue(Object value, int fallback) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        return number(stringValue(value), fallback);
     }
 
     private static String sha256(byte[] bytes) throws IOException {
@@ -272,5 +375,15 @@ public final class SceneImportBundleResolver {
         int primitiveStride = 1;
         List<String> dependencies = List.of();
         List<String> geometryDependencies = List.of();
+    }
+
+    private static final class TransformRecipe {
+        String id = "";
+        String uniform = "";
+        String op = "identity";
+        List<Field> fields = new java.util.ArrayList<>();
+    }
+
+    private record Field(String name, String type, int offset) {
     }
 }

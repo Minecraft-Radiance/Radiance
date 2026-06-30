@@ -8,6 +8,7 @@ import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.fog.FogData;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import com.radiance.client.blaze3d.abi.Blaze3DProxy;
+import com.radiance.client.blaze3d.backend.RadianceTransientMemory;
 import com.radiance.client.blaze3d.backend.RadianceTextureHandles;
 import com.radiance.client.proxy.vulkan.BufferProxy;
 import net.minecraft.util.ARGB;
@@ -91,6 +92,7 @@ public final class Blaze3DFrameObserver {
 
     public static void endLevelFrame() {
         Blaze3DProxy.endFrameNative();
+        RadianceTransientMemory.retireFrame();
     }
 
     private static void uploadWorldUniform(GameRenderer gameRenderer, ClientLevel level,

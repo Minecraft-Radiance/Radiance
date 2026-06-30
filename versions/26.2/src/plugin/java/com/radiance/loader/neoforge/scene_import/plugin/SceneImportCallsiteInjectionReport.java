@@ -167,15 +167,15 @@ public final class SceneImportCallsiteInjectionReport {
                 writer.write("      materialPolicy: ");
                 writer.write(q(record.materialPolicy()));
                 writer.newLine();
-                writer.write("      transformPolicy: ");
-                writer.write(q(record.transformPolicy()));
+                writer.write("      transform: ");
+                writer.write(q(record.transform()));
                 writer.newLine();
                 writer.write("      numeric: { sceneRouteMask: " + record.sceneRouteMask()
                     + ", formatId: " + record.formatId()
                     + ", importKernelId: " + record.importKernelId()
                     + ", rasterClass: " + record.rasterClassId()
                     + ", materialPolicy: " + record.materialPolicyId()
-                    + ", transformPolicy: " + record.transformPolicyId() + " }");
+                    + ", transformRecipeId: " + record.transformRecipeId() + " }");
                 writer.newLine();
             }
         }

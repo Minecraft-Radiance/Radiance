@@ -34,7 +34,7 @@ public final class RadianceGpuBuffer extends GpuBuffer {
 
     @Override
     public GpuBufferSlice.MappedView map(long offset, long length, boolean read, boolean write) {
-        ByteBuffer mapped = ByteBuffer.allocateDirect(Math.toIntExact(length));
+        ByteBuffer mapped = RadianceByteBuffers.allocateDirectNative(length);
         AtomicBoolean closedMapping = new AtomicBoolean(false);
         return new GpuBufferSlice.MappedView(this.slice(offset, length), mapped, () -> {
             if (closedMapping.compareAndSet(false, true) && write) {

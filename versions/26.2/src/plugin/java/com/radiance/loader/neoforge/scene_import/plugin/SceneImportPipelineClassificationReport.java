@@ -55,13 +55,13 @@ public final class SceneImportPipelineClassificationReport {
             rule.importKernel(),
             rule.rasterClass(),
             rule.materialPolicy(),
-            rule.transformPolicy(),
+            rule.transform(),
             rule.sceneRouteMask(),
             rule.formatId(),
             rule.importKernelId(),
             rule.rasterClassId(),
             rule.materialPolicyId(),
-            rule.transformPolicyId());
+            rule.transformRecipeId());
         synchronized (RECORDS) {
             RECORDS.put(recordKey(record), record);
         }
@@ -188,15 +188,15 @@ public final class SceneImportPipelineClassificationReport {
                 writer.write("      materialPolicy: ");
                 writer.write(q(record.materialPolicy()));
                 writer.newLine();
-                writer.write("      transformPolicy: ");
-                writer.write(q(record.transformPolicy()));
+                writer.write("      transform: ");
+                writer.write(q(record.transform()));
                 writer.newLine();
                 writer.write("      numeric: { sceneRouteMask: " + record.sceneRouteMask()
                     + ", formatId: " + record.formatId()
                     + ", importKernelId: " + record.importKernelId()
                     + ", rasterClass: " + record.rasterClassId()
                     + ", materialPolicy: " + record.materialPolicyId()
-                    + ", transformPolicy: " + record.transformPolicyId() + " }");
+                    + ", transformRecipeId: " + record.transformRecipeId() + " }");
                 writer.newLine();
             }
         }
@@ -321,13 +321,13 @@ public final class SceneImportPipelineClassificationReport {
         String importKernel,
         String rasterClass,
         String materialPolicy,
-        String transformPolicy,
+        String transform,
         int sceneRouteMask,
         int formatId,
         int importKernelId,
         int rasterClassId,
         int materialPolicyId,
-        int transformPolicyId) {
+        int transformRecipeId) {
     }
 
     private interface KeyFn {

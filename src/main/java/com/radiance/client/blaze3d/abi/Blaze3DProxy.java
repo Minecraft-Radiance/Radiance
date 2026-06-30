@@ -106,7 +106,7 @@ public final class Blaze3DProxy {
         int stride, String[] attributeNames, int[] attributeFormats, int[] attributeOffsets,
         int colorFormat, boolean hasBlend, String blendName, int colorWriteMask,
         boolean hasDepth, boolean depthWrite, int sortKey, int sceneRouteMask, int formatId,
-        int importKernelId, int rasterClass, int materialPolicy, int transformPolicy);
+        int importKernelId, int rasterClass, int materialPolicy, int transformRecipeId);
 
     public static native void clearPipelineCacheNative();
 
@@ -123,7 +123,7 @@ public final class Blaze3DProxy {
 
     public static native void setSceneImportClassificationNative(long renderPass,
         int sceneRouteMask, int formatId, int importKernelId, int rasterClass,
-        int materialPolicy, int transformPolicy);
+        int materialPolicy, int transformRecipeId);
 
     public static native void clearSceneImportClassificationNative(long renderPass);
 

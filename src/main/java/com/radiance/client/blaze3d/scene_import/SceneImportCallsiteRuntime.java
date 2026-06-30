@@ -8,10 +8,10 @@ public final class SceneImportCallsiteRuntime {
 
     public static void setClassification(Object renderPassBackend, int sceneRouteMask,
         int formatId, int importKernelId, int rasterClass, int materialPolicy,
-        int transformPolicy) {
+        int transformRecipeId) {
         if (renderPassBackend instanceof SceneImportClassifiedRenderPassBackend classified) {
             classified.radiance$setSceneImportClassification(sceneRouteMask, formatId,
-                importKernelId, rasterClass, materialPolicy, transformPolicy);
+                importKernelId, rasterClass, materialPolicy, transformRecipeId);
         }
     }
 

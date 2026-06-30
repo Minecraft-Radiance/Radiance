@@ -18,13 +18,13 @@ public record CallsiteInjectionRecord(
     String importKernel,
     String rasterClass,
     String materialPolicy,
-    String transformPolicy,
+    String transform,
     int sceneRouteMask,
     int formatId,
     int importKernelId,
     int rasterClassId,
     int materialPolicyId,
-    int transformPolicyId,
+    int transformRecipeId,
     boolean injected,
     List<String> nearbyStrings) {
 }

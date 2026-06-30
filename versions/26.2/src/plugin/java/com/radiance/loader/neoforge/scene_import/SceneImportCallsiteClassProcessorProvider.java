@@ -228,7 +228,7 @@ public final class SceneImportCallsiteClassProcessorProvider implements ClassPro
                 pushInt(list, rule.importKernelId());
                 pushInt(list, rule.rasterClassId());
                 pushInt(list, rule.materialPolicyId());
-                pushInt(list, rule.transformPolicyId());
+                pushInt(list, rule.transformRecipeId());
                 list.add(new MethodInsnNode(
                     Opcodes.INVOKEVIRTUAL,
                     "com/mojang/blaze3d/systems/RenderPass",
@@ -368,13 +368,13 @@ public final class SceneImportCallsiteClassProcessorProvider implements ClassPro
                 r.importKernel(),
                 r.rasterClass(),
                 r.materialPolicy(),
-                r.transformPolicy(),
+                r.transform(),
                 r.sceneRouteMask(),
                 r.formatId(),
                 r.importKernelId(),
                 r.rasterClassId(),
                 r.materialPolicyId(),
-                r.transformPolicyId(),
+                r.transformRecipeId(),
                 injected,
                 c.nearbyStrings()));
         }

@@ -1,5 +1,25 @@
 version: 2
 
+transforms:
+  - id: minecraft_26_2.chunk_section
+    uniform: ChunkSection
+    op: chunk_section_camera_relative
+    fields:
+      chunkPosition: { type: ivec3, offset: 80 }
+
+  - id: minecraft_26_2.dynamic_model_view
+    uniform: DynamicTransforms
+    op: inverse_view_times_model_view
+    fields:
+      modelView: { type: mat4, offset: 0 }
+
+  - id: minecraft_26_2.dynamic_model_view_with_offset
+    uniform: DynamicTransforms
+    op: inverse_view_times_model_view_times_translate
+    fields:
+      modelView: { type: mat4, offset: 0 }
+      modelOffset: { type: vec3, offset: 80 }
+
 rules:
   - id: minecraft.terrain.chunk_sections
     semantic: terrain
@@ -226,7 +246,7 @@ pipelineRules:
     importKernel: terrain_chunk_quad_p28_color_uv_light
     rasterClass: opaque
     materialPolicy: vanilla_terrain
-    transformPolicy: chunk_section
+    transform: minecraft_26_2.chunk_section
     priority: 1000
     match:
       locations: [minecraft:pipeline/solid_terrain]
@@ -242,7 +262,7 @@ pipelineRules:
     importKernel: terrain_chunk_quad_p28_color_uv_light
     rasterClass: cutout
     materialPolicy: vanilla_terrain
-    transformPolicy: chunk_section
+    transform: minecraft_26_2.chunk_section
     priority: 999
     match:
       locations: [minecraft:pipeline/cutout_terrain]
@@ -258,7 +278,7 @@ pipelineRules:
     importKernel: terrain_chunk_quad_p28_color_uv_light
     rasterClass: translucent
     materialPolicy: vanilla_terrain
-    transformPolicy: chunk_section
+    transform: minecraft_26_2.chunk_section
     priority: 998
     match:
       locations: [minecraft:pipeline/translucent_terrain]
@@ -274,7 +294,7 @@ pipelineRules:
     importKernel: block_like_quad_p28_color_uv_light
     rasterClass: opaque
     materialPolicy: vanilla_terrain
-    transformPolicy: dynamic_transforms
+    transform: minecraft_26_2.dynamic_model_view_with_offset
     priority: 990
     match:
       locations: [minecraft:pipeline/solid_block]
@@ -290,7 +310,7 @@ pipelineRules:
     importKernel: block_like_quad_p28_color_uv_light
     rasterClass: cutout
     materialPolicy: vanilla_terrain
-    transformPolicy: dynamic_transforms
+    transform: minecraft_26_2.dynamic_model_view_with_offset
     priority: 989
     match:
       locations: [minecraft:pipeline/cutout_block]
@@ -306,7 +326,7 @@ pipelineRules:
     importKernel: block_like_quad_p28_color_uv_light
     rasterClass: translucent
     materialPolicy: vanilla_terrain
-    transformPolicy: dynamic_transforms
+    transform: minecraft_26_2.dynamic_model_view_with_offset
     priority: 988
     match:
       locations: [minecraft:pipeline/translucent_block]
@@ -322,7 +342,7 @@ pipelineRules:
     importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
     rasterClass: opaque
     materialPolicy: vanilla_entity
-    transformPolicy: dynamic_transforms
+    transform: minecraft_26_2.dynamic_model_view
     priority: 980
     match:
       locations: [minecraft:pipeline/entity_solid, minecraft:pipeline/entity_solid_offset_forward]
@@ -338,7 +358,7 @@ pipelineRules:
     importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
     rasterClass: cutout
     materialPolicy: vanilla_entity
-    transformPolicy: dynamic_transforms
+    transform: minecraft_26_2.dynamic_model_view
     priority: 979
     match:
       locations: [minecraft:pipeline/armor_cutout_no_cull, minecraft:pipeline/armor_decal_cutout_no_cull, minecraft:pipeline/entity_cutout_cull, minecraft:pipeline/entity_cutout, minecraft:pipeline/entity_cutout_z_offset, minecraft:pipeline/end_crystal_beam, minecraft:pipeline/item_cutout]
@@ -365,7 +385,7 @@ pipelineRules:
     importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
     rasterClass: translucent
     materialPolicy: vanilla_entity
-    transformPolicy: dynamic_transforms
+    transform: minecraft_26_2.dynamic_model_view
     priority: 978
     match:
       locations: [minecraft:pipeline/armor_translucent, minecraft:pipeline/entity_translucent, minecraft:pipeline/entity_translucent_emissive, minecraft:pipeline/entity_translucent_cull, minecraft:pipeline/banner_pattern, minecraft:pipeline/breeze_wind, minecraft:pipeline/eyes, minecraft:pipeline/entity_shadow, minecraft:pipeline/item_translucent]
@@ -381,7 +401,7 @@ pipelineRules:
     importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
     rasterClass: additive
     materialPolicy: vanilla_entity
-    transformPolicy: dynamic_transforms
+    transform: minecraft_26_2.dynamic_model_view
     priority: 977
     match:
       locations: [minecraft:pipeline/energy_swirl]
@@ -397,7 +417,7 @@ pipelineRules:
     importKernel: particle_quad_p28_uv_color_light
     rasterClass: translucent
     materialPolicy: particle
-    transformPolicy: dynamic_transforms
+    transform: minecraft_26_2.dynamic_model_view
     priority: 970
     match:
       locations: [minecraft:pipeline/opaque_particle, minecraft:pipeline/translucent_particle, minecraft:pipeline/weather_depth_write, minecraft:pipeline/weather_no_depth_write]

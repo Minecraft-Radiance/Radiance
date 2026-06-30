@@ -133,7 +133,7 @@ public final class SceneImportPipelineRules {
                     case "importKernel", "kernelHint" -> current.importKernel = value;
                     case "rasterClass" -> current.rasterClass = value;
                     case "materialPolicy" -> current.materialPolicy = value;
-                    case "transformPolicy" -> current.transformPolicy = value;
+                    case "transform" -> current.transform = value;
                     case "priority" -> current.priority = number(value, 0);
                     default -> {
                     }
@@ -245,7 +245,7 @@ public final class SceneImportPipelineRules {
         String importKernel,
         String rasterClass,
         String materialPolicy,
-        String transformPolicy,
+        String transform,
         int priority,
         Match match,
         int sceneRouteMask,
@@ -253,19 +253,19 @@ public final class SceneImportPipelineRules {
         int importKernelId,
         int rasterClassId,
         int materialPolicyId,
-        int transformPolicyId) {
+        int transformRecipeId) {
 
         Rule(String id, String semantic, String sceneRoute, String format, String importKernel,
-             String rasterClass, String materialPolicy, String transformPolicy, int priority, Match match) {
+             String rasterClass, String materialPolicy, String transform, int priority, Match match) {
             this(id, semantic, sceneRoute, format, importKernel, rasterClass, materialPolicy,
-                transformPolicy,
+                transform,
                 priority, match,
                 SceneImportIds.routeMask(sceneRoute),
                 SceneImportIds.formatId(format),
                 SceneImportIds.kernelId(importKernel),
                 SceneImportIds.rasterClass(rasterClass),
                 SceneImportIds.materialPolicy(materialPolicy),
-                SceneImportIds.transformPolicy(transformPolicy));
+                SceneImportIds.transformRecipeId(transform));
         }
 
         static Rule unknown() {
@@ -384,7 +384,7 @@ public final class SceneImportPipelineRules {
         String importKernel = "unknown";
         String rasterClass = "unknown";
         String materialPolicy = "default";
-        String transformPolicy = "default";
+        String transform = "default";
         int priority;
         List<String> locations = List.of();
         String locationContains;
@@ -400,7 +400,7 @@ public final class SceneImportPipelineRules {
 
         Rule build() {
             return new Rule(id, semantic, sceneRoute, format, importKernel, rasterClass,
-                materialPolicy, transformPolicy, priority, new Match(locations,
+                materialPolicy, transform, priority, new Match(locations,
                 locationContains, topology, slot, stride, attributes, hasBlend,
                 blendNameContains, hasDepth, depthWrite, cull));
         }

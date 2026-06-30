@@ -26,9 +26,9 @@ public final class RadianceRenderPassBackend implements RenderPassBackend, Scene
 
     @Override
     public void radiance$setSceneImportClassification(int sceneRouteMask, int formatId,
-        int importKernelId, int rasterClass, int materialPolicy, int transformPolicy) {
+        int importKernelId, int rasterClass, int materialPolicy, int transformRecipeId) {
         Blaze3DProxy.setSceneImportClassificationNative(this.handle, sceneRouteMask, formatId,
-            importKernelId, rasterClass, materialPolicy, transformPolicy);
+            importKernelId, rasterClass, materialPolicy, transformRecipeId);
     }
 
     @Override
