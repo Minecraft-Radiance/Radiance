@@ -9,7 +9,7 @@ public final class Blaze3DProxy {
 
     public static native void initFolderPathNative(String folderPath);
 
-    public static native void initSceneImportBundlePathNative(String bundlePath);
+    public static native boolean initSceneImportBundlePathNative(String bundlePath);
 
     public static native void initRendererNative(String[] glfwLibCandidates, long windowHandle);
 

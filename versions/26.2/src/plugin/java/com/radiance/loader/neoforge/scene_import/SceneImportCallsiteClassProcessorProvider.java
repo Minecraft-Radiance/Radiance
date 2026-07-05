@@ -54,7 +54,7 @@ public final class SceneImportCallsiteClassProcessorProvider implements ClassPro
 
     static final class Processor implements ClassProcessor {
         private static final String RUNTIME_OWNER =
-            "com/radiance/client/blaze3d/scene_import/SceneImportCallsiteRuntime";
+            "com/radiance/client/scene_import/SceneImportCallsiteRuntime";
         private static final String RENDER_PASS_OWNER = "com/mojang/blaze3d/systems/RenderPass";
         private static final String RENDER_PASS_DESC = "Lcom/mojang/blaze3d/systems/RenderPass;";
 
@@ -178,7 +178,7 @@ public final class SceneImportCallsiteClassProcessorProvider implements ClassPro
                 || className.startsWith("net/neoforged/")
                 || className.startsWith("net/fabricmc/")
                 || className.startsWith("cpw/mods/")
-                || className.startsWith("com/radiance/client/blaze3d/scene_import/")
+                || className.startsWith("com/radiance/client/scene_import/")
                 || className.startsWith("com/radiance/loader/neoforge/scene_import/")) {
                 return false;
             }

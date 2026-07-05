@@ -10,6 +10,7 @@ import com.mojang.blaze3d.systems.RenderPassBackend;
 import com.mojang.blaze3d.textures.GpuSampler;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.radiance.client.blaze3d.abi.Blaze3DProxy;
+import com.radiance.client.scene_import.SceneImportClassifiedRenderPassBackend;
 import java.nio.IntBuffer;
 import java.util.Collection;
 import java.util.function.Supplier;

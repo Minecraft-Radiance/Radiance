@@ -1,6 +1,4 @@
-package com.radiance.client.blaze3d.scene_import;
-
-import com.radiance.client.blaze3d.backend.SceneImportClassifiedRenderPassBackend;
+package com.radiance.client.scene_import;
 
 public final class SceneImportCallsiteRuntime {
     private SceneImportCallsiteRuntime() {

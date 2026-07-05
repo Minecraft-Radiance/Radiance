@@ -418,10 +418,12 @@ public abstract class WorldRendererMixins {
 
         if (builtChunk == null) {
             cir.setReturnValue(false);
-        } else if (builtChunk.data.get().isEmpty(null)) {
-            cir.setReturnValue(true);
         } else if (builtChunk.data.get() == ChunkProxy.PROCESSED) {
             cir.setReturnValue(ChunkProxy.isChunkReady(builtChunk));
+        } else if (!ChunkProxy.isChunkRenderingReady(builtChunk)) {
+            cir.setReturnValue(false);
+        } else if (builtChunk.data.get().isEmpty(null)) {
+            cir.setReturnValue(true);
         }
     }
     // endregion

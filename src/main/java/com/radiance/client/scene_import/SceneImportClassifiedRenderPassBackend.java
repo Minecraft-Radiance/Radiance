@@ -1,4 +1,4 @@
-package com.radiance.client.blaze3d.backend;
+package com.radiance.client.scene_import;
 
 public interface SceneImportClassifiedRenderPassBackend {
     void radiance$setSceneImportClassification(int sceneRouteMask, int formatId,

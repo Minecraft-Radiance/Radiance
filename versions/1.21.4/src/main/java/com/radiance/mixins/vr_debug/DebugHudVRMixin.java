@@ -2,6 +2,7 @@ package com.radiance.mixins.vr_debug;
 
 import com.radiance.client.gui.VRPerformanceManager;
 import com.radiance.client.pipeline.Pipeline;
+import com.radiance.client.scene_import.SceneImportDebugSection;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.font.TextRenderer;
 import net.minecraft.client.gui.DrawContext;
@@ -59,6 +60,7 @@ public class DebugHudVRMixin {
             }
         }
 
+        addSceneImportDiagnosticsText(debugText);
         addDeferredRtDiagnosticsText(debugText);
         cir.setReturnValue(debugText);
     }
@@ -95,6 +97,17 @@ public class DebugHudVRMixin {
         // - Render scale
         // - IPD settings
         // etc.
+    }
+
+    private void addSceneImportDiagnosticsText(List<String> debugText) {
+        List<String> lines = SceneImportDebugSection.lines();
+        if (lines.isEmpty()) {
+            return;
+        }
+
+        debugText.add("");
+        debugText.add("§6Scene Import:");
+        debugText.addAll(lines);
     }
 
     private void addDeferredRtDiagnosticsText(List<String> debugText) {

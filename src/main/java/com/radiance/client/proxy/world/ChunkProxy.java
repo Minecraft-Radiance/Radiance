@@ -56,6 +56,7 @@ public class ChunkProxy {
     };
     private static final Map<Integer, ChunkBuilder.BuiltChunk> rebuildQueue = new ConcurrentHashMap<>();
     private static final java.util.Set<Integer> forcedRebuildIndices = ConcurrentHashMap.newKeySet();
+    private static final java.util.Set<Integer> nativeScenePendingIndices = ConcurrentHashMap.newKeySet();
     private static final List<Future<?>> rebuildTasks = new ArrayList<>();
     private static BuiltChunkStorage currentStorage = null;
     private static boolean pendingRebuildAll = false;
@@ -147,6 +148,7 @@ public class ChunkProxy {
 
         rebuildQueue.clear();
         forcedRebuildIndices.clear();
+        nativeScenePendingIndices.clear();
         rebuildTasks.clear();
         currentStorage = null;
         pendingRebuildAll = false;
@@ -184,32 +186,41 @@ public class ChunkProxy {
     public static void rebuild(Camera camera) {
 
         BlockPos blockPos = camera.getBlockPos();
-        for (ChunkBuilder.BuiltChunk builtChunk : rebuildQueue.values()) {
-            boolean forced = forcedRebuildIndices.remove(builtChunk.index);
-            if (builtChunk.needsRebuild() && (forced || builtChunk.shouldBuild())) {
-                builtChunk.cancelRebuild();
+        for (Map.Entry<Integer, ChunkBuilder.BuiltChunk> entry : rebuildQueue.entrySet()) {
+            ChunkBuilder.BuiltChunk builtChunk = entry.getValue();
+            boolean forced = forcedRebuildIndices.contains(builtChunk.index);
+            if (!builtChunk.needsRebuild()) {
+                rebuildQueue.remove(entry.getKey(), builtChunk);
+                forcedRebuildIndices.remove(builtChunk.index);
+                continue;
+            }
+            if (!forced && !builtChunk.shouldBuild()) {
+                continue;
+            }
+            if (!rebuildQueue.remove(entry.getKey(), builtChunk)) {
+                continue;
+            }
+            forcedRebuildIndices.remove(builtChunk.index);
+            builtChunk.cancelRebuild();
 
-                BlockPos
-                    chunkCenterPos =
-                    builtChunk.getOrigin()
-                        .add(8, 8, 8);
-                boolean isImportant = chunkCenterPos.getSquaredDistance(blockPos) < 768.0
-                    || builtChunk.needsImportantRebuild();
+            BlockPos
+                chunkCenterPos =
+                builtChunk.getOrigin()
+                    .add(8, 8, 8);
+            boolean isImportant = chunkCenterPos.getSquaredDistance(blockPos) < 768.0
+                || builtChunk.needsImportantRebuild();
 
-                if (isImportant) {
-                    Future<?> rebuildTask = importantChunkRebuildExecutor.submit(() -> {
-                        rebuildSingle(builtChunk, true);
-                    });
-                    rebuildTasks.add(rebuildTask);
-                } else {
-                    backgroundChunkRebuildExecutor.execute(() -> {
-                        rebuildSingle(builtChunk, false);
-                    });
-                }
+            if (isImportant) {
+                Future<?> rebuildTask = importantChunkRebuildExecutor.submit(() -> {
+                    rebuildSingle(builtChunk, true);
+                });
+                rebuildTasks.add(rebuildTask);
+            } else {
+                backgroundChunkRebuildExecutor.execute(() -> {
+                    rebuildSingle(builtChunk, false);
+                });
             }
         }
-
-        rebuildQueue.clear();
     }
 
     public static void waitImportantChunkRebuild() {
@@ -281,6 +292,7 @@ public class ChunkProxy {
         builtChunk.setNoCullingBlockEntities(renderData.noCullingBlockEntities);
 
         if (buffers.isEmpty()) {
+            nativeScenePendingIndices.remove(builtChunk.index);
             ChunkBuilder.ChunkData chunkData = new ChunkBuilder.ChunkData() {
                 @Override
                 public List<BlockEntity> getBlockEntities() {
@@ -315,11 +327,9 @@ public class ChunkProxy {
 
                 @Override
                 public boolean isEmpty(RenderLayer layer) {
-                    return layer == null || !buffers.containsKey(layer);
+                    return layer != null && !buffers.containsKey(layer);
                 }
             };
-            builtChunk.data.set(chunkData);
-            builtChunkNum++;
 
             ByteBuffer geometryTypeBB = null;
             ByteBuffer geometryGroupNameBB = null;
@@ -489,6 +499,9 @@ public class ChunkProxy {
                     vertexCountAddr,
                     verticesAddr,
                     important);
+                nativeScenePendingIndices.add(builtChunk.index);
+                builtChunk.data.set(chunkData);
+                builtChunkNum++;
             } finally {
                 if (geometryTypeBB != null) {
                     MemoryUtil.memFree(geometryTypeBB);
@@ -593,7 +606,22 @@ public class ChunkProxy {
     public static native boolean isChunkReady(long index);
 
     public static boolean isChunkReady(ChunkBuilder.BuiltChunk builtChunk) {
-        return isChunkReady(builtChunk.index);
+        boolean ready = isChunkReady(builtChunk.index);
+        if (ready) {
+            nativeScenePendingIndices.remove(builtChunk.index);
+        }
+        return ready;
+    }
+
+    public static boolean isChunkRenderingReady(ChunkBuilder.BuiltChunk builtChunk) {
+        if (!nativeScenePendingIndices.contains(builtChunk.index)) {
+            return true;
+        }
+        if (!isChunkReady(builtChunk.index)) {
+            return false;
+        }
+        nativeScenePendingIndices.remove(builtChunk.index);
+        return true;
     }
 
     private static native void relocateSingleNative(long index, int originX, int originY,
@@ -601,6 +629,7 @@ public class ChunkProxy {
 
     public static void relocateSingle(long index, int originX, int originY, int originZ) {
         ReplayCaptureHooks.chunkRelocate(index, originX, originY, originZ);
+        nativeScenePendingIndices.remove((int) index);
         relocateSingleNative(index, originX, originY, originZ);
     }
 
@@ -608,6 +637,7 @@ public class ChunkProxy {
 
     public static void invalidateSingle(long index) {
         ReplayCaptureHooks.chunkInvalidate(index);
+        nativeScenePendingIndices.remove((int) index);
         invalidateSingleNative(index);
     }
 }

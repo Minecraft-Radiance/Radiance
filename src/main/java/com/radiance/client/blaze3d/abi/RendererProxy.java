@@ -42,7 +42,10 @@ public final class RendererProxy {
             SceneImportBundleResolver.Bundle bundle = SceneImportBundleResolver.resolve(gameDir);
             SceneImportPipelineClassificationReport.initialize(gameDir);
             sceneImportBundlePath = bundle.directory().toAbsolutePath().toString();
-            Blaze3DProxy.initSceneImportBundlePathNative(sceneImportBundlePath);
+            if (!Blaze3DProxy.initSceneImportBundlePathNative(sceneImportBundlePath)) {
+                throw new RuntimeException("Radiance scene import bundle is not compatible: "
+                    + sceneImportBundlePath);
+            }
         } catch (IOException e) {
             throw new RuntimeException("Failed to initialize Radiance scene import bundle", e);
         }

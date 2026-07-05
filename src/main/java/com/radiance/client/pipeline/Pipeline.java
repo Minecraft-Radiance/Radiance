@@ -2360,6 +2360,8 @@ public class Pipeline {
 
     public static native long[] getDeferredRtDiagnosticsSnapshot();
 
+    public static native long[] getSceneImportDiagnosticsV2Snapshot();
+
     private static final int DEFERRED_RT_DIAG_VALID = 0;
     private static final int DEFERRED_RT_DIAG_SEQUENCE = 1;
     private static final int DEFERRED_RT_DIAG_FRAME_INDEX = 2;
