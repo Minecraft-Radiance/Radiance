@@ -28,8 +28,17 @@ public final class SceneImportDebugSection {
     }
 
     private static List<String> format(SceneImportDiagnostics.Snapshot diagnostics) {
-        ArrayList<String> lines = new ArrayList<>(9);
+        ArrayList<String> lines = new ArrayList<>(16);
         SceneImportDiagnostics.EntityPipelineStats entity = diagnostics.entityPipeline();
+        SceneImportDiagnostics.EntityImportStats entityImport = diagnostics.entityImport();
+        SceneImportDiagnostics.ChunkImportStats chunkImport = diagnostics.chunkImport();
+        SceneImportDiagnostics.SchedulerStats scheduler = diagnostics.scheduler();
+        SceneImportDiagnostics.CpuStats cpu = diagnostics.cpu();
+        SceneImportDiagnostics.BlasLatencyStats blasLatency = diagnostics.blasLatency();
+        SceneImportDiagnostics.SchedulerWindowStats schedulerWindow = diagnostics.schedulerWindow();
+        SceneImportDiagnostics.BlasLaneHealthStats blasLaneHealth = diagnostics.blasLaneHealth();
+        SceneImportDiagnostics.RealtimeCpuPublishStats realtimeCpuPublish =
+            diagnostics.realtimeCpuPublish();
         lines.add(String.format(
             "res g %d/%dp a %d/%dp post %d/%dp err f%d s%d",
             diagnostics.geometries(),
@@ -41,12 +50,14 @@ public final class SceneImportDebugSection {
             diagnostics.failedResources(),
             diagnostics.staleResources()));
         lines.add(String.format(
-            "work q%d def %d/%d last c%d b%d pub%d st%d f%d async %d tl%d",
+            "work q%d def %d/%d last c%d b%d(%d/%du) pub%d st%d f%d async %d tl%d",
             diagnostics.pendingTasks(),
             diagnostics.lastBudgetDeferredTasks(),
             diagnostics.lastBudgetDeferredBlasBatches(),
             diagnostics.lastComputeTasks(),
             diagnostics.lastBlasTasks(),
+            diagnostics.lastBlasBuildBatches(),
+            diagnostics.lastBlasUpdateBatches(),
             diagnostics.lastPublishTasks(),
             diagnostics.lastDroppedStaleTasks(),
             diagnostics.lastFailedTasks(),
@@ -97,6 +108,101 @@ public final class SceneImportDebugSection {
             "ent blas qsrc %d asyncsrc %d",
             entity.pendingBlasSources(),
             entity.asyncReadyBlasSources()));
+        lines.add(String.format(
+            "ent import f%d q%d b%d in %d/%d last %d/%d src c/p/n/r/d %d/%d/%d/%d/%d",
+            entityImport.frameSerial(),
+            entityImport.queueCallsThisFrame(),
+            entityImport.buildCalls(),
+            entityImport.inputEntitiesThisFrame(),
+            entityImport.inputPostsThisFrame(),
+            entityImport.lastInputEntities(),
+            entityImport.lastInputPosts(),
+            entityImport.lastCurrentSources(),
+            entityImport.lastPreviousSources(),
+            entityImport.lastCreatedSources(),
+            entityImport.lastRetainedSources(),
+            entityImport.lastDeletedSources()));
+        lines.add(String.format(
+            "ent dirty g/def/s/m/i/d %d/%d/%d/%d/%d/%d empty %d churn %d",
+            entityImport.dirtyGeometry(),
+            entityImport.dirtyDeform(),
+            entityImport.dirtySurface(),
+            entityImport.dirtyMaterial(),
+            entityImport.dirtyInstance(),
+            entityImport.dirtyDraw(),
+            entityImport.emptyBuildFrames(),
+            entityImport.sourceIdChurn()));
+        lines.add(String.format(
+            "chk import dirty %d submit %d/%d retry %d ready %d block ng/gp/ap/am/ar %d/%d/%d/%d/%d curar %d",
+            chunkImport.dirtyGeometry(),
+            chunkImport.submits(),
+            chunkImport.atomicReplaceSubmits(),
+            chunkImport.retriesSubmitted(),
+            chunkImport.readyChecks(),
+            chunkImport.blockedNoGeometry(),
+            chunkImport.blockedGeometryPending(),
+            chunkImport.blockedAccelerationPending(),
+            chunkImport.blockedAccelerationMissing(),
+            chunkImport.blockedAtomicReplacePending(),
+            chunkImport.renderingReadyAtomicReplace()));
+        lines.add(String.format(
+            "sched blas pend %d bud %d/%d/%d/%d infl %d/%d age %d ramp %d press %d thr %d comp %d/%dms",
+            scheduler.pendingBlasBatches(),
+            scheduler.lastBlasBudget(),
+            scheduler.lastImportantBlasBudget(),
+            scheduler.lastNormalBlasBudget(),
+            scheduler.lastBackgroundBlasBudget(),
+            scheduler.lastInFlightSubmits(),
+            scheduler.lastInFlightBlasBatches(),
+            scheduler.lastOldestInFlightAgeMs(),
+            scheduler.rampBlasBatches(),
+            scheduler.pressureLevel(),
+            scheduler.lastThrottleReason(),
+            scheduler.lastCompletionLatencyMs(),
+            scheduler.smoothedCompletionLatencyMs()));
+        lines.add(String.format(
+            "sched win tgt/avail/cap/head %d/%d/%d/%d pend/done/bms %d/%d/%d",
+            schedulerWindow.targetInFlight(),
+            schedulerWindow.available(),
+            schedulerWindow.perSubmitCap(),
+            schedulerWindow.criticalHeadroom(),
+            schedulerWindow.pendingBatches(),
+            schedulerWindow.completedBatches(),
+            schedulerWindow.lastBatchLatencyMs()));
+        lines.add(String.format(
+            "blas lane pend rt/imp/nrm/oth %d/%d/%d/%d last %d/%d/%d/%d",
+            blasLatency.pendingRealtime(),
+            blasLatency.pendingImportantChunk(),
+            blasLatency.pendingNormalChunk(),
+            blasLatency.pendingOther(),
+            blasLatency.lastRealtime(),
+            blasLatency.lastImportantChunk(),
+            blasLatency.lastNormalChunk(),
+            blasLatency.lastOther()));
+        lines.add(String.format(
+            "blas lane debt rt/imp/nrm/oth %d/%d/%d/%d age %d/%d/%d/%d",
+            blasLaneHealth.debtRealtime(),
+            blasLaneHealth.debtImportantChunk(),
+            blasLaneHealth.debtNormalChunk(),
+            blasLaneHealth.debtOther(),
+            blasLaneHealth.oldestRealtimeMs(),
+            blasLaneHealth.oldestImportantChunkMs(),
+            blasLaneHealth.oldestNormalChunkMs(),
+            blasLaneHealth.oldestOtherMs()));
+        lines.add(String.format(
+            "rtpub pend/proc/coal/def/us %d/%d/%d/%d/%d",
+            realtimeCpuPublish.pending(),
+            realtimeCpuPublish.processed(),
+            realtimeCpuPublish.coalesced(),
+            realtimeCpuPublish.deferred(),
+            realtimeCpuPublish.cpuUs()));
+        lines.add(String.format(
+            "cpu us total/poll/select/pub/blas %d/%d/%d/%d/%d",
+            cpu.totalUs(),
+            cpu.pollBudgetUs(),
+            cpu.taskSelectUs(),
+            cpu.taskPublishUs(),
+            cpu.blasSubmitUs()));
         lines.add(String.format(
             "abi k/r/t %d/%d/%d serial %d",
             diagnostics.registeredKernels(),
