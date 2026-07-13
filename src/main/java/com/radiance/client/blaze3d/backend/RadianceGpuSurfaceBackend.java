@@ -6,6 +6,7 @@ import com.mojang.blaze3d.systems.GpuSurfaceBackend;
 import com.mojang.blaze3d.systems.SurfaceException;
 import com.mojang.blaze3d.textures.GpuTextureView;
 import com.radiance.client.blaze3d.abi.Blaze3DProxy;
+import com.radiance.client.blaze3d.scene.Blaze3DDebugTrace;
 import java.util.Collection;
 import java.util.List;
 
@@ -18,7 +19,16 @@ public final class RadianceGpuSurfaceBackend implements GpuSurfaceBackend {
 
     @Override
     public void configure(GpuSurface.Configuration config) throws SurfaceException {
-        Blaze3DProxy.configureSurfaceNative(this.handle, config.width(), config.height(), 0, config.presentMode().ordinal());
+        Blaze3DDebugTrace.trace("surface.configure begin handle=" + this.handle + " size="
+            + config.width() + "x" + config.height() + " presentMode=" + config.presentMode());
+        try {
+            Blaze3DProxy.configureSurfaceNative(this.handle, config.width(), config.height(), 0,
+                config.presentMode().ordinal());
+            Blaze3DDebugTrace.trace("surface.configure end handle=" + this.handle);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("surface.configure handle=" + this.handle, throwable);
+            throw throwable;
+        }
     }
 
     @Override
@@ -28,18 +38,41 @@ public final class RadianceGpuSurfaceBackend implements GpuSurfaceBackend {
 
     @Override
     public void acquireNextTexture() throws SurfaceException {
-        Blaze3DProxy.acquireNextTextureNative(this.handle);
+        Blaze3DDebugTrace.trace("surface.acquireNextTexture begin handle=" + this.handle);
+        try {
+            Blaze3DProxy.acquireNextTextureNative(this.handle);
+            Blaze3DDebugTrace.trace("surface.acquireNextTexture end handle=" + this.handle);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("surface.acquireNextTexture handle=" + this.handle, throwable);
+            throw throwable;
+        }
     }
 
     @Override
     public void blitFromTexture(CommandEncoderBackend commandEncoder, GpuTextureView textureView) {
         long encoderHandle = commandEncoder instanceof RadianceCommandEncoderBackend radiance ? radiance.handle() : 0L;
-        Blaze3DProxy.blitSurfaceFromTextureNative(this.handle, encoderHandle, RadianceBackendUtil.textureViewHandle(textureView));
+        long textureViewHandle = RadianceBackendUtil.textureViewHandle(textureView);
+        Blaze3DDebugTrace.trace("surface.blitFromTexture begin handle=" + this.handle
+            + " encoder=" + encoderHandle + " textureView=" + textureViewHandle);
+        try {
+            Blaze3DProxy.blitSurfaceFromTextureNative(this.handle, encoderHandle, textureViewHandle);
+            Blaze3DDebugTrace.trace("surface.blitFromTexture end handle=" + this.handle);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("surface.blitFromTexture handle=" + this.handle, throwable);
+            throw throwable;
+        }
     }
 
     @Override
     public void present() {
-        Blaze3DProxy.presentSurfaceNative(this.handle);
+        Blaze3DDebugTrace.traceAlways("surface.present begin handle=" + this.handle);
+        try {
+            Blaze3DProxy.presentSurfaceNative(this.handle);
+            Blaze3DDebugTrace.traceAlways("surface.present end handle=" + this.handle);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("surface.present handle=" + this.handle, throwable);
+            throw throwable;
+        }
     }
 
     @Override

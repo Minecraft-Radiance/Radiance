@@ -8,7 +8,6 @@ import com.radiance.client.pipeline.Pipeline;
 //#else
 import com.radiance.client.proxy.vulkan.RendererProxy;
 //#endif
-import com.radiance.client.replay.hook.ReplayCaptureHooks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
@@ -52,7 +51,6 @@ public class RadianceClient {
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
-        ReplayCaptureHooks.installDiscoveredSink();
         registerClientReloaders.run();
 
         // core lib
@@ -72,7 +70,6 @@ public class RadianceClient {
             // currently not used, can be used later for fg
             copyOptionalFileFromResource(xessDx11Path, Path.of("libxess_dx11.dll"));
             copyOptionalFileFromResource(xessFgPath, Path.of("libxess_fg.dll"));
-
             loadOptionalLibrary(xessPath);
 
             System.load(dllTargetPath.toAbsolutePath().toString());

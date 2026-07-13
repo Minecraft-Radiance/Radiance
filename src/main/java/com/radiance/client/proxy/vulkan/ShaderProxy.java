@@ -1,7 +1,6 @@
 package com.radiance.client.proxy.vulkan;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.radiance.client.replay.hook.ReplayCaptureHooks;
 import com.radiance.client.shader.ShaderDefinition;
 import com.radiance.client.shader.ShaderField;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IGlUniformExt;
@@ -36,10 +35,8 @@ public final class ShaderProxy {
     public static int registerShader(String shaderKey, int vertexFormatType,
         int drawMode, int uniformSize, String vertexShaderPath, String fragmentShaderPath,
         String[] defineNames, String[] defineValues) {
-        int id = registerShaderNative(shaderKey, vertexFormatType, drawMode, uniformSize,
+        return registerShaderNative(shaderKey, vertexFormatType, drawMode, uniformSize,
             vertexShaderPath, fragmentShaderPath, defineNames, defineValues);
-        return ReplayCaptureHooks.shaderRegistered(id, shaderKey, vertexFormatType, drawMode,
-            uniformSize, vertexShaderPath, fragmentShaderPath, defineNames, defineValues);
     }
 
     private static native void drawNative(int vertexId, int indexId, int shaderId, int indexCount,
@@ -47,10 +44,6 @@ public final class ShaderProxy {
 
     public static void draw(int vertexId, int indexId, int shaderId, int indexCount,
         int indexType, long uniformPtr, int uniformSize) {
-        if (ReplayCaptureHooks.isActive()) {
-            ReplayCaptureHooks.shaderDraw(vertexId, indexId, shaderId, indexCount, indexType,
-                MemoryUtil.memByteBuffer(uniformPtr, Math.max(0, uniformSize)).slice());
-        }
         drawNative(vertexId, indexId, shaderId, indexCount, indexType, uniformPtr, uniformSize);
     }
 

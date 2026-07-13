@@ -1,7 +1,6 @@
 package com.radiance.client.proxy.vulkan;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.radiance.client.replay.hook.ReplayCaptureHooks;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.INativeImageExt;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.texture.NativeImage;
@@ -13,7 +12,6 @@ public class RendererProxy {
 
     public static void initFolderPath(String folderPath) {
         initFolderPathNative(folderPath);
-        ReplayCaptureHooks.rendererFolderPath(folderPath);
     }
 
     private static native void initRendererNative(String[] glfwLibCandidates, long windowHandle);
@@ -22,14 +20,7 @@ public class RendererProxy {
         String mapped = System.mapLibraryName("glfw");
         String[] candidates = {mapped, "libglfw.so.3", "libglfw.3.dylib", "glfw3.dll"};
         RendererProxy.initRendererNative(candidates, window.getHandle());
-        ReplayCaptureHooks.rendererInit();
         RenderSystem.apiDescription = "Vulkan 1.4";
-    }
-
-    public static void initRendererNativeForReplay(long windowHandle) {
-        String mapped = System.mapLibraryName("glfw");
-        String[] candidates = {mapped, "libglfw.so.3", "libglfw.3.dylib", "glfw3.dll"};
-        RendererProxy.initRendererNative(candidates, windowHandle);
     }
 
     public static native int maxSupportedTextureSize();
@@ -37,21 +28,18 @@ public class RendererProxy {
     private static native void acquireContextNative();
 
     public static void acquireContext() {
-        ReplayCaptureHooks.frameAcquireContext();
         acquireContextNative();
     }
 
     private static native void submitCommandNative();
 
     public static void submitCommand() {
-        ReplayCaptureHooks.frameSubmitCommand();
         submitCommandNative();
     }
 
     private static native void presentNative();
 
     public static void present() {
-        ReplayCaptureHooks.framePresent();
         presentNative();
     }
 
@@ -63,14 +51,12 @@ public class RendererProxy {
     private static native void fuseWorldNative();
 
     public static void fuseWorld() {
-        ReplayCaptureHooks.frameFuseWorld();
         fuseWorldNative();
     }
 
     private static native void postBlurNative();
 
     public static void postBlur() {
-        ReplayCaptureHooks.framePostBlur();
         postBlurNative();
     }
 

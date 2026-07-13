@@ -1,23 +1,42 @@
 package com.radiance.client.scene_import;
 
+import com.radiance.client.RadianceClient;
+import com.radiance.client.pipeline.Pipeline;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import com.radiance.client.pipeline.Pipeline;
+import java.util.concurrent.atomic.AtomicLong;
 
 public final class SceneImportAbi {
     public static final int GEOMETRY_RECORD_STRIDE = 384;
+    private static final AtomicLong PBR_GEOMETRY_BATCH_LOG_SEQUENCE = new AtomicLong();
 
     private SceneImportAbi() {
     }
 
-    public static final int SOURCE_NATIVE_CHUNK = 0;
-    public static final int SOURCE_NATIVE_ENTITY = 1;
-    public static final int SOURCE_NATIVE_POST = 2;
+    public static final int SOURCE_CHUNK = 0;
+    public static final int SOURCE_ENTITY = 1;
+    public static final int SOURCE_POST = 2;
     public static final int SOURCE_BLAZE3D = 3;
     public static final int SOURCE_EXTERNAL = 4;
+
+    public static final int TEMPORAL_HOLD = 0;
+    public static final int TEMPORAL_LINEAR_VELOCITY = 1;
+    public static final int TEMPORAL_LINEAR_ANGULAR_VELOCITY = 2;
+    public static final int TEMPORAL_CONSTANT_ACCELERATION = 3;
+
+    public static final int TEMPORAL_POSITION_VALID = 1;
+    public static final int TEMPORAL_ROTATION_VALID = 1 << 1;
+    public static final int TEMPORAL_SCALE_VALID = 1 << 2;
+    public static final int TEMPORAL_LINEAR_VELOCITY_VALID = 1 << 3;
+    public static final int TEMPORAL_ACCELERATION_VALID = 1 << 4;
+    public static final int TEMPORAL_ANGULAR_VELOCITY_VALID = 1 << 5;
+
+    public static final int TEMPORAL_RESET_HISTORY = 1;
+    public static final int TEMPORAL_TELEPORT = 1 << 1;
+    public static final int TEMPORAL_AUTHORITATIVE_VELOCITY = 1 << 2;
 
     public static final int RESOURCE_SOURCE = 0;
     public static final int RESOURCE_GEOMETRY = 1;
@@ -25,8 +44,8 @@ public final class SceneImportAbi {
     public static final int RESOURCE_ACCELERATION = 3;
     public static final int RESOURCE_CUSTOM = 4;
 
-    public static final int FORMAT_NATIVE_PBR = 0;
-    public static final int FORMAT_NATIVE_POST_PBR = 1;
+    public static final int FORMAT_SCENE_PBR = 0;
+    public static final int FORMAT_SCENE_POST_PBR = 1;
     public static final int FORMAT_BLAZE3D_DRAW = 2;
     public static final int FORMAT_EXTERNAL = 3;
 
@@ -40,13 +59,13 @@ public final class SceneImportAbi {
     public static final int ROUTE_RULE_DEPENDENT = -2;
     public static final int ROUTE_GEOMETRY_ACCELERATION = ROUTE_GEOMETRY | ROUTE_ACCELERATION;
 
-    public static final int STEP_ALIAS_NATIVE_GEOMETRY = 0;
+    public static final int STEP_PUBLISH_GEOMETRY = 0;
     public static final int STEP_PUBLISH_EXTERNAL_GEOMETRY = 1;
     public static final int STEP_COMPUTE_IMPORT_GEOMETRY = 2;
     public static final int STEP_COMPUTE_PREPROCESS_GEOMETRY = 3;
     public static final int STEP_COMPUTE_CUSTOM = 4;
     public static final int STEP_BUILD_BLAS = 5;
-    public static final int STEP_IMPORT_POST = 6;
+    public static final int STEP_PUBLISH_POST = 6;
 
     public static final int PRIORITY_BACKGROUND = 0;
     public static final int PRIORITY_NORMAL = 1;
@@ -102,6 +121,12 @@ public final class SceneImportAbi {
 
     public static final int INDEX_UINT16 = 0;
     public static final int INDEX_UINT32 = 1;
+
+    public static final int CPU_PRIMITIVE_QUADS = 0;
+    public static final int CPU_PRIMITIVE_TRIANGLES = 1;
+    public static final int PBR_VERTEX_STRIDE = 128;
+    public static final int RASTER_METADATA_INT_STRIDE = 14;
+    public static final int SCENE_TAG_INT_STRIDE = 4;
 
     public static final int VK_BUFFER_USAGE_STORAGE_BUFFER = 0x20;
     public static final int VK_BUFFER_USAGE_UNIFORM_BUFFER = 0x10;
@@ -215,6 +240,64 @@ public final class SceneImportAbi {
         return SceneImportProxy.markSourceVersionNative(sourceKind, sourceValue, version);
     }
 
+    public static long deleteSource(int sourceKind, long sourceValue) {
+        return SceneImportProxy.deleteSourceNative(sourceKind, sourceValue);
+    }
+
+    public static long clearSourceKind(int sourceKind) {
+        return SceneImportProxy.clearSourceKindNative(sourceKind);
+    }
+
+    public static long updateTemporalState(TemporalSample sample) {
+        if (sample == null) {
+            throw new IllegalArgumentException("Temporal sample must not be null");
+        }
+        TemporalPolicy policy = sample.policy == null ? TemporalPolicy.defaults() : sample.policy;
+        return SceneImportProxy.updateTemporalStateNative(
+            sample.sourceKind, sample.sourceValue, sample.generation, sample.serial,
+            sample.positionX, sample.positionY, sample.positionZ,
+            sample.rotationX, sample.rotationY, sample.rotationZ, sample.rotationW,
+            sample.scaleX, sample.scaleY, sample.scaleZ,
+            sample.velocityX, sample.velocityY, sample.velocityZ,
+            sample.accelerationX, sample.accelerationY, sample.accelerationZ,
+            sample.angularVelocityX, sample.angularVelocityY, sample.angularVelocityZ,
+            policy.model, policy.capabilities, sample.flags, policy.minPredictionNs,
+            policy.maxPredictionNs, policy.correctionHalfLifeNs, policy.maxCorrectionNs,
+            policy.maxLinearSpeed, policy.maxLinearAcceleration, policy.maxAngularSpeed,
+            policy.snapDistance, policy.snapAngleRadians);
+    }
+
+    public record TemporalPolicy(int model, int capabilities, long minPredictionNs,
+                                 long maxPredictionNs, long correctionHalfLifeNs,
+                                 long maxCorrectionNs, float maxLinearSpeed,
+                                 float maxLinearAcceleration, float maxAngularSpeed,
+                                 float snapDistance, float snapAngleRadians) {
+        public static TemporalPolicy defaults() {
+            return new TemporalPolicy(TEMPORAL_HOLD,
+                TEMPORAL_POSITION_VALID | TEMPORAL_ROTATION_VALID | TEMPORAL_SCALE_VALID,
+                0L, 100_000_000L, 25_000_000L, 80_000_000L,
+                Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY,
+                Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY);
+        }
+    }
+
+    public record TemporalSample(int sourceKind, long sourceValue, long generation, long serial,
+                                 double positionX, double positionY, double positionZ,
+                                 float rotationX, float rotationY, float rotationZ, float rotationW,
+                                 float scaleX, float scaleY, float scaleZ,
+                                 double velocityX, double velocityY, double velocityZ,
+                                 double accelerationX, double accelerationY, double accelerationZ,
+                                 double angularVelocityX, double angularVelocityY, double angularVelocityZ,
+                                 TemporalPolicy policy, int flags) {
+        public static TemporalSample hold(int sourceKind, long sourceValue, long generation,
+                                          long serial, double x, double y, double z) {
+            return new TemporalSample(sourceKind, sourceValue, generation, serial, x, y, z,
+                0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+                TemporalPolicy.defaults(), 0);
+        }
+    }
+
     public static void configureWorkBudget(WorkBudget budget) {
         WorkBudget value = budget == null ? WorkBudget.defaults() : budget;
         SceneImportProxy.configureWorkBudgetNative(
@@ -307,6 +390,143 @@ public final class SceneImportAbi {
             batch.contentNames);
     }
 
+    public static long submitPbrGeometryBatch(PbrGeometryBatch batch) {
+        long sequence = PBR_GEOMETRY_BATCH_LOG_SEQUENCE.incrementAndGet();
+        boolean log = shouldLogSceneImportBatch(sequence);
+        if (log) {
+            logPbrGeometryBatch("submit", sequence, batch, 0L, null);
+        }
+        try {
+            long result = SceneImportProxy.submitPbrGeometryBatchNative(
+                batch.sourceKind,
+                batch.sourceValue,
+                batch.version,
+                batch.domain,
+                batch.originX,
+                batch.originY,
+                batch.originZ,
+                batch.rayTracingMask,
+                batch.coordinate,
+                batch.stableHistoryId,
+                batch.important,
+                batch.primitiveMode,
+                batch.geometryTypes,
+                batch.geometryTextureIds,
+                batch.groupNames,
+                batch.contentNames,
+                batch.rasterMetadataVersion,
+                batch.rasterMetadata,
+                batch.rasterMetadataIntStride,
+                batch.sceneTagVersion,
+                batch.sceneTags,
+                batch.sceneTagIntStride,
+                batch.vertexCounts,
+                batch.vertexOffsets,
+                batch.pbrVertices,
+                batch.pbrVertexStride);
+            if (log) {
+                logPbrGeometryBatch("submitted", sequence, batch, result, null);
+            }
+            return result;
+        } catch (Throwable throwable) {
+            logPbrGeometryBatch("failed", sequence, batch, 0L, throwable);
+            throw throwable;
+        }
+    }
+
+    private static boolean shouldLogSceneImportBatch(long sequence) {
+        return sequence <= 64 || (sequence & (sequence - 1L)) == 0L;
+    }
+
+    private static void logPbrGeometryBatch(String stage, long sequence, PbrGeometryBatch batch,
+        long result, Throwable throwable) {
+        int geometryCount = batch.vertexCounts == null ? 0 : batch.vertexCounts.length;
+        int totalVertices = sum(batch.vertexCounts);
+        ByteBuffer vertices = batch.pbrVertices;
+        int vertexCapacity = vertices == null ? -1 : vertices.capacity();
+        int vertexPosition = vertices == null ? -1 : vertices.position();
+        int vertexLimit = vertices == null ? -1 : vertices.limit();
+        boolean direct = vertices != null && vertices.isDirect();
+        RadianceClient.LOGGER.info(
+            "[SceneImportAbi] pbrBatch#{} {} sourceKind={} sourceValue={} version={} domain={} origin=({}, {}, {}) geometries={} totalVertices={} primitiveMode={} stride={} direct={} vertexBuffer[pos={}, limit={}, cap={}] vertexCounts={} vertexOffsets={} geometryTypes={} textureIds={} result={}",
+            sequence, stage, batch.sourceKind, batch.sourceValue, batch.version, batch.domain,
+            batch.originX, batch.originY, batch.originZ, geometryCount, totalVertices,
+            batch.primitiveMode, batch.pbrVertexStride, direct, vertexPosition, vertexLimit,
+            vertexCapacity, preview(batch.vertexCounts), preview(batch.vertexOffsets),
+            preview(batch.geometryTypes), preview(batch.geometryTextureIds), result);
+        if (throwable != null) {
+            RadianceClient.LOGGER.error("[SceneImportAbi] pbrBatch#{} failed", sequence, throwable);
+        }
+    }
+
+    private static int sum(int[] values) {
+        if (values == null) {
+            return 0;
+        }
+        int total = 0;
+        for (int value : values) {
+            total += Math.max(value, 0);
+        }
+        return total;
+    }
+
+    private static String preview(int[] values) {
+        if (values == null) {
+            return "null";
+        }
+        int count = Math.min(values.length, 8);
+        StringBuilder builder = new StringBuilder();
+        builder.append('[');
+        for (int i = 0; i < count; i++) {
+            if (i > 0) {
+                builder.append(',');
+            }
+            builder.append(values[i]);
+        }
+        if (values.length > count) {
+            builder.append(",...");
+        }
+        builder.append("] len=").append(values.length);
+        return builder.toString();
+    }
+
+    public static int registerPbrMaterial(String spriteId, String albedoPath, String normalPath,
+        String specularPath, String flagPath) {
+        return SceneImportProxy.registerPbrMaterialNative(
+            spriteId == null ? "" : spriteId,
+            albedoPath == null ? "" : albedoPath,
+            normalPath == null ? "" : normalPath,
+            specularPath == null ? "" : specularPath,
+            flagPath == null ? "" : flagPath);
+    }
+
+    public static void clearPbrMaterials() {
+        SceneImportProxy.clearPbrMaterialsNative();
+    }
+
+    public static void clearAtlas(long atlasTexture) {
+        SceneImportProxy.clearAtlasNative(atlasTexture);
+    }
+
+    public static void syncAtlasSprite(long atlasTexture, long atlasTextureView, String atlasId,
+        String spriteId, float u0, float v0, float u1, float v1, int pixelX, int pixelY,
+        int pixelWidth, int pixelHeight, int materialId) {
+        SceneImportProxy.syncAtlasSpriteNative(
+            atlasTexture,
+            atlasTextureView,
+            atlasId == null ? "" : atlasId,
+            spriteId == null ? "" : spriteId,
+            u0,
+            v0,
+            u1,
+            v1,
+            pixelX,
+            pixelY,
+            pixelWidth,
+            pixelHeight,
+            materialId);
+    }
+
     public static long submitBuildPlan(BuildPlan plan) {
         return SceneImportProxy.submitBuildPlanNative(
             plan.planId,
@@ -396,131 +616,6 @@ public final class SceneImportAbi {
             diagnosticValue(values, 24));
     }
 
-    public static final int DIAGNOSTICS_V2_FIELD_COUNT = 108;
-    public static final int DIAGNOSTICS_V2_LATENCY_BASE = 27;
-    public static final int DIAGNOSTICS_V2_PRIORITY_BASE = 47;
-    public static final int DIAGNOSTICS_V2_GROUP_BASE = 59;
-    public static final int DIAGNOSTICS_V2_TLAS_INSTANCE_BASE = 89;
-    public static final int DIAGNOSTICS_V2_ENTITY_PIPELINE_BASE = 94;
-    public static final int DIAGNOSTICS_V2_LATENCY_STRIDE = 4;
-    public static final int DIAGNOSTICS_V2_PRIORITY_STRIDE = 4;
-    public static final int DIAGNOSTICS_V2_GROUP_STRIDE = 5;
-
-    public static final int LATENCY_QUEUE = 0;
-    public static final int LATENCY_GPU = 1;
-    public static final int LATENCY_PUBLISH = 2;
-    public static final int LATENCY_FRAME = 3;
-    public static final int LATENCY_TOTAL = 4;
-    public static final int LATENCY_COUNT = 5;
-
-    public static final int GROUP_CHUNK = 0;
-    public static final int GROUP_IMPORTANT_CHUNK = 1;
-    public static final int GROUP_ENTITY = 2;
-    public static final int GROUP_NATIVE_POST = 3;
-    public static final int GROUP_BLAZE3D = 4;
-    public static final int GROUP_EXTERNAL = 5;
-    public static final int GROUP_COUNT = 6;
-
-    public static long[] diagnosticsV2() {
-        return Pipeline.getSceneImportDiagnosticsV2Snapshot();
-    }
-
-    public static DiagnosticsV2 diagnosticsV2Snapshot() {
-        long[] values = diagnosticsV2();
-        LatencyStats[] latencies = new LatencyStats[LATENCY_COUNT];
-        for (int i = 0; i < latencies.length; i++) {
-            int base = DIAGNOSTICS_V2_LATENCY_BASE + i * DIAGNOSTICS_V2_LATENCY_STRIDE;
-            latencies[i] = new LatencyStats(
-                diagnosticValue(values, base),
-                diagnosticValue(values, base + 1),
-                diagnosticValue(values, base + 2),
-                diagnosticValue(values, base + 3));
-        }
-
-        PriorityStats[] priorities = new PriorityStats[] {
-            priorityStats(values, PRIORITY_BACKGROUND),
-            priorityStats(values, PRIORITY_NORMAL),
-            priorityStats(values, PRIORITY_IMPORTANT)
-        };
-
-        SourceGroupStats[] groups = new SourceGroupStats[GROUP_COUNT];
-        for (int i = 0; i < groups.length; i++) {
-            int base = DIAGNOSTICS_V2_GROUP_BASE + i * DIAGNOSTICS_V2_GROUP_STRIDE;
-            groups[i] = new SourceGroupStats(
-                diagnosticValue(values, base),
-                diagnosticValue(values, base + 1),
-                diagnosticValue(values, base + 2),
-                diagnosticValue(values, base + 3),
-                diagnosticValue(values, base + 4));
-        }
-
-        return new DiagnosticsV2(
-            diagnosticValue(values, 0),
-            diagnosticValue(values, 1),
-            diagnosticValue(values, 2),
-            diagnosticValue(values, 3),
-            diagnosticValue(values, 4),
-            diagnosticValue(values, 5),
-            diagnosticValue(values, 6),
-            diagnosticValue(values, 7),
-            diagnosticValue(values, 8),
-            diagnosticValue(values, 9),
-            diagnosticValue(values, 10),
-            diagnosticValue(values, 11),
-            diagnosticValue(values, 12),
-            diagnosticValue(values, 13) != 0L,
-            diagnosticValue(values, 14),
-            diagnosticValue(values, 15),
-            diagnosticValue(values, 16),
-            diagnosticValue(values, 17),
-            diagnosticValue(values, 18),
-            diagnosticValue(values, 19),
-            diagnosticValue(values, 20),
-            diagnosticValue(values, 21),
-            diagnosticValue(values, 22),
-            diagnosticValue(values, 23),
-            diagnosticValue(values, 24),
-            diagnosticValue(values, 25),
-            diagnosticValue(values, 26),
-            diagnosticValue(values, DIAGNOSTICS_V2_TLAS_INSTANCE_BASE),
-            diagnosticValue(values, DIAGNOSTICS_V2_TLAS_INSTANCE_BASE + 1),
-            diagnosticValue(values, DIAGNOSTICS_V2_TLAS_INSTANCE_BASE + 2),
-            diagnosticValue(values, DIAGNOSTICS_V2_TLAS_INSTANCE_BASE + 3),
-            diagnosticValue(values, DIAGNOSTICS_V2_TLAS_INSTANCE_BASE + 4),
-            entityPipelineStats(values),
-            latencies,
-            priorities,
-            groups);
-    }
-
-    private static PriorityStats priorityStats(long[] values, int priority) {
-        int base = DIAGNOSTICS_V2_PRIORITY_BASE + priority * DIAGNOSTICS_V2_PRIORITY_STRIDE;
-        return new PriorityStats(
-            diagnosticValue(values, base),
-            diagnosticValue(values, base + 1),
-            diagnosticValue(values, base + 2),
-            diagnosticValue(values, base + 3));
-    }
-
-    private static EntityPipelineStats entityPipelineStats(long[] values) {
-        int base = DIAGNOSTICS_V2_ENTITY_PIPELINE_BASE;
-        return new EntityPipelineStats(
-            diagnosticValue(values, base),
-            diagnosticValue(values, base + 1),
-            diagnosticValue(values, base + 2),
-            diagnosticValue(values, base + 3),
-            diagnosticValue(values, base + 4),
-            diagnosticValue(values, base + 5),
-            diagnosticValue(values, base + 6),
-            diagnosticValue(values, base + 7),
-            diagnosticValue(values, base + 8),
-            diagnosticValue(values, base + 9),
-            diagnosticValue(values, base + 10),
-            diagnosticValue(values, base + 11),
-            diagnosticValue(values, base + 12),
-            diagnosticValue(values, base + 13));
-    }
-
     private static long diagnosticValue(long[] values, int index) {
         return values != null && index < values.length ? values[index] : 0L;
     }
@@ -551,94 +646,6 @@ public final class SceneImportAbi {
         long failedResources,
         long staleResources,
         long lastAsyncTimelineValue) {
-    }
-
-    public record LatencyStats(long samples, long p50Ms, long p95Ms, long maxMs) {
-    }
-
-    public record PriorityStats(long accepted, long selected, long submitted, long deferred) {
-    }
-
-    public record SourceGroupStats(
-        long accepted,
-        long published,
-        long stale,
-        long failed,
-        long latestTotalMs) {
-    }
-
-    public record EntityPipelineStats(
-        long geometryReady,
-        long geometryPending,
-        long geometryStale,
-        long geometryFailed,
-        long accelerationReady,
-        long accelerationPending,
-        long accelerationStale,
-        long accelerationFailed,
-        long accelerationMissingForReadyGeometry,
-        long accelerationVersionMismatch,
-        long accelerationBlasNull,
-        long snapshotReadyAcceleration,
-        long pendingBlasSources,
-        long asyncReadyBlasSources) {
-    }
-
-    public record DiagnosticsV2(
-        long schema,
-        long serial,
-        long geometries,
-        long pendingGeometries,
-        long posts,
-        long pendingPosts,
-        long accelerations,
-        long pendingAccelerations,
-        long failedResources,
-        long staleResources,
-        long pendingTasks,
-        long completedTasks,
-        long failedTasks,
-        boolean lastWorkSubmitted,
-        long lastComputeTasks,
-        long lastBlasTasks,
-        long lastPublishTasks,
-        long lastDroppedStaleTasks,
-        long lastFailedTasks,
-        long lastQueuedTasks,
-        long lastBudgetDeferredTasks,
-        long lastBudgetDeferredBlasBatches,
-        long lastAsyncTimelineValue,
-        long pendingAsyncCompletions,
-        long registeredKernels,
-        long registeredPipelineRules,
-        long registeredTransformRecipes,
-        long tlasInstanceSerial,
-        long tlasInstances,
-        long tlasChunkInstances,
-        long tlasEntityInstances,
-        long tlasOtherInstances,
-        EntityPipelineStats entityPipeline,
-        LatencyStats[] latencies,
-        PriorityStats[] priorities,
-        SourceGroupStats[] groups) {
-
-        public LatencyStats latency(int index) {
-            return latencies != null && index >= 0 && index < latencies.length
-                ? latencies[index]
-                : new LatencyStats(0, 0, 0, 0);
-        }
-
-        public PriorityStats priority(int index) {
-            return priorities != null && index >= 0 && index < priorities.length
-                ? priorities[index]
-                : new PriorityStats(0, 0, 0, 0);
-        }
-
-        public SourceGroupStats group(int index) {
-            return groups != null && index >= 0 && index < groups.length
-                ? groups[index]
-                : new SourceGroupStats(0, 0, 0, 0, 0);
-        }
     }
 
     public record WorkBudget(
@@ -700,6 +707,35 @@ public final class SceneImportAbi {
         int geometryRecordCount,
         String[] groupNames,
         String[] contentNames) {
+    }
+
+    public record PbrGeometryBatch(
+        int sourceKind,
+        long sourceValue,
+        long version,
+        int domain,
+        double originX,
+        double originY,
+        double originZ,
+        int rayTracingMask,
+        int coordinate,
+        int stableHistoryId,
+        boolean important,
+        int primitiveMode,
+        int[] geometryTypes,
+        int[] geometryTextureIds,
+        String[] groupNames,
+        String[] contentNames,
+        int rasterMetadataVersion,
+        int[] rasterMetadata,
+        int rasterMetadataIntStride,
+        int sceneTagVersion,
+        int[] sceneTags,
+        int sceneTagIntStride,
+        int[] vertexCounts,
+        int[] vertexOffsets,
+        ByteBuffer pbrVertices,
+        int pbrVertexStride) {
     }
 
     public record ResourceRef(int kind, int sourceKind, long sourceValue, long version, long value) {

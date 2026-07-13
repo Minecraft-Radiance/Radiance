@@ -184,7 +184,7 @@ public class CloudRendererMixins {
         }
 
         EntityProxy.processWorldEntityRenderData(storageVertexConsumerProvider,
-            System.identityHashCode("clouds"),
+            "radiance/clouds".hashCode(),
             0,
             0,
             0,

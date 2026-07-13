@@ -1,10 +1,8 @@
 package com.radiance.client.texture.compat;
 
+import com.radiance.client.scene_import.SceneImportAbi;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
-//#if MC>=260200
-//$$ import com.radiance.client.blaze3d.abi.Blaze3DProxy;
-//#endif
 
 public final class TextureMaterialCompat {
 
@@ -66,33 +64,23 @@ public final class TextureMaterialCompat {
 
     private static int registerPbrMaterialNative(String spriteId, String albedoPath,
         String normalPath, String specularPath, String flagPath) {
-        //#if MC>=260200
-        //$$ return Blaze3DProxy.registerPbrMaterialNative(spriteId, albedoPath, normalPath,
-        //$$     specularPath, flagPath);
-        //#else
-        return 0;
-        //#endif
+        return SceneImportAbi.registerPbrMaterial(spriteId, albedoPath, normalPath,
+            specularPath, flagPath);
     }
 
     private static void clearPbrMaterialsNative() {
-        //#if MC>=260200
-        //$$ Blaze3DProxy.clearPbrMaterialsNative();
-        //#endif
+        SceneImportAbi.clearPbrMaterials();
     }
 
     private static void clearAtlasNative(long atlasTexture) {
-        //#if MC>=260200
-        //$$ Blaze3DProxy.clearAtlasNative(atlasTexture);
-        //#endif
+        SceneImportAbi.clearAtlas(atlasTexture);
     }
 
     private static void syncAtlasSpriteNative(AtlasSpriteRecord record) {
-        //#if MC>=260200
-        //$$ Blaze3DProxy.syncAtlasSpriteNative(record.atlasTexture(), record.atlasTextureView(),
-        //$$     record.atlasId(), record.spriteId(), record.u0(), record.v0(), record.u1(),
-        //$$     record.v1(), record.pixelX(), record.pixelY(), record.pixelWidth(),
-        //$$     record.pixelHeight(), record.materialId());
-        //#endif
+        SceneImportAbi.syncAtlasSprite(record.atlasTexture(), record.atlasTextureView(),
+            record.atlasId(), record.spriteId(), record.u0(), record.v0(), record.u1(),
+            record.v1(), record.pixelX(), record.pixelY(), record.pixelWidth(),
+            record.pixelHeight(), record.materialId());
     }
 
     public record MaterialRecord(String spriteId, String albedoPath, String normalPath,

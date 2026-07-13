@@ -1257,7 +1257,6 @@ The next Deferred RT phase is planned in `docs/deferred-rt-runtime-flexibility-a
 - Status: completed.
 - Target files:
   - `Radiance-custom/src/main/java/com/radiance/client/pipeline/Pipeline.java`
-  - `Radiance-custom/src/replayCli/java/com/radiance/replay/cli/ReplayDaemon.java`
   - `Radiance-custom/src/main/resources/assets/radiance/lang/en_us.json`
   - `Radiance-custom/src/main/resources/assets/radiance/lang/zh_cn.json`
   - `MCVR-custom/src/core/render/pipeline.hpp`

@@ -31,3 +31,10 @@ type = "required"
 versionRange = "[${minecraft_version}]"
 ordering = "NONE"
 side = "CLIENT"
+
+[[dependencies.radiance]]
+modId = "sodium"
+type = "required"
+versionRange = "[0.9.0,)"
+ordering = "AFTER"
+side = "CLIENT"

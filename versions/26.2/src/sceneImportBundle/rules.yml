@@ -23,7 +23,7 @@ transforms:
 rules:
   - id: minecraft.terrain.chunk_sections
     semantic: terrain
-    sceneRoute: rule_dependent
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -36,7 +36,7 @@ rules:
 
   - id: minecraft.prepared_render_type
     semantic: render_type_draw
-    sceneRoute: rule_dependent
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -49,7 +49,7 @@ rules:
 
   - id: minecraft.particles
     semantic: particles
-    sceneRoute: rule_dependent
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -62,7 +62,7 @@ rules:
 
   - id: minecraft.weather
     semantic: weather
-    sceneRoute: rule_dependent
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -75,7 +75,7 @@ rules:
 
   - id: minecraft.clouds
     semantic: clouds
-    sceneRoute: post
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: translucent
@@ -88,7 +88,7 @@ rules:
 
   - id: minecraft.world_border
     semantic: world_border
-    sceneRoute: overlay
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: translucent
@@ -101,7 +101,7 @@ rules:
 
   - id: minecraft.gui
     semantic: gui
-    sceneRoute: overlay
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: overlay
@@ -114,7 +114,7 @@ rules:
 
   - id: minecraft.gui_item_atlas
     semantic: gui_support
-    sceneRoute: support_texture
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -127,7 +127,7 @@ rules:
 
   - id: minecraft.picture_in_picture
     semantic: gui_support
-    sceneRoute: support_texture
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -140,7 +140,7 @@ rules:
 
   - id: minecraft.post
     semantic: post
-    sceneRoute: post
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -153,7 +153,7 @@ rules:
 
   - id: minecraft.cubemap_background
     semantic: background
-    sceneRoute: post
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -166,7 +166,7 @@ rules:
 
   - id: minecraft.lightmap
     semantic: lightmap
-    sceneRoute: support_texture
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -179,7 +179,7 @@ rules:
 
   - id: minecraft.texture_atlas
     semantic: texture_atlas
-    sceneRoute: support_texture
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -205,7 +205,7 @@ rules:
 
   - id: minecraft.sky
     semantic: sky
-    sceneRoute: post
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -229,7 +229,7 @@ rules:
 
   - id: unknown
     semantic: unknown
-    sceneRoute: unspecified
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -241,7 +241,7 @@ rules:
 pipelineRules:
   - id: minecraft.pipeline.terrain.solid
     semantic: terrain
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: terrain_chunk_quad_p28_color_uv_light
     importKernel: terrain_chunk_quad_p28_color_uv_light
     rasterClass: opaque
@@ -257,7 +257,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.terrain.cutout
     semantic: terrain
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: terrain_chunk_quad_p28_color_uv_light
     importKernel: terrain_chunk_quad_p28_color_uv_light
     rasterClass: cutout
@@ -273,7 +273,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.terrain.translucent
     semantic: terrain
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: terrain_chunk_quad_p28_color_uv_light
     importKernel: terrain_chunk_quad_p28_color_uv_light
     rasterClass: translucent
@@ -289,7 +289,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.block_like.solid
     semantic: block_like
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: block_like_quad_p28_color_uv_light
     importKernel: block_like_quad_p28_color_uv_light
     rasterClass: opaque
@@ -305,7 +305,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.block_like.cutout
     semantic: block_like
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: block_like_quad_p28_color_uv_light
     importKernel: block_like_quad_p28_color_uv_light
     rasterClass: cutout
@@ -321,7 +321,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.block_like.translucent
     semantic: block_like
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: block_like_quad_p28_color_uv_light
     importKernel: block_like_quad_p28_color_uv_light
     rasterClass: translucent
@@ -337,7 +337,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.entity_item.opaque
     semantic: entity
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: entity_item_quad_p36_color_uv_overlay_light_normal
     importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
     rasterClass: opaque
@@ -353,7 +353,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.entity_item.cutout
     semantic: entity
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: entity_item_quad_p36_color_uv_overlay_light_normal
     importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
     rasterClass: cutout
@@ -380,7 +380,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.entity_item.translucent
     semantic: entity
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: entity_item_quad_p36_color_uv_overlay_light_normal
     importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
     rasterClass: translucent
@@ -396,7 +396,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.entity_item.additive
     semantic: entity
-    sceneRoute: geometry_acceleration
+    sceneRoute: none
     format: entity_item_quad_p36_color_uv_overlay_light_normal
     importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
     rasterClass: additive
@@ -412,7 +412,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.particles_weather
     semantic: particles
-    sceneRoute: geometry
+    sceneRoute: none
     format: particle_quad_p28_uv_color_light
     importKernel: particle_quad_p28_uv_color_light
     rasterClass: translucent
@@ -440,7 +440,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.unsupported_overlay
     semantic: overlay
-    sceneRoute: overlay
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: overlay
@@ -451,7 +451,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.unsupported_clouds_sky
     semantic: sky_or_clouds
-    sceneRoute: post
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -462,7 +462,7 @@ pipelineRules:
 
   - id: minecraft.pipeline.unsupported_post_support
     semantic: post_or_support
-    sceneRoute: support_texture
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown
@@ -473,7 +473,7 @@ pipelineRules:
 
   - id: unknown
     semantic: unknown
-    sceneRoute: unspecified
+    sceneRoute: none
     format: unknown
     importKernel: unknown
     rasterClass: unknown

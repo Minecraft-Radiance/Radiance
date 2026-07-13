@@ -1,7 +1,6 @@
 package com.radiance.client.proxy.vulkan;
 
 import com.radiance.client.constant.VulkanConstants;
-import com.radiance.client.replay.hook.ReplayCaptureHooks;
 import org.lwjgl.opengl.GL11;
 
 public class DrawCommandProxy {
@@ -12,14 +11,12 @@ public class DrawCommandProxy {
         private static native void vkCmdClearEntireColorAttachmentNative();
 
         public static void vkCmdClearEntireColorAttachment() {
-            ReplayCaptureHooks.overlayCommand("overlay.clear_color", "");
             vkCmdClearEntireColorAttachmentNative();
         }
 
         private static native void vkCmdClearEntireDepthStencilAttachmentNative(int mask);
 
         public static void vkCmdClearEntireDepthStencilAttachment(int mask) {
-            ReplayCaptureHooks.overlayCommand("overlay.clear_depth_stencil", "\"mask\":" + mask);
             vkCmdClearEntireDepthStencilAttachmentNative(mask);
         }
         // endregion

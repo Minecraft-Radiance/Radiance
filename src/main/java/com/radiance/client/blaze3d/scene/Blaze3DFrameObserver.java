@@ -52,9 +52,20 @@ public final class Blaze3DFrameObserver {
         updateWorldSerial(level);
         float partialTick = deltaTracker == null ? 0.0F : deltaTracker.getGameTimeDeltaPartialTick(false);
         Window window = minecraft.getWindow();
-        Blaze3DProxy.beginFrameNative(frameIndex++, window.getWidth(), window.getHeight(), partialTick);
+        long frame = frameIndex++;
+        Blaze3DDebugTrace.traceAlways("beginLevelFrame begin frame=" + frame + " size="
+            + window.getWidth() + "x" + window.getHeight() + " cameraState="
+            + (cameraState != null) + " level=" + (level != null));
+        try {
+            Blaze3DProxy.beginFrameNative(frame, window.getWidth(), window.getHeight(), partialTick);
+            Blaze3DDebugTrace.traceAlways("beginLevelFrame after beginFrameNative frame=" + frame);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("beginFrameNative frame=" + frame, throwable);
+            throw throwable;
+        }
 
         if (cameraState == null) {
+            Blaze3DDebugTrace.traceAlways("beginLevelFrame end without camera frame=" + frame);
             return;
         }
 
@@ -64,9 +75,15 @@ public final class Blaze3DFrameObserver {
         float[] viewArray = matrixArray(view);
         float[] projectionArray = matrixArray(projection);
         float[] viewRotationArray = matrixArray(viewRotation);
-        Blaze3DProxy.setCameraNative(cameraState.pos.x, cameraState.pos.y, cameraState.pos.z,
-            viewArray, projectionArray, viewRotationArray, viewArray, projectionArray,
-            0.05F, cameraState.depthFar, cameraState.depthFar);
+        try {
+            Blaze3DProxy.setCameraNative(cameraState.pos.x, cameraState.pos.y, cameraState.pos.z,
+                viewArray, projectionArray, viewRotationArray, viewArray, projectionArray,
+                0.05F, cameraState.depthFar, cameraState.depthFar);
+            Blaze3DDebugTrace.traceAlways("beginLevelFrame after setCameraNative frame=" + frame);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("setCameraNative frame=" + frame, throwable);
+            throw throwable;
+        }
 
         long gameTime = level == null ? 0L : level.getGameTime();
         long dayTime = level == null ? 0L : level.getOverworldClockTime();
@@ -77,22 +94,44 @@ public final class Blaze3DFrameObserver {
             fogColor == null ? cameraState.fogData.color.z : fogColor.z,
             fogColor == null ? cameraState.fogData.color.w : fogColor.w
         };
-        Blaze3DProxy.setWorldNative(gameTime, dayTime, skyAngle, fogColorArray,
-            terrainFogStart(cameraState.fogData), terrainFogEnd(cameraState.fogData),
-            fogTypeId(cameraState.fogType), level == null ? 0.0F : level.getRainLevel(partialTick),
-            level == null ? 0.0F : level.getThunderLevel(partialTick));
-        Blaze3DProxy.setWorldSerialNative(worldSerial);
-        Blaze3DProxy.setLightmapNative(RadianceTextureHandles.textureViewHandle(gameRenderer.levelLightmap()));
+        try {
+            Blaze3DProxy.setWorldNative(gameTime, dayTime, skyAngle, fogColorArray,
+                terrainFogStart(cameraState.fogData), terrainFogEnd(cameraState.fogData),
+                fogTypeId(cameraState.fogType), level == null ? 0.0F : level.getRainLevel(partialTick),
+                level == null ? 0.0F : level.getThunderLevel(partialTick));
+            Blaze3DProxy.setWorldSerialNative(worldSerial);
+            Blaze3DProxy.setLightmapNative(RadianceTextureHandles.textureViewHandle(gameRenderer.levelLightmap()));
+            Blaze3DDebugTrace.traceAlways("beginLevelFrame after world/lightmap native frame=" + frame);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("world/lightmap native frame=" + frame, throwable);
+            throw throwable;
+        }
         SceneTextureIds.ensureSkyCompatibilityTextures(minecraft.getResourceManager());
 
         uploadWorldUniform(gameRenderer, level, cameraState, view, projection, fogColorArray);
+        Blaze3DDebugTrace.traceAlways("beginLevelFrame after uploadWorldUniform frame=" + frame);
         uploadSkyUniform(level, partialTick, cameraState);
+        Blaze3DDebugTrace.traceAlways("beginLevelFrame after uploadSkyUniform frame=" + frame);
         BufferProxy.updateMapping();
+        Blaze3DDebugTrace.traceAlways("beginLevelFrame end frame=" + frame);
     }
 
     public static void endLevelFrame() {
-        Blaze3DProxy.endFrameNative();
-        RadianceTransientMemory.retireFrame();
+        Blaze3DDebugTrace.traceAlways("endLevelFrame begin");
+        try {
+            Blaze3DProxy.endFrameNative();
+            Blaze3DDebugTrace.traceAlways("endLevelFrame after endFrameNative");
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("endFrameNative", throwable);
+            throw throwable;
+        }
+        try {
+            RadianceTransientMemory.retireFrame();
+            Blaze3DDebugTrace.traceAlways("endLevelFrame after retireFrame");
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("RadianceTransientMemory.retireFrame", throwable);
+            throw throwable;
+        }
     }
 
     private static void uploadWorldUniform(GameRenderer gameRenderer, ClientLevel level,

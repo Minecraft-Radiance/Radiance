@@ -6,5 +6,6 @@ public final class ChunkProxy {
     }
 
     public static void rebuildAll() {
+        com.radiance.client.proxy.world.ChunkProxy.rebuildAll();
     }
 }

@@ -11,7 +11,6 @@ import com.radiance.client.pipeline.config.ImageConfig;
 //#else
 import com.radiance.client.proxy.vulkan.VRProxy;
 //#endif
-import com.radiance.client.replay.hook.ReplayCaptureHooks;
 //#if MC>=260200
 //$$ import net.minecraft.client.Minecraft;
 //#else
@@ -1220,45 +1219,7 @@ public class Pipeline {
                     m.attributeConfigs != null ? m.attributeConfigs : new ArrayList<>());
         }
 
-        ReplayCaptureHooks.pipelineBuild(buildReplayPipelineSummary(sortedModules, imageFormatList));
         buildNative(sortedModules, imageFormatList, configToImageIdMap, moduleAttributes);
-    }
-
-    private static String buildReplayPipelineSummary(List<Module> sortedModules, List<Integer> imageFormatList) {
-        StringBuilder builder = new StringBuilder();
-        builder.append('{');
-        builder.append("\"eyeCount\":").append(eyeCount).append(',');
-        builder.append("\"imageFormats\":[");
-        for (int i = 0; i < imageFormatList.size(); i++) {
-            if (i > 0) {
-                builder.append(',');
-            }
-            builder.append(imageFormatList.get(i));
-        }
-        builder.append("],\"modules\":[");
-        for (int i = 0; i < sortedModules.size(); i++) {
-            if (i > 0) {
-                builder.append(',');
-            }
-            Module module = sortedModules.get(i);
-            builder.append('{');
-            builder.append("\"name\":\"").append(escapeReplayJson(module.name)).append("\",");
-            builder.append("\"inputCount\":").append(module.inputImageConfigs.size()).append(',');
-            builder.append("\"outputCount\":").append(module.outputImageConfigs.size()).append(',');
-            builder.append("\"attributeCount\":")
-                .append(module.attributeConfigs == null ? 0 : module.attributeConfigs.size());
-            builder.append('}');
-        }
-        builder.append("]}");
-        return builder.toString();
-    }
-
-    private static String escapeReplayJson(String value) {
-        return Objects.toString(value, "")
-            .replace("\\", "\\\\")
-            .replace("\"", "\\\"")
-            .replace("\r", "\\r")
-            .replace("\n", "\\n");
     }
 
     private static boolean isPipelineCompatibilityFailure(Exception e) {
@@ -2356,135 +2317,18 @@ public class Pipeline {
 
     public static native boolean isNativeRebuildActive();
 
-    public static native String getDeferredRtDiagnosticsOverlay();
+    public static native String getDeferredRtDiagnosticsText();
 
-    public static native long[] getDeferredRtDiagnosticsSnapshot();
+    public static native long[] getSceneImportDiagnosticsSnapshot();
 
-    public static native long[] getSceneImportDiagnosticsV2Snapshot();
-
-    private static final int DEFERRED_RT_DIAG_VALID = 0;
-    private static final int DEFERRED_RT_DIAG_SEQUENCE = 1;
-    private static final int DEFERRED_RT_DIAG_FRAME_INDEX = 2;
-    private static final int DEFERRED_RT_DIAG_FLAGS = 3;
-    private static final int DEFERRED_RT_DIAG_FULL_WIDTH = 4;
-    private static final int DEFERRED_RT_DIAG_FULL_HEIGHT = 5;
-    private static final int DEFERRED_RT_DIAG_REQUESTED_VIEW_COUNT = 6;
-    private static final int DEFERRED_RT_DIAG_UPLOADED_GBUFFER_VIEW_COUNT = 7;
-    private static final int DEFERRED_RT_DIAG_UPLOADED_GBUFFER_DRAW_COUNT = 8;
-    private static final int DEFERRED_RT_DIAG_RUNTIME_PASS_COUNT = 9;
-    private static final int DEFERRED_RT_DIAG_DISABLED_PASS_COUNT = 10;
-    private static final int DEFERRED_RT_DIAG_NOOP_PASS_COUNT = 11;
-    private static final int DEFERRED_RT_DIAG_DESCRIPTOR_GROUP_COUNT = 12;
-    private static final int DEFERRED_RT_DIAG_PROVIDER_PACKETS = 20;
-    private static final int DEFERRED_RT_DIAG_PROVIDER_OPAQUE_PACKETS = 21;
-    private static final int DEFERRED_RT_DIAG_PROVIDER_CUTOUT_PACKETS = 22;
-    private static final int DEFERRED_RT_DIAG_PROVIDER_TRANSLUCENT_PACKETS = 23;
-    private static final int DEFERRED_RT_DIAG_PROVIDER_LEGACY_FALLBACK_PACKETS = 28;
-    private static final int DEFERRED_RT_DIAG_VISIBILITY_VISIBLE_PIXELS = 30;
-    private static final int DEFERRED_RT_DIAG_VISIBILITY_HIDDEN_PIXELS = 31;
-    private static final int DEFERRED_RT_DIAG_VISIBILITY_OPENXR = 33;
-    private static final int DEFERRED_RT_DIAG_CLASSIFICATION_TOTAL = 34;
-    private static final int DEFERRED_RT_DIAG_CLASSIFICATION_VALID_PRIMARY = 35;
-    private static final int DEFERRED_RT_DIAG_CLASSIFICATION_SKY_BACKGROUND = 36;
-    private static final int DEFERRED_RT_DIAG_CLASSIFICATION_DIRECT_ELIGIBLE = 37;
-    private static final int DEFERRED_RT_DIAG_CLASSIFICATION_GI_ELIGIBLE = 38;
-    private static final int DEFERRED_RT_DIAG_CLASSIFICATION_REFLECTION_ELIGIBLE = 39;
-    private static final int DEFERRED_RT_DIAG_QUEUE_DIRECT_ACTIVE = 41;
-    private static final int DEFERRED_RT_DIAG_QUEUE_REFLECTION_ACTIVE = 42;
-    private static final int DEFERRED_RT_DIAG_QUEUE_GI_ACTIVE = 43;
-    private static final int DEFERRED_RT_DIAG_QUEUE_REFRACTION_ACTIVE = 44;
-    private static final int DEFERRED_RT_DIAG_PASS_DIRECT_RAYS = 51;
-    private static final int DEFERRED_RT_DIAG_PASS_REFLECTION_RAYS = 56;
-    private static final int DEFERRED_RT_DIAG_PASS_REFLECTION_FALLBACK = 59;
-    private static final int DEFERRED_RT_DIAG_PASS_GI_RAYS = 62;
-    private static final int DEFERRED_RT_DIAG_PASS_GI_FALLBACK = 65;
-    private static final int DEFERRED_RT_DIAG_GPU_TIME_US = 66;
-    private static final int DEFERRED_RT_DIAG_PASS_TIMING_COUNT = 67;
-    private static final int DEFERRED_RT_DIAG_PASS_TIMING_ID0 = 68;
-    private static final int DEFERRED_RT_DIAG_PASS_TIMING_US0 = 69;
-    private static final int DEFERRED_RT_DIAG_PASS_TIMING_SLOT_STRIDE = 2;
-    private static final int DEFERRED_RT_DIAG_PASS_TIMING_SLOT_COUNT = 8;
-    private static final int DEFERRED_RT_DIAG_FIELD_COUNT = 84;
-
-    private static final long DEFERRED_RT_DIAG_FLAG_STATS_VALID = 1L;
-    private static final long DEFERRED_RT_DIAG_FLAG_GPU_TIMING_VALID = 1L << 1;
-    private static final long DEFERRED_RT_DIAG_FLAG_GRAPH_REPORT_AVAILABLE = 1L << 2;
-
-    private static String formatDeferredRtDiagnosticsSnapshot(long[] snapshot) {
-        if (snapshot == null || snapshot.length < DEFERRED_RT_DIAG_FIELD_COUNT ||
-                snapshot[DEFERRED_RT_DIAG_VALID] == 0) {
-            return "";
-        }
-
-        long flags = snapshot[DEFERRED_RT_DIAG_FLAGS];
-        StringBuilder text = new StringBuilder(320);
-        text.append("frame=").append(snapshot[DEFERRED_RT_DIAG_FRAME_INDEX]);
-        text.append(" seq=").append(snapshot[DEFERRED_RT_DIAG_SEQUENCE]);
-        text.append(" res=").append(snapshot[DEFERRED_RT_DIAG_FULL_WIDTH])
-                .append("x").append(snapshot[DEFERRED_RT_DIAG_FULL_HEIGHT]);
-        text.append(" views=").append(snapshot[DEFERRED_RT_DIAG_UPLOADED_GBUFFER_VIEW_COUNT])
-                .append("/").append(snapshot[DEFERRED_RT_DIAG_REQUESTED_VIEW_COUNT]);
-        text.append(" draws=").append(snapshot[DEFERRED_RT_DIAG_UPLOADED_GBUFFER_DRAW_COUNT]);
-        text.append("\ngraph passes=").append(snapshot[DEFERRED_RT_DIAG_RUNTIME_PASS_COUNT]);
-        text.append(" disabled=").append(snapshot[DEFERRED_RT_DIAG_DISABLED_PASS_COUNT]);
-        text.append(" noop=").append(snapshot[DEFERRED_RT_DIAG_NOOP_PASS_COUNT]);
-        text.append(" desc=").append(snapshot[DEFERRED_RT_DIAG_DESCRIPTOR_GROUP_COUNT]);
-        text.append("\nprovider packets=").append(snapshot[DEFERRED_RT_DIAG_PROVIDER_PACKETS]);
-        text.append(" opaque=").append(snapshot[DEFERRED_RT_DIAG_PROVIDER_OPAQUE_PACKETS]);
-        text.append(" cutout=").append(snapshot[DEFERRED_RT_DIAG_PROVIDER_CUTOUT_PACKETS]);
-        text.append(" translucent=").append(snapshot[DEFERRED_RT_DIAG_PROVIDER_TRANSLUCENT_PACKETS]);
-        text.append(" fallback=").append(snapshot[DEFERRED_RT_DIAG_PROVIDER_LEGACY_FALLBACK_PACKETS]);
-        text.append("\nvisibility visible=").append(snapshot[DEFERRED_RT_DIAG_VISIBILITY_VISIBLE_PIXELS]);
-        text.append(" hidden=").append(snapshot[DEFERRED_RT_DIAG_VISIBILITY_HIDDEN_PIXELS]);
-        text.append(" xr=").append(snapshot[DEFERRED_RT_DIAG_VISIBILITY_OPENXR]);
-        if ((flags & DEFERRED_RT_DIAG_FLAG_STATS_VALID) != 0) {
-            text.append("\nclassify valid=").append(snapshot[DEFERRED_RT_DIAG_CLASSIFICATION_VALID_PRIMARY]);
-            text.append("/").append(snapshot[DEFERRED_RT_DIAG_CLASSIFICATION_TOTAL]);
-            text.append(" sky=").append(snapshot[DEFERRED_RT_DIAG_CLASSIFICATION_SKY_BACKGROUND]);
-            text.append(" direct=").append(snapshot[DEFERRED_RT_DIAG_CLASSIFICATION_DIRECT_ELIGIBLE]);
-            text.append(" gi=").append(snapshot[DEFERRED_RT_DIAG_CLASSIFICATION_GI_ELIGIBLE]);
-            text.append(" refl=").append(snapshot[DEFERRED_RT_DIAG_CLASSIFICATION_REFLECTION_ELIGIBLE]);
-            text.append("\nqueues direct=").append(snapshot[DEFERRED_RT_DIAG_QUEUE_DIRECT_ACTIVE]);
-            text.append(" refl=").append(snapshot[DEFERRED_RT_DIAG_QUEUE_REFLECTION_ACTIVE]);
-            text.append(" gi=").append(snapshot[DEFERRED_RT_DIAG_QUEUE_GI_ACTIVE]);
-            text.append(" refr=").append(snapshot[DEFERRED_RT_DIAG_QUEUE_REFRACTION_ACTIVE]);
-            text.append("\nrays direct=").append(snapshot[DEFERRED_RT_DIAG_PASS_DIRECT_RAYS]);
-            text.append(" refl=").append(snapshot[DEFERRED_RT_DIAG_PASS_REFLECTION_RAYS]);
-            text.append(" gi=").append(snapshot[DEFERRED_RT_DIAG_PASS_GI_RAYS]);
-            text.append(" fallbacks refl=").append(snapshot[DEFERRED_RT_DIAG_PASS_REFLECTION_FALLBACK]);
-            text.append(" gi=").append(snapshot[DEFERRED_RT_DIAG_PASS_GI_FALLBACK]);
-        }
-        if ((flags & DEFERRED_RT_DIAG_FLAG_GPU_TIMING_VALID) != 0) {
-            text.append("\ngpu=").append(snapshot[DEFERRED_RT_DIAG_GPU_TIME_US]).append("us");
-            long passTimingCount = Math.min(snapshot[DEFERRED_RT_DIAG_PASS_TIMING_COUNT],
-                    DEFERRED_RT_DIAG_PASS_TIMING_SLOT_COUNT);
-            if (passTimingCount > 0) {
-                text.append(" scopes=").append(passTimingCount);
-                for (int slot = 0; slot < passTimingCount; slot++) {
-                    int base = DEFERRED_RT_DIAG_PASS_TIMING_ID0 +
-                            slot * DEFERRED_RT_DIAG_PASS_TIMING_SLOT_STRIDE;
-                    text.append(" ").append(snapshot[base]).append(":")
-                            .append(snapshot[base + 1]).append("us");
-                }
-            }
-        }
-        return text.toString();
+    private static String readDeferredRtDiagnosticsText() {
+        String diagnostics = getDeferredRtDiagnosticsText();
+        return diagnostics == null ? "" : diagnostics.trim();
     }
 
     public static String getDeferredRtDiagnosticsDebugText() {
         try {
-            long[] snapshot = getDeferredRtDiagnosticsSnapshot();
-            String diagnostics = formatDeferredRtDiagnosticsSnapshot(snapshot);
-            if (snapshot != null && snapshot.length >= DEFERRED_RT_DIAG_FIELD_COUNT &&
-                    (snapshot[DEFERRED_RT_DIAG_FLAGS] & DEFERRED_RT_DIAG_FLAG_GRAPH_REPORT_AVAILABLE) != 0) {
-                String graphReport = getDeferredRtDiagnosticsOverlay();
-                if (graphReport != null && !graphReport.isBlank()) {
-                    diagnostics = diagnostics.isBlank()
-                            ? graphReport.trim()
-                            : diagnostics + "\n" + graphReport.trim();
-                }
-            }
-            return diagnostics.trim();
+            return readDeferredRtDiagnosticsText();
         } catch (Throwable ignored) {
             return "";
         }

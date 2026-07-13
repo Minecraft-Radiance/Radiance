@@ -323,7 +323,7 @@ public class Constants {
         }
 
         private static int outputTarget(String name, int blendMode) {
-            if (name.contains("weather") || name.contains("rain") || name.contains("snow")
+            if (name.contains("weather") || hasLayerToken(name, "rain") || hasLayerToken(name, "snow")
                 || blendMode == BLEND_LIGHTNING) {
                 return TARGET_WEATHER;
             }
@@ -343,6 +343,14 @@ public class Constants {
                 return TARGET_TRANSLUCENT;
             }
             return TARGET_MAIN;
+        }
+
+        private static boolean hasLayerToken(String name, String token) {
+            if (name.equals(token)) {
+                return true;
+            }
+            return name.contains("_" + token + "_") || name.endsWith("_" + token)
+                || name.startsWith(token + "_");
         }
 
         private static int layering(String name) {

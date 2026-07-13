@@ -11,6 +11,7 @@ import com.mojang.blaze3d.systems.RenderPassDescriptor;
 import com.mojang.blaze3d.systems.TransientMemory;
 import com.mojang.blaze3d.textures.GpuTexture;
 import com.radiance.client.blaze3d.abi.Blaze3DProxy;
+import com.radiance.client.blaze3d.scene.Blaze3DDebugTrace;
 import com.radiance.client.proxy.vulkan.TextureProxy;
 import java.nio.ByteBuffer;
 import org.lwjgl.system.MemoryUtil;
@@ -30,7 +31,14 @@ public final class RadianceCommandEncoderBackend implements CommandEncoderBacken
 
     @Override
     public void submit() {
-        Blaze3DProxy.submitCommandEncoderNative(this.handle);
+        Blaze3DDebugTrace.trace("commandEncoder.submit begin handle=" + this.handle);
+        try {
+            Blaze3DProxy.submitCommandEncoderNative(this.handle);
+            Blaze3DDebugTrace.trace("commandEncoder.submit end handle=" + this.handle);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("commandEncoder.submit handle=" + this.handle, throwable);
+            throw throwable;
+        }
     }
 
     @Override
@@ -40,6 +48,9 @@ public final class RadianceCommandEncoderBackend implements CommandEncoderBacken
 
     @Override
     public RenderPassBackend createRenderPass(RenderPassDescriptor descriptor) {
+        String label = descriptor.label() == null ? "" : descriptor.label().get();
+        Blaze3DDebugTrace.trace("commandEncoder.createRenderPass begin handle=" + this.handle
+            + " label=" + label);
         long colorView = 0L;
         boolean hasClearColor = false;
         float clearR = 0.0F;
@@ -67,15 +78,33 @@ public final class RadianceCommandEncoderBackend implements CommandEncoderBacken
             clearDepth = descriptor.depthAttachment().clearValue().orElse(0.0);
         }
         RenderPass.RenderArea area = descriptor.renderArea;
-        long renderPass = Blaze3DProxy.createRenderPassNative(descriptor.label().get(), colorView, hasClearColor,
-            clearR, clearG, clearB, clearA, depthView, hasClearDepth, clearDepth,
-            area == null ? 0 : area.x(), area == null ? 0 : area.y(), area == null ? 0 : area.width(), area == null ? 0 : area.height());
+        long renderPass;
+        try {
+            renderPass = Blaze3DProxy.createRenderPassNative(label, colorView, hasClearColor,
+                clearR, clearG, clearB, clearA, depthView, hasClearDepth, clearDepth,
+                area == null ? 0 : area.x(), area == null ? 0 : area.y(),
+                area == null ? 0 : area.width(), area == null ? 0 : area.height());
+            Blaze3DDebugTrace.trace("commandEncoder.createRenderPass end handle=" + this.handle
+                + " renderPass=" + renderPass + " label=" + label);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("commandEncoder.createRenderPass handle=" + this.handle
+                + " label=" + label, throwable);
+            throw throwable;
+        }
         return new RadianceRenderPassBackend(renderPass);
     }
 
     @Override
     public void submitRenderPass() {
-        Blaze3DProxy.submitRenderPassNative(this.handle);
+        Blaze3DDebugTrace.trace("commandEncoder.submitRenderPass begin handle=" + this.handle);
+        try {
+            Blaze3DProxy.submitRenderPassNative(this.handle);
+            Blaze3DDebugTrace.trace("commandEncoder.submitRenderPass end handle=" + this.handle);
+        } catch (Throwable throwable) {
+            Blaze3DDebugTrace.failure("commandEncoder.submitRenderPass handle=" + this.handle,
+                throwable);
+            throw throwable;
+        }
     }
 
     @Override

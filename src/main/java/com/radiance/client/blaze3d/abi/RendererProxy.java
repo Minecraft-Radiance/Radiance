@@ -1,6 +1,5 @@
 package com.radiance.client.blaze3d.abi;
 
-import com.radiance.client.replay.hook.ReplayCaptureHooks;
 import com.radiance.loader.neoforge.scene_import.plugin.SceneImportBundleResolver;
 import com.radiance.loader.neoforge.scene_import.plugin.SceneImportPipelineClassificationReport;
 import java.io.IOException;
@@ -18,7 +17,6 @@ public final class RendererProxy {
         folderPath = path == null ? "" : path;
         Blaze3DProxy.initFolderPathNative(folderPath);
         initSceneImportBundlePath(folderPath);
-        ReplayCaptureHooks.rendererFolderPath(folderPath);
     }
 
     public static String getFolderPath() {
@@ -61,17 +59,14 @@ public final class RendererProxy {
     }
 
     public static void acquireContext() {
-        ReplayCaptureHooks.frameAcquireContext();
         Blaze3DProxy.acquireContextNative();
     }
 
     public static void submitCommand() {
-        ReplayCaptureHooks.frameSubmitCommand();
         Blaze3DProxy.submitCommandNative();
     }
 
     public static void present() {
-        ReplayCaptureHooks.framePresent();
         Blaze3DProxy.presentNative();
     }
 

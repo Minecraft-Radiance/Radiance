@@ -1,6 +1,7 @@
 package com.radiance.mixins.vulkan_render_integration;
 
 import com.llamalad7.mixinextras.sugar.Local;
+import com.radiance.client.pipeline.Pipeline;
 import com.radiance.client.proxy.vulkan.BufferProxy;
 import com.radiance.client.proxy.vulkan.RendererProxy;
 import com.radiance.client.proxy.world.EntityProxy;

@@ -1,6 +1,5 @@
 package com.radiance.client.proxy.world;
 
-import com.radiance.client.replay.hook.ReplayCaptureHooks;
 import net.minecraft.util.math.Vec3d;
 
 public class PlayerProxy {
@@ -9,7 +8,6 @@ public class PlayerProxy {
     private static native void setWorldSerialNative(long serial);
 
     public static void setCameraPos(double x, double y, double z) {
-        ReplayCaptureHooks.cameraPosition(x, y, z);
         setCameraPosNative(x, y, z);
     }
 

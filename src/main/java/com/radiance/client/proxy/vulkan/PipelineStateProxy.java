@@ -1,7 +1,6 @@
 package com.radiance.client.proxy.vulkan;
 
 import com.radiance.client.constant.VulkanConstants;
-import com.radiance.client.replay.hook.ReplayCaptureHooks;
 import org.lwjgl.opengl.GL11;
 
 public class PipelineStateProxy {
@@ -11,26 +10,18 @@ public class PipelineStateProxy {
         private static native void setScissorEnabledNative(boolean enabled);
 
         public static void setScissorEnabled(boolean enabled) {
-            ReplayCaptureHooks.overlayCommand("state.scissor_enabled",
-                "\"enabled\":" + enabled);
             setScissorEnabledNative(enabled);
         }
 
         private static native void setScissorNative(int x, int y, int width, int height);
 
         public static void setScissor(int x, int y, int width, int height) {
-            ReplayCaptureHooks.overlayCommand("state.scissor",
-                "\"x\":" + x + ",\"y\":" + y + ",\"width\":" + width + ",\"height\":"
-                    + height);
             setScissorNative(x, y, width, height);
         }
 
         private static native void setViewportNative(int x, int y, int width, int height);
 
         public static void setViewport(int x, int y, int width, int height) {
-            ReplayCaptureHooks.overlayCommand("state.viewport",
-                "\"x\":" + x + ",\"y\":" + y + ",\"width\":" + width + ",\"height\":"
-                    + height);
             setViewportNative(x, y, width, height);
         }
     }
@@ -41,7 +32,6 @@ public class PipelineStateProxy {
         private native static void setBlendEnableNative(boolean enable);
 
         public static void setBlendEnable(boolean enable) {
-            ReplayCaptureHooks.overlayCommand("state.blend_enable", "\"enable\":" + enable);
             setBlendEnableNative(enable);
         }
 
@@ -51,17 +41,12 @@ public class PipelineStateProxy {
 
         public static void setColorBlendConstants(float const1, float const2, float const3,
             float const4) {
-            ReplayCaptureHooks.overlayCommand("state.color_blend_constants",
-                "\"const1\":" + const1 + ",\"const2\":" + const2 + ",\"const3\":" + const3
-                    + ",\"const4\":" + const4);
             setColorBlendConstantsNative(const1, const2, const3, const4);
         }
 
         private native static void setColorLogicOpEnableNative(boolean enable);
 
         public static void setColorLogicOpEnable(boolean enable) {
-            ReplayCaptureHooks.overlayCommand("state.color_logic_op_enable",
-                "\"enable\":" + enable);
             setColorLogicOpEnableNative(enable);
         }
         // endregion
@@ -76,10 +61,6 @@ public class PipelineStateProxy {
             int srcAlphaBlendFactor,
             int dstColorBlendFactor,
             int dstAlphaBlendFactor) {
-            ReplayCaptureHooks.overlayCommand("state.blend_func_separate",
-                "\"srcColorBlendFactor\":" + srcColorBlendFactor + ",\"srcAlphaBlendFactor\":"
-                    + srcAlphaBlendFactor + ",\"dstColorBlendFactor\":" + dstColorBlendFactor
-                    + ",\"dstAlphaBlendFactor\":" + dstAlphaBlendFactor);
             vkSetBlendFuncSeparateNative(srcColorBlendFactor, srcAlphaBlendFactor,
                 dstColorBlendFactor, dstAlphaBlendFactor);
         }
@@ -91,8 +72,6 @@ public class PipelineStateProxy {
         private native static void vkSetBlendOpSeparateNative(int colorBlendOp, int alphaBlendOp);
 
         public static void vkSetBlendOpSeparate(int colorBlendOp, int alphaBlendOp) {
-            ReplayCaptureHooks.overlayCommand("state.blend_op_separate",
-                "\"colorBlendOp\":" + colorBlendOp + ",\"alphaBlendOp\":" + alphaBlendOp);
             vkSetBlendOpSeparateNative(colorBlendOp, alphaBlendOp);
         }
 
@@ -103,16 +82,12 @@ public class PipelineStateProxy {
         private native static void vkSetColorWriteMaskNative(int colorWriteMask);
 
         public static void vkSetColorWriteMask(int colorWriteMask) {
-            ReplayCaptureHooks.overlayCommand("state.color_write_mask",
-                "\"colorWriteMask\":" + colorWriteMask);
             vkSetColorWriteMaskNative(colorWriteMask);
         }
 
         private native static void vkSetColorLogicOpNative(int colorLogicOp);
 
         public static void vkSetColorLogicOp(int colorLogicOp) {
-            ReplayCaptureHooks.overlayCommand("state.color_logic_op",
-                "\"colorLogicOp\":" + colorLogicOp);
             vkSetColorLogicOpNative(colorLogicOp);
         }
         // endregion
@@ -171,24 +146,18 @@ public class PipelineStateProxy {
         private static native void setDepthTestEnableNative(boolean enable);
 
         public static void setDepthTestEnable(boolean enable) {
-            ReplayCaptureHooks.overlayCommand("state.depth_test_enable",
-                "\"enable\":" + enable);
             setDepthTestEnableNative(enable);
         }
 
         private static native void setDepthWriteEnableNative(boolean enable);
 
         public static void setDepthWriteEnable(boolean enable) {
-            ReplayCaptureHooks.overlayCommand("state.depth_write_enable",
-                "\"enable\":" + enable);
             setDepthWriteEnableNative(enable);
         }
 
         private static native void setStencilTestEnableNative(boolean enable);
 
         public static void setStencilTestEnable(boolean enable) {
-            ReplayCaptureHooks.overlayCommand("state.stencil_test_enable",
-                "\"enable\":" + enable);
             setStencilTestEnableNative(enable);
         }
         // endregion
@@ -197,8 +166,6 @@ public class PipelineStateProxy {
         private static native void vkSetDepthCompareOpNative(int depthCompareOp);
 
         public static void vkSetDepthCompareOp(int depthCompareOp) {
-            ReplayCaptureHooks.overlayCommand("state.depth_compare_op",
-                "\"depthCompareOp\":" + depthCompareOp);
             vkSetDepthCompareOpNative(depthCompareOp);
         }
 
@@ -207,9 +174,6 @@ public class PipelineStateProxy {
 
         public static void vkSetStencilFrontFunc(int compareOp, int reference,
             int compareMask) {
-            ReplayCaptureHooks.overlayCommand("state.stencil_front_func",
-                "\"compareOp\":" + compareOp + ",\"reference\":" + reference
-                    + ",\"compareMask\":" + compareMask);
             vkSetStencilFrontFuncNative(compareOp, reference, compareMask);
         }
 
@@ -218,9 +182,6 @@ public class PipelineStateProxy {
 
         public static void vkSetStencilBackFunc(int compareOp, int reference,
             int compareMask) {
-            ReplayCaptureHooks.overlayCommand("state.stencil_back_func",
-                "\"compareOp\":" + compareOp + ",\"reference\":" + reference
-                    + ",\"compareMask\":" + compareMask);
             vkSetStencilBackFuncNative(compareOp, reference, compareMask);
         }
 
@@ -233,9 +194,6 @@ public class PipelineStateProxy {
             int passOp);
 
         public static void vkSetStencilFrontOp(int failOp, int depthFailOp, int passOp) {
-            ReplayCaptureHooks.overlayCommand("state.stencil_front_op",
-                "\"failOp\":" + failOp + ",\"depthFailOp\":" + depthFailOp + ",\"passOp\":"
-                    + passOp);
             vkSetStencilFrontOpNative(failOp, depthFailOp, passOp);
         }
 
@@ -243,9 +201,6 @@ public class PipelineStateProxy {
             int passOp);
 
         public static void vkSetStencilBackOp(int failOp, int depthFailOp, int passOp) {
-            ReplayCaptureHooks.overlayCommand("state.stencil_back_op",
-                "\"failOp\":" + failOp + ",\"depthFailOp\":" + depthFailOp + ",\"passOp\":"
-                    + passOp);
             vkSetStencilBackOpNative(failOp, depthFailOp, passOp);
         }
 
@@ -257,16 +212,12 @@ public class PipelineStateProxy {
         private static native void vkSetStencilFrontWriteMaskNative(int writeMask);
 
         public static void vkSetStencilFrontWriteMask(int writeMask) {
-            ReplayCaptureHooks.overlayCommand("state.stencil_front_write_mask",
-                "\"writeMask\":" + writeMask);
             vkSetStencilFrontWriteMaskNative(writeMask);
         }
 
         private static native void vkSetStencilBackWriteMaskNative(int writeMask);
 
         public static void vkSetStencilBackWriteMask(int writeMask) {
-            ReplayCaptureHooks.overlayCommand("state.stencil_back_write_mask",
-                "\"writeMask\":" + writeMask);
             vkSetStencilBackWriteMaskNative(writeMask);
         }
 
@@ -320,8 +271,6 @@ public class PipelineStateProxy {
         private static native void setLineWidthNative(float lineWidth);
 
         public static void setLineWidth(float lineWidth) {
-            ReplayCaptureHooks.overlayCommand("state.line_width",
-                "\"lineWidth\":" + lineWidth);
             setLineWidthNative(lineWidth);
         }
         // endregion
@@ -330,31 +279,24 @@ public class PipelineStateProxy {
         private static native void vkSetPolygonModeNative(int polygonMode);
 
         public static void vkSetPolygonMode(int polygonMode) {
-            ReplayCaptureHooks.overlayCommand("state.polygon_mode",
-                "\"polygonMode\":" + polygonMode);
             vkSetPolygonModeNative(polygonMode);
         }
 
         private static native void vkSetCullModeNative(int cullMode);
 
         public static void vkSetCullMode(int cullMode) {
-            ReplayCaptureHooks.overlayCommand("state.cull_mode", "\"cullMode\":" + cullMode);
             vkSetCullModeNative(cullMode);
         }
 
         private static native void vkSetFrontFaceNative(int frontFace);
 
         public static void vkSetFrontFace(int frontFace) {
-            ReplayCaptureHooks.overlayCommand("state.front_face",
-                "\"frontFace\":" + frontFace);
             vkSetFrontFaceNative(frontFace);
         }
 
         private static native void vkSetDepthBiasEnableNative(int polygonMode, boolean enable);
 
         public static void vkSetDepthBiasEnable(int polygonMode, boolean enable) {
-            ReplayCaptureHooks.overlayCommand("state.depth_bias_enable",
-                "\"polygonMode\":" + polygonMode + ",\"enable\":" + enable);
             vkSetDepthBiasEnableNative(polygonMode, enable);
         }
 
@@ -363,9 +305,6 @@ public class PipelineStateProxy {
 
         public static void vkSetDepthBias(float depthBiasSlopeFactor,
             float depthBiasConstantFactor) {
-            ReplayCaptureHooks.overlayCommand("state.depth_bias",
-                "\"depthBiasSlopeFactor\":" + depthBiasSlopeFactor
-                    + ",\"depthBiasConstantFactor\":" + depthBiasConstantFactor);
             vkSetDepthBiasNative(depthBiasSlopeFactor, depthBiasConstantFactor);
         }
         // endregion
@@ -399,24 +338,18 @@ public class PipelineStateProxy {
             float alpha);
 
         public static void setClearColor(float red, float green, float blue, float alpha) {
-            ReplayCaptureHooks.overlayCommand("state.clear_color",
-                "\"red\":" + red + ",\"green\":" + green + ",\"blue\":" + blue
-                    + ",\"alpha\":" + alpha);
             setClearColorNative(red, green, blue, alpha);
         }
 
         private static native void setClearDepthNative(double depth);
 
         public static void setClearDepth(double depth) {
-            ReplayCaptureHooks.overlayCommand("state.clear_depth", "\"depth\":" + depth);
             setClearDepthNative(depth);
         }
 
         private static native void setClearStencilNative(int stencil);
 
         public static void setClearStencil(int stencil) {
-            ReplayCaptureHooks.overlayCommand("state.clear_stencil",
-                "\"stencil\":" + stencil);
             setClearStencilNative(stencil);
         }
     }

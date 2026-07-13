@@ -6,7 +6,6 @@ import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.system.MemoryUtil.memSet;
 
-import com.radiance.client.replay.hook.ReplayCaptureHooks;
 import com.radiance.client.texture.TextureTracker;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
@@ -85,13 +84,12 @@ public class BufferProxy {
     private static native int allocateBufferNative();
 
     public static int allocateBuffer() {
-        return ReplayCaptureHooks.bufferAllocated(allocateBufferNative());
+        return allocateBufferNative();
     }
 
     private static native void initializeBufferNative(int id, int size, int usageFlags);
 
     public static void initializeBuffer(int id, int size, int usageFlags) {
-        ReplayCaptureHooks.bufferInitialize(id, size, usageFlags);
         initializeBufferNative(id, size, usageFlags);
     }
 
@@ -100,7 +98,6 @@ public class BufferProxy {
 
     public static void buildIndexBuffer(int id, int type, int drawMode, int vertexCount,
         int expectedIndexCount) {
-        ReplayCaptureHooks.bufferBuildIndex(id, type, drawMode, vertexCount, expectedIndexCount);
         buildIndexBufferNative(id, type, drawMode, vertexCount, expectedIndexCount);
     }
 
@@ -123,14 +120,12 @@ public class BufferProxy {
     private static void queueUpload(ByteBuffer buf, int expectedSize, int dstId, int usageFlags) {
         BufferInfo bufferInfo = getBufferInfo(buf);
         assert bufferInfo.size == expectedSize;
-        ReplayCaptureHooks.bufferQueueUpload(buf.slice(), dstId, usageFlags);
         queueUpload(bufferInfo.addr, dstId);
     }
 
     private static native void performQueuedUploadNative();
 
     public static void performQueuedUpload() {
-        ReplayCaptureHooks.bufferPerformQueuedUpload();
         performQueuedUploadNative();
     }
 
@@ -285,7 +280,6 @@ public class BufferProxy {
             baseAddr += Integer.BYTES; // pad4
             baseAddr += Integer.BYTES; // pad5
 
-            ReplayCaptureHooks.worldUniform(bb.slice());
             updateWorldUniform(addr);
         }
     }
@@ -350,7 +344,6 @@ public class BufferProxy {
             baseAddr += Integer.BYTES;
             bb.putInt(baseAddr, 0);
 
-            ReplayCaptureHooks.skyUniform(bb.slice());
             updateSkyUniform(addr);
         }
     }
@@ -406,7 +399,6 @@ public class BufferProxy {
                 }
             }
 
-            ReplayCaptureHooks.textureMapping(bb.slice());
             updateMapping(addr);
         }
     }

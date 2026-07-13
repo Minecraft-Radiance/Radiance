@@ -32,6 +32,11 @@ repositories {
     mavenCentral()
 }
 
+def localSodiumModsDir = file("${rootProject.projectDir}/../sodium-26.2/build/mods")
+def localSodiumJarFiles = localSodiumModsDir.exists()
+    ? localSodiumModsDir.listFiles().findAll { it.name ==~ /sodium-fabric-.*\.jar/ }.sort { it.name }
+    : []
+
 dependencies {
     minecraft "com.mojang:minecraft:${minecraft_version}"
     mappings loom.layered {
@@ -41,6 +46,13 @@ dependencies {
     }
     modImplementation "net.fabricmc:fabric-loader:${loader_version}"
     modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+    compileOnly "io.github.llamalad7:mixinextras-common:0.5.0"
+    annotationProcessor "io.github.llamalad7:mixinextras-common:0.5.0"
+    if (!localSodiumJarFiles.isEmpty()) {
+        modImplementation files(localSodiumJarFiles)
+    } else {
+        throw new GradleException("Radiance 26.2 requires Sodium. Build ../sodium-26.2 with ':fabric:jar' or update versions/26.2/build.gradle to a published Sodium coordinate.")
+    }
     compileOnly "net.neoforged:neoforge:${neoforge_version}:universal@jar"
     compileOnly "net.neoforged.fancymodloader:loader:${neoforge_fml_version}"
     compileOnly "net.neoforged:bus:${neoforge_bus_version}"
@@ -58,7 +70,8 @@ sourceSets {
         java.exclude("com/radiance/mixin_related/extensions/vulkan_render_integration/**")
         java.exclude("com/radiance/mixin_related/extensions/vanilla_resource_tracker/IGlyphAtlasTextureExt.java",
                      "com/radiance/mixin_related/extensions/vanilla_resource_tracker/IRenderableGlyphExt.java")
-        java.exclude("com/radiance/client/proxy/world/**")
+        java.exclude("com/radiance/client/proxy/world/EntityProxy.java",
+                     "com/radiance/client/proxy/world/PlayerProxy.java")
         java.exclude("com/radiance/client/proxy/vulkan/DrawCommandProxy.java",
                      "com/radiance/client/proxy/vulkan/PipelineStateProxy.java",
                      "com/radiance/client/proxy/vulkan/RendererProxy.java",
@@ -74,45 +87,14 @@ sourceSets {
         java.exclude("com/radiance/mixins/vulkan_options/**")
         java.exclude("com/radiance/mixins/vulkan_render_integration/**")
     }
-    replayCommon {
-        java.setSrcDirs(["src/replayCommon/java"])
-        resources.setSrcDirs(["src/replayCommon/resources"])
-        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath
-        runtimeClasspath += output + compileClasspath
-    }
-    replay {
-        java.setSrcDirs(["src/replay/java"])
-        resources.setSrcDirs(["src/replay/resources"])
-        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath + sourceSets.replayCommon.output
-        runtimeClasspath += output + compileClasspath
-    }
-    replayCli {
-        java.setSrcDirs(["src/replayCli/java"])
-        resources.setSrcDirs(["src/replayCli/resources"])
-        compileClasspath += sourceSets.main.output + sourceSets.main.compileClasspath + sourceSets.replayCommon.output
-        runtimeClasspath += output + compileClasspath
-    }
 }
 
 configurations {
     sceneImportJarJar
-    replayCommonImplementation.extendsFrom implementation
-    replayCommonCompileOnly.extendsFrom compileOnly
-    replayCommonRuntimeOnly.extendsFrom runtimeOnly
-    replayImplementation.extendsFrom implementation
-    replayCompileOnly.extendsFrom compileOnly
-    replayRuntimeOnly.extendsFrom runtimeOnly
-    replayCliImplementation.extendsFrom implementation
-    replayCliCompileOnly.extendsFrom compileOnly
-    replayCliRuntimeOnly.extendsFrom runtimeOnly
 }
 
 dependencies {
     sceneImportJarJar "org.yaml:snakeyaml:2.5"
-    replayImplementation sourceSets.replayCommon.output
-    replayCliImplementation sourceSets.replayCommon.output
-    replayImplementation "org.xerial:sqlite-jdbc:3.46.1.3"
-    replayCliImplementation "org.xerial:sqlite-jdbc:3.46.1.3"
 }
 
 processResources {
@@ -158,6 +140,15 @@ tasks.register("processSceneImportPluginResources", Copy) {
 
 tasks.named("processResources", ProcessResources) {
     dependsOn tasks.named("sceneImportBundleZip")
+    eachFile { details ->
+        if (details.path == "radiance/scene_import/default-scene-import-bundle.zip") {
+            def generatedBundlePath = sceneImportBundleZip.get().asFile.toPath().toAbsolutePath().normalize()
+            def sourcePath = details.file.toPath().toAbsolutePath().normalize()
+            if (!sourcePath.equals(generatedBundlePath)) {
+                details.exclude()
+            }
+        }
+    }
     from(sceneImportBundleZip) {
         into("radiance/scene_import")
     }
@@ -279,58 +270,6 @@ tasks.named("remapJar") {
 
 tasks.named("remapSourcesJar") {
     archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${minecraft_version}-sources.jar")
-}
-
-tasks.named("processReplayResources") {
-    inputs.property "version", project.version
-    inputs.property "minecraft_version", minecraft_version
-    inputs.property "loader_version", loader_version
-    inputs.property "neoforge_version", neoforge_version
-    filteringCharset "UTF-8"
-    filesMatching(["fabric.mod.json", "META-INF/neoforge.mods.toml"]) {
-        expand "version": project.version,
-                "minecraft_version": minecraft_version,
-                "loader_version": loader_version,
-                "neoforge_version": neoforge_version
-    }
-}
-
-tasks.register("replayDevJar", Jar) {
-    group = "build"
-    dependsOn tasks.named("replayCommonClasses"), tasks.named("replayClasses")
-    archiveFileName.set("${project.archives_base_name}-ReplayCapture-${project.version}-fabric-${minecraft_version}-dev-unmapped.jar")
-    from(sourceSets.replayCommon.output)
-    from(sourceSets.replay.output)
-    from { configurations.replayRuntimeClasspath.findAll { it.name.endsWith(".jar") }.collect { zipTree(it) } }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    exclude "META-INF/*.SF", "META-INF/*.sf", "META-INF/*.DSA", "META-INF/*.dsa", "META-INF/*.RSA", "META-INF/*.rsa"
-    from("LICENSE") { rename { "${it}_${project.archivesBaseName}-ReplayCapture" } }
-}
-
-tasks.register("remapReplayDevJar", net.fabricmc.loom.task.RemapJarTask) {
-    group = "build"
-    dependsOn tasks.named("replayDevJar")
-    inputFile.set(tasks.named("replayDevJar", Jar).flatMap { it.archiveFile })
-    archiveFileName.set("${project.archives_base_name}-ReplayCapture-${project.version}-fabric-${minecraft_version}-dev.jar")
-    sourceNamespace.set("named")
-    targetNamespace.set("intermediary")
-    classpath.from(sourceSets.replay.runtimeClasspath, sourceSets.replayCommon.runtimeClasspath)
-}
-
-tasks.register("replayCliDevJar", Jar) {
-    group = "build"
-    dependsOn tasks.named("classes"), tasks.named("replayCommonClasses"), tasks.named("replayCliClasses")
-    zip64 = true
-    archiveFileName.set("${project.archives_base_name}-ReplayCli-${project.version}-fabric-${minecraft_version}-dev.jar")
-    from(sourceSets.main.output)
-    from(sourceSets.replayCommon.output)
-    from(sourceSets.replayCli.output)
-    from { configurations.runtimeClasspath.findAll { it.name.endsWith(".jar") }.collect { zipTree(it) } }
-    from { configurations.replayCliRuntimeClasspath.findAll { it.name.endsWith(".jar") }.collect { zipTree(it) } }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
-    exclude "META-INF/*.SF", "META-INF/*.sf", "META-INF/*.DSA", "META-INF/*.dsa", "META-INF/*.RSA", "META-INF/*.rsa", "META-INF/FABRIC*"
-    manifest { attributes "Main-Class": "com.radiance.replay.cli.ReplayCliMain" }
-    from("LICENSE") { rename { "${it}_${project.archivesBaseName}-ReplayCli" } }
 }
 
 publishing {
