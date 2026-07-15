@@ -16,6 +16,7 @@ import com.radiance.client.vertex.StorageVertexConsumerProvider;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IHeldItemRendererExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IParticleExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IParticleManagerExt;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -369,9 +370,15 @@ public class EntityProxy {
         MatrixStack matrixStack = new MatrixStack();
 
         MinecraftClient client = MinecraftClient.getInstance();
+        IntArrayList activeEntityHistoryIds = new IntArrayList();
+        for (Entity entity : Objects.requireNonNull(client.world).getEntities()) {
+            activeEntityHistoryIds.add(stableEntitySourceId(entity));
+        }
+        queueActiveEntityHistoryIds(activeEntityHistoryIds.toIntArray());
+
         TickManager
             tickManager =
-            Objects.requireNonNull(client.world)
+            client.world
                 .getTickManager();
 
         List<StorageVertexConsumerProvider> entityStorageVertexConsumerProviders = new ArrayList<>();
@@ -1404,6 +1411,8 @@ public class EntityProxy {
         long vertices);
 
     private static native void buildNative();
+
+    private static native void queueActiveEntityHistoryIds(int[] activeEntityHistoryIds);
 
     public static void build() {
         buildNative();
