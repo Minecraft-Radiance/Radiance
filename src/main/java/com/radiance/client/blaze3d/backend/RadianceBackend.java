@@ -43,6 +43,7 @@ public final class RadianceBackend implements GpuBackend {
                         + Integer.toHexString(clientApi),
                     BackendCreationException.Reason.GLFW_ERROR);
             }
+            Blaze3DProxy.configureDepthConventionNative(true, true);
             Blaze3DProxy.initRendererNative(RendererProxy.glfwLibraryCandidates(), window);
             Pipeline.collectNativeModules();
             Pipeline.switchToPresetMode(Presets.DEFERRED_RT_NRD_FSR.key, false);

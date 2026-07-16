@@ -126,4 +126,6 @@ core.lib
 libnvidia-ngx-dlss*
 include/
 shaders/
+!versions/26.2/src/sceneImportBundle/shaders/
+!versions/26.2/src/sceneImportBundle/shaders/**
 libxess*

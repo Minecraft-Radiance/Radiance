@@ -11,6 +11,8 @@ public final class Blaze3DProxy {
 
     public static native boolean initSceneImportBundlePathNative(String bundlePath);
 
+    public static native void configureDepthConventionNative(boolean zeroToOne, boolean reversedZ);
+
     public static native void initRendererNative(String[] glfwLibCandidates, long windowHandle);
 
     public static native int maxSupportedTextureSizeNative();

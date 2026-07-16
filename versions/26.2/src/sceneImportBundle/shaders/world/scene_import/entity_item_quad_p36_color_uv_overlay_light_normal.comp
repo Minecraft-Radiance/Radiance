@@ -1,0 +1,5 @@
+#version 460
+#extension GL_GOOGLE_include_directive : require
+
+#define SCENE_IMPORT_P36_COLOR_UV_OVERLAY_LIGHT_NORMAL 1
+#include "world/scene_import/scene_import_quad_kernel_impl.glsl"

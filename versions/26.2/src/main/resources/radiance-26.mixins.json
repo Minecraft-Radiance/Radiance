@@ -19,6 +19,7 @@
     "TextureAtlasSyncMixin",
     "UnstitcherMixin",
     "sodium.SodiumChunkBuildOutputMixin",
+    "sodium.SodiumGlDrawContextMixin",
     "sodium.SodiumRenderSectionMixin",
     "sodium.SodiumRenderSectionManagerMixin"
   ],

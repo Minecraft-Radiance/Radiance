@@ -50,8 +50,6 @@ dependencies {
     annotationProcessor "io.github.llamalad7:mixinextras-common:0.5.0"
     if (!localSodiumJarFiles.isEmpty()) {
         modImplementation files(localSodiumJarFiles)
-    } else {
-        throw new GradleException("Radiance 26.2 requires Sodium. Build ../sodium-26.2 with ':fabric:jar' or update versions/26.2/build.gradle to a published Sodium coordinate.")
     }
     compileOnly "net.neoforged:neoforge:${neoforge_version}:universal@jar"
     compileOnly "net.neoforged.fancymodloader:loader:${neoforge_fml_version}"
@@ -119,6 +117,27 @@ tasks.register("sceneImportBundleZip", Zip) {
     archiveFileName.set("default-scene-import-bundle.zip")
     destinationDirectory.set(layout.buildDirectory.dir("generated/sceneImportBundle/radiance/scene_import"))
     from("src/sceneImportBundle")
+    from(rootProject.file("src/main/resources/shaders/world/scene_import")) {
+        include "*.glsl"
+        into "shaders/world/scene_import"
+    }
+    doLast {
+        def kernelManifest = file("src/sceneImportBundle/kernels.yml")
+        def declaredShaders = kernelManifest.readLines("UTF-8").collect { line ->
+            def matcher = line =~ /^\s*shader:\s*([^\s#]+)\s*(?:#.*)?$/
+            matcher.matches() ? matcher.group(1) : null
+        }.findAll { it != null }
+
+        def bundle = new java.util.zip.ZipFile(archiveFile.get().asFile)
+        try {
+            def missingShaders = declaredShaders.findAll { bundle.getEntry(it) == null }
+            if (!missingShaders.isEmpty()) {
+                throw new GradleException("Scene import bundle is missing kernel shaders: ${missingShaders.join(', ')}")
+            }
+        } finally {
+            bundle.close()
+        }
+    }
 }
 
 tasks.register("compileSceneImportPluginJava", JavaCompile) {
@@ -235,7 +254,17 @@ tasks.register("generateSceneImportPluginJarJarMetadata") {
 }
 
 def targetJavaVersion = Integer.parseInt(java_target)
+def verifyLocalSodium = tasks.register("verifyLocalSodium") {
+    group = "verification"
+    description = "Verifies that the local Sodium build required by Radiance 26.2 exists."
+    onlyIf { localSodiumJarFiles.isEmpty() }
+    doLast {
+        throw new GradleException("Radiance 26.2 requires Sodium. Build ../sodium-26.2 with ':fabric:jar' or update versions/26.2/build.gradle to a published Sodium coordinate.")
+    }
+}
+
 tasks.withType(JavaCompile).configureEach {
+    dependsOn verifyLocalSodium
     it.options.encoding = "UTF-8"
     if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
         it.options.release.set(targetJavaVersion)
@@ -268,8 +297,14 @@ tasks.named("remapJar") {
     archiveFileName.set("${project.archives_base_name}-${project.version}-${minecraft_version}.jar")
 }
 
-tasks.named("remapSourcesJar") {
+tasks.named("sourcesJar") {
     archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${minecraft_version}-sources.jar")
+}
+
+// Minecraft 26.2 is shipped unobfuscated and this project has no intermediary
+// namespace. The regular sources jar is already in the runtime named namespace.
+tasks.named("remapSourcesJar") {
+    enabled = false
 }
 
 publishing {

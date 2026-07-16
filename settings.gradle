@@ -9,7 +9,16 @@ pluginManagement {
     }
 }
 
-// Multi-version via ReplayMod Preprocessor
-include '1.21.4', '26.2'
+// ReplayMod Preprocessor requires versions/mainProject (1.21.4) to be present
+// even when only a 26.2 task is requested.
+def requestedTasks = gradle.startParameter.taskNames
+def requests12104 = requestedTasks.any { it ==~ /^:?1[.]21[.]4:.+/ }
+def requests262 = requestedTasks.any { it ==~ /^:?26[.]2:.+/ }
+
+include '1.21.4'
 project(':1.21.4').projectDir = file('versions/1.21.4')
-project(':26.2').projectDir = file('versions/26.2')
+
+if (!requests12104 || requests262) {
+    include '26.2'
+    project(':26.2').projectDir = file('versions/26.2')
+}
