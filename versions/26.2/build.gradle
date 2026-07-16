@@ -1,0 +1,318 @@
+plugins {
+    id 'fabric-loom' version "${loom_version}"
+    id 'maven-publish'
+}
+
+apply plugin: 'com.replaymod.preprocess'
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+compileJava {
+    options.compilerArgs += ['-h', "${rootProject.projectDir}/src/main/native/include"]
+    outputs.upToDateWhen { false }
+}
+
+loom {
+    noIntermediateMappings()
+}
+
+tasks.named("runClient", JavaExec) {
+   args "--width", "1920", "--height", "1080"
+}
+
+repositories {
+    maven { name = "Fabric"; url = "https://maven.fabricmc.net/" }
+    maven { name = "NeoForge"; url = "https://maven.neoforged.net/releases" }
+    maven { name = "Mojang"; url = "https://libraries.minecraft.net/" }
+    mavenCentral()
+}
+
+def localSodiumModsDir = file("${rootProject.projectDir}/../sodium-26.2/build/mods")
+def localSodiumJarFiles = localSodiumModsDir.exists()
+    ? localSodiumModsDir.listFiles().findAll { it.name ==~ /sodium-fabric-.*\.jar/ }.sort { it.name }
+    : []
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings loom.layered {
+        mappings(rootProject.file("tools/mappings/minecraft-26.2-identity.tiny")) {
+            fallbackNamespaces("official", "named")
+        }
+    }
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+    compileOnly "io.github.llamalad7:mixinextras-common:0.5.0"
+    annotationProcessor "io.github.llamalad7:mixinextras-common:0.5.0"
+    if (!localSodiumJarFiles.isEmpty()) {
+        modImplementation files(localSodiumJarFiles)
+    }
+    compileOnly "net.neoforged:neoforge:${neoforge_version}:universal@jar"
+    compileOnly "net.neoforged.fancymodloader:loader:${neoforge_fml_version}"
+    compileOnly "net.neoforged:bus:${neoforge_bus_version}"
+    compileOnly "net.neoforged:mergetool:${neoforge_mergetool_version}:api@jar"
+    implementation "org.ow2.asm:asm:9.7.1"
+    implementation "org.ow2.asm:asm-tree:9.7.1"
+    implementation "org.yaml:snakeyaml:2.5"
+}
+
+sourceSets {
+    main {
+        java.srcDir("src/plugin/java")
+        java.exclude("com/radiance/mixin_related/MixinPlugin.java")
+        java.exclude("com/radiance/loader/neoforge/scene_import/SceneImportCallsiteClassProcessorProvider.java")
+        java.exclude("com/radiance/mixin_related/extensions/vulkan_render_integration/**")
+        java.exclude("com/radiance/mixin_related/extensions/vanilla_resource_tracker/IGlyphAtlasTextureExt.java",
+                     "com/radiance/mixin_related/extensions/vanilla_resource_tracker/IRenderableGlyphExt.java")
+        java.exclude("com/radiance/client/proxy/world/EntityProxy.java",
+                     "com/radiance/client/proxy/world/PlayerProxy.java")
+        java.exclude("com/radiance/client/proxy/vulkan/DrawCommandProxy.java",
+                     "com/radiance/client/proxy/vulkan/PipelineStateProxy.java",
+                     "com/radiance/client/proxy/vulkan/RendererProxy.java",
+                     "com/radiance/client/proxy/vulkan/ShaderProxy.java",
+                     "com/radiance/client/proxy/vulkan/VRProxy.java",
+                     "com/radiance/client/proxy/vulkan/WindowProxy.java")
+        java.exclude("com/radiance/client/shader/**")
+        java.exclude("com/radiance/client/util/**")
+        java.exclude("com/radiance/client/vertex/**")
+        java.exclude("com/radiance/mixins/vanilla_resource_tracker/**")
+        java.exclude("com/radiance/mixins/vr_debug/**")
+        java.exclude("com/radiance/mixins/vr_input/**")
+        java.exclude("com/radiance/mixins/vulkan_options/**")
+        java.exclude("com/radiance/mixins/vulkan_render_integration/**")
+    }
+}
+
+configurations {
+    sceneImportJarJar
+}
+
+dependencies {
+    sceneImportJarJar "org.yaml:snakeyaml:2.5"
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", minecraft_version
+    inputs.property "loader_version", loader_version
+    inputs.property "neoforge_version", neoforge_version
+    filteringCharset "UTF-8"
+    filesMatching(["fabric.mod.json", "META-INF/neoforge.mods.toml"]) {
+        expand "version": project.version,
+                "minecraft_version": minecraft_version,
+                "loader_version": loader_version,
+                "neoforge_version": neoforge_version
+    }
+}
+
+def sceneImportPluginClassesDir = layout.buildDirectory.dir("classes/java/sceneImportPlugin")
+def sceneImportPluginResourcesDir = layout.buildDirectory.dir("resources/sceneImportPlugin")
+def sceneImportBundleZip = layout.buildDirectory.file("generated/sceneImportBundle/radiance/scene_import/default-scene-import-bundle.zip")
+
+tasks.register("sceneImportBundleZip", Zip) {
+    archiveFileName.set("default-scene-import-bundle.zip")
+    destinationDirectory.set(layout.buildDirectory.dir("generated/sceneImportBundle/radiance/scene_import"))
+    from("src/sceneImportBundle")
+    from(rootProject.file("src/main/resources/shaders/world/scene_import")) {
+        include "*.glsl"
+        into "shaders/world/scene_import"
+    }
+    doLast {
+        def kernelManifest = file("src/sceneImportBundle/kernels.yml")
+        def declaredShaders = kernelManifest.readLines("UTF-8").collect { line ->
+            def matcher = line =~ /^\s*shader:\s*([^\s#]+)\s*(?:#.*)?$/
+            matcher.matches() ? matcher.group(1) : null
+        }.findAll { it != null }
+
+        def bundle = new java.util.zip.ZipFile(archiveFile.get().asFile)
+        try {
+            def missingShaders = declaredShaders.findAll { bundle.getEntry(it) == null }
+            if (!missingShaders.isEmpty()) {
+                throw new GradleException("Scene import bundle is missing kernel shaders: ${missingShaders.join(', ')}")
+            }
+        } finally {
+            bundle.close()
+        }
+    }
+}
+
+tasks.register("compileSceneImportPluginJava", JavaCompile) {
+    source = fileTree("src/plugin/java") {
+        include "**/*.java"
+    }
+    classpath = sourceSets.main.compileClasspath
+    destinationDirectory.set(sceneImportPluginClassesDir)
+}
+
+tasks.register("processSceneImportPluginResources", Copy) {
+    dependsOn tasks.named("sceneImportBundleZip")
+    from("src/plugin/resources")
+    from(sceneImportBundleZip) {
+        into("radiance/scene_import")
+    }
+    into(sceneImportPluginResourcesDir)
+}
+
+tasks.named("processResources", ProcessResources) {
+    dependsOn tasks.named("sceneImportBundleZip")
+    eachFile { details ->
+        if (details.path == "radiance/scene_import/default-scene-import-bundle.zip") {
+            def generatedBundlePath = sceneImportBundleZip.get().asFile.toPath().toAbsolutePath().normalize()
+            def sourcePath = details.file.toPath().toAbsolutePath().normalize()
+            if (!sourcePath.equals(generatedBundlePath)) {
+                details.exclude()
+            }
+        }
+    }
+    from(sceneImportBundleZip) {
+        into("radiance/scene_import")
+    }
+}
+
+def sceneImportPluginJar = tasks.register("sceneImportPluginJar", Jar) {
+    dependsOn tasks.named("compileSceneImportPluginJava"),
+        tasks.named("processSceneImportPluginResources")
+    archiveFileName.set("radiance-neoforge-scene-import-plugin.jar")
+    destinationDirectory.set(layout.buildDirectory.dir("sceneImportPlugin"))
+    from(sceneImportPluginClassesDir)
+    from(sceneImportPluginResourcesDir)
+    manifest {
+        attributes(
+            "FMLModType": "LIBRARY",
+            "Automatic-Module-Name": "radiance.neoforge.sceneimport.plugin"
+        )
+    }
+}
+
+def sceneImportPluginMetadata = layout.buildDirectory.file("generated/sceneImportPluginJarJar/META-INF/jarjar/metadata.json")
+def snakeyamlJarJar = configurations.sceneImportJarJar
+
+tasks.register("generateSceneImportPluginJarJarMetadata") {
+    inputs.file(sceneImportPluginJar.flatMap { it.archiveFile })
+    inputs.files(snakeyamlJarJar)
+    outputs.file(sceneImportPluginMetadata)
+    doLast {
+        def pluginFile = sceneImportPluginJar.get().archiveFile.get().asFile
+        def sha256 = { File file ->
+            def digest = java.security.MessageDigest.getInstance("SHA-256")
+            file.withInputStream { input ->
+                byte[] buffer = new byte[8192]
+                int read
+                while ((read = input.read(buffer)) != -1) {
+                    digest.update(buffer, 0, read)
+                }
+            }
+            digest.digest().collect { String.format("%02x", it & 0xff) }.join("")
+        }
+        def hash = sha256(pluginFile)
+        def snakeyamlArtifact = snakeyamlJarJar.resolvedConfiguration.resolvedArtifacts.find {
+            it.moduleVersion.id.group == "org.yaml" && it.name == "snakeyaml"
+        }
+        if (snakeyamlArtifact == null) {
+            throw new GradleException("Unable to resolve org.yaml:snakeyaml for NeoForge jarjar packaging")
+        }
+        def snakeyamlVersion = snakeyamlArtifact.moduleVersion.id.version
+        def snakeyamlFileName = snakeyamlArtifact.file.name
+        def snakeyamlHash = sha256(snakeyamlArtifact.file)
+        def metadataFile = sceneImportPluginMetadata.get().asFile
+        metadataFile.parentFile.mkdirs()
+        metadataFile.text = """{
+  "jars": [
+    {
+      "identifier": {
+        "group": "com.radiance",
+        "artifact": "radiance-neoforge-scene-import-plugin"
+      },
+      "version": {
+        "range": "[${hash}]",
+        "artifactVersion": "${hash}"
+      },
+      "path": "META-INF/jarjar/radiance-neoforge-scene-import-plugin.jar",
+      "isObfuscated": false
+    },
+    {
+      "identifier": {
+        "group": "org.yaml",
+        "artifact": "snakeyaml"
+      },
+      "version": {
+        "range": "[${snakeyamlVersion},${snakeyamlVersion}]",
+        "artifactVersion": "${snakeyamlVersion}"
+      },
+      "path": "META-INF/jarjar/${snakeyamlFileName}",
+      "isObfuscated": false
+    }
+  ]
+}
+"""
+        logger.lifecycle("Packaged NeoForge jarjar dependency org.yaml:snakeyaml:${snakeyamlVersion} (${snakeyamlHash})")
+    }
+}
+
+def targetJavaVersion = Integer.parseInt(java_target)
+def verifyLocalSodium = tasks.register("verifyLocalSodium") {
+    group = "verification"
+    description = "Verifies that the local Sodium build required by Radiance 26.2 exists."
+    onlyIf { localSodiumJarFiles.isEmpty() }
+    doLast {
+        throw new GradleException("Radiance 26.2 requires Sodium. Build ../sodium-26.2 with ':fabric:jar' or update versions/26.2/build.gradle to a published Sodium coordinate.")
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    dependsOn verifyLocalSodium
+    it.options.encoding = "UTF-8"
+    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+        it.options.release.set(targetJavaVersion)
+    }
+}
+
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    if (JavaVersion.current() < javaVersion) {
+        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") { rename { "${it}_${project.archivesBaseName}" } }
+    dependsOn sceneImportPluginJar, tasks.named("generateSceneImportPluginJarJarMetadata")
+    from(sceneImportPluginJar.flatMap { it.archiveFile }) {
+        into("META-INF/jarjar")
+    }
+    from(snakeyamlJarJar) {
+        into("META-INF/jarjar")
+    }
+    from(sceneImportPluginMetadata) {
+        into("META-INF/jarjar")
+    }
+}
+
+tasks.named("remapJar") {
+    archiveFileName.set("${project.archives_base_name}-${project.version}-${minecraft_version}.jar")
+}
+
+tasks.named("sourcesJar") {
+    archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${minecraft_version}-sources.jar")
+}
+
+// Minecraft 26.2 is shipped unobfuscated and this project has no intermediary
+// namespace. The regular sources jar is already in the runtime named namespace.
+tasks.named("remapSourcesJar") {
+    enabled = false
+}
+
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+    repositories {}
+}

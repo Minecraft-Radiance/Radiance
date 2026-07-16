@@ -1,0 +1,99 @@
+plugins {
+    id 'fabric-loom' version "${loom_version}"
+    id 'maven-publish'
+}
+
+apply plugin: 'com.replaymod.preprocess'
+
+version = project.mod_version
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+compileJava {
+    options.compilerArgs += ['-h', "${rootProject.projectDir}/src/main/native/include"]
+    outputs.upToDateWhen { false }
+}
+
+loom {
+    accessWidenerPath = project.file("src/main/resources/radiance.accesswidener")
+}
+
+tasks.named("runClient", JavaExec) {
+   args "--width", "1920", "--height", "1080"
+}
+
+repositories {
+    maven { name = "Fabric"; url = "https://maven.fabricmc.net/" }
+    maven { name = "Mojang"; url = "https://libraries.minecraft.net/" }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    mappings "net.fabricmc:yarn:${yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_version}"
+    implementation "org.yaml:snakeyaml:2.5"
+    include "org.yaml:snakeyaml:2.5"
+}
+
+sourceSets {
+    main {
+        java.srcDir("src/main/java")
+        resources.srcDir("src/main/resources")
+        java.exclude("com/radiance/client/blaze3d/**")
+    }
+}
+
+processResources {
+    inputs.property "version", project.version
+    inputs.property "minecraft_version", minecraft_version
+    inputs.property "loader_version", loader_version
+    filteringCharset "UTF-8"
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version,
+                "minecraft_version": minecraft_version,
+                "loader_version": loader_version
+    }
+}
+
+def targetJavaVersion = Integer.parseInt(java_target)
+tasks.withType(JavaCompile).configureEach {
+    it.options.encoding = "UTF-8"
+    if (targetJavaVersion >= 10 || JavaVersion.current().isJava10Compatible()) {
+        it.options.release.set(targetJavaVersion)
+    }
+}
+
+java {
+    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
+    if (JavaVersion.current() < javaVersion) {
+        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") { rename { "${it}_${project.archivesBaseName}" } }
+}
+
+tasks.named("remapJar") {
+    archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${minecraft_version}.jar")
+}
+
+tasks.named("remapSourcesJar") {
+    archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${minecraft_version}-sources.jar")
+}
+
+publishing {
+    publications {
+        create("mavenJava", MavenPublication) {
+            artifactId = project.archives_base_name
+            from components.java
+        }
+    }
+    repositories {}
+}

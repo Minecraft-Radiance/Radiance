@@ -1,0 +1,38 @@
+version: 1
+
+kernels:
+  - id: terrain_chunk_quad_p28_color_uv_light
+    format: terrain_chunk_quad_p28_color_uv_light
+    name: terrain_chunk_quad_p28_color_uv_light
+    shader: shaders/world/scene_import/terrain_chunk_quad_p28_color_uv_light.comp
+    localSizeX: 64
+    primitiveStride: 4
+    dependencies: [textures, material_state]
+    geometryDependencies: []
+
+  - id: entity_item_quad_p36_color_uv_overlay_light_normal
+    format: entity_item_quad_p36_color_uv_overlay_light_normal
+    name: entity_item_quad_p36_color_uv_overlay_light_normal
+    shader: shaders/world/scene_import/entity_item_quad_p36_color_uv_overlay_light_normal.comp
+    localSizeX: 64
+    primitiveStride: 4
+    dependencies: [textures, material_state]
+    geometryDependencies: []
+
+  - id: particle_quad_p28_uv_color_light
+    format: particle_quad_p28_uv_color_light
+    name: particle_quad_p28_uv_color_light
+    shader: shaders/world/scene_import/particle_quad_p28_uv_color_light.comp
+    localSizeX: 64
+    primitiveStride: 4
+    dependencies: [textures, material_state]
+    geometryDependencies: []
+
+  - id: block_like_quad_p28_color_uv_light
+    format: block_like_quad_p28_color_uv_light
+    name: block_like_quad_p28_color_uv_light
+    shader: shaders/world/scene_import/block_like_quad_p28_color_uv_light.comp
+    localSizeX: 64
+    primitiveStride: 4
+    dependencies: [textures, material_state]
+    geometryDependencies: []

@@ -1,9 +1,17 @@
 package com.radiance.client.option;
 
 import com.radiance.client.RadianceClient;
+import com.radiance.client.config.VRPerformanceConfig;
 import com.radiance.client.pipeline.Pipeline;
+//#if MC>=260200
+//$$ import com.radiance.client.blaze3d.abi.ChunkProxy;
+//$$ import com.radiance.client.blaze3d.abi.TextureProxy;
+//$$ import com.radiance.client.blaze3d.abi.VRProxy;
+//#else
 import com.radiance.client.proxy.vulkan.TextureProxy;
+import com.radiance.client.proxy.vulkan.VRProxy;
 import com.radiance.client.proxy.world.ChunkProxy;
+//#endif
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -22,6 +30,7 @@ public class Options {
     public static final String CATEGORY_UPSCALER = "options.video.category.upscaler";
     public static final String CATEGORY_TERRAIN = "options.video.category.terrain";
     public static final String CATEGORY_PIPELINE = "options.video.category.pipeline";
+    public static final String CATEGORY_VR = "options.video.category.vr";
 
     public static final String DLSS_MODE_PERFORMANCE_TOOLTIP = "options.video.dlss_mode.performance.tooltip";
     public static final String DLSS_MODE_BALANCED_TOOLTIP = "options.video.dlss_mode.balanced.tooltip";
@@ -44,6 +53,13 @@ public class Options {
     public static final String COLLECT_CHUNK_EMISSION_KEY = "options.video.collect_chunk_emission";
     public static final String SHADER_PACK_SETUP_KEY = "options.video.shader_pack_setup";
     public static final String PIPELINE_SETUP_KEY = "options.video.pipeline_setup";
+    public static final String VR_ENABLED_KEY = "options.video.vr.enabled";
+    public static final String VR_RENDER_SCALE_KEY = "options.video.vr.render_scale";
+    public static final String VR_IPD_KEY = "options.video.vr.ipd";
+    public static final String VR_WORLD_SCALE_KEY = "options.video.vr.world_scale";
+    public static final String POST_STEREO_SIMULATOR_KEY = "options.video.post_stereo_simulator";
+    public static final String VR_F3_CHARTS_KEY = "options.video.vr.f3_charts";
+    public static final String VR_F3_CHART_POSITION_KEY = "options.video.vr.f3_chart_position";
 
     public static final String UPSCALER_TYPE_NATIVE = "options.video.upscaler_type.native";
     public static final String UPSCALER_TYPE_FSR3 = "options.video.upscaler_type.fsr3";
@@ -68,6 +84,14 @@ public class Options {
     public static int chunkBuildingTotalBatches = 12;
     public static int chunkBuildingThreads = getDefaultChunkBuildingThreads();
     public static boolean collectChunkEmission = false;
+    public static boolean vrEnabled = false;
+    public static float vrRenderScale = 0.5f;
+    public static float vrIPD = 0.063f;
+    public static float vrWorldScale = 1.0f;
+    public static boolean postStereoSimulator = false;
+    public static boolean vrF3Charts = true;
+    public static VRPerformanceConfig.HudPosition vrF3ChartPosition =
+        VRPerformanceConfig.HudPosition.TOP_RIGHT;
 
     public static int getMaxChunkBuildingThreads() {
         int availableProcessors = Runtime.getRuntime().availableProcessors();
@@ -114,6 +138,21 @@ public class Options {
             setCollectChunkEmission(Boolean.parseBoolean(props.getProperty("collectChunkEmission",
                     String.valueOf(collectChunkEmission))),
                 false);
+            setVREnabled(Boolean.parseBoolean(
+                props.getProperty("vrEnabled", String.valueOf(vrEnabled))), false);
+            setVRRenderScale(Float.parseFloat(
+                props.getProperty("vrRenderScale", String.valueOf(vrRenderScale))), false);
+            setVRIPD(Float.parseFloat(
+                props.getProperty("vrIPD", String.valueOf(vrIPD))), false);
+            setVRWorldScale(Float.parseFloat(
+                props.getProperty("vrWorldScale", String.valueOf(vrWorldScale))), false);
+            setPostStereoSimulator(Boolean.parseBoolean(
+                props.getProperty("postStereoSimulator", String.valueOf(postStereoSimulator))),
+                false);
+            setVRF3Charts(Boolean.parseBoolean(
+                props.getProperty("vrF3Charts", String.valueOf(vrF3Charts))), false);
+            setVRF3ChartPosition(parseHudPosition(
+                props.getProperty("vrF3ChartPosition", vrF3ChartPosition.name())), false);
 
             overwriteConfig();
 //            System.out.println("Successfully read options: " + path);
@@ -137,6 +176,13 @@ public class Options {
         props.setProperty("chunkBuildingTotalBatches", String.valueOf(chunkBuildingTotalBatches));
         props.setProperty("chunkBuildingThreads", String.valueOf(chunkBuildingThreads));
         props.setProperty("collectChunkEmission", String.valueOf(collectChunkEmission));
+        props.setProperty("vrEnabled", String.valueOf(vrEnabled));
+        props.setProperty("vrRenderScale", String.valueOf(vrRenderScale));
+        props.setProperty("vrIPD", String.valueOf(vrIPD));
+        props.setProperty("vrWorldScale", String.valueOf(vrWorldScale));
+        props.setProperty("postStereoSimulator", String.valueOf(postStereoSimulator));
+        props.setProperty("vrF3Charts", String.valueOf(vrF3Charts));
+        props.setProperty("vrF3ChartPosition", vrF3ChartPosition.name());
 
         try {
             Files.createDirectories(path.getParent());
@@ -230,6 +276,78 @@ public class Options {
 
         if (write) {
             overwriteConfig();
+        }
+    }
+
+    public static void setVREnabled(boolean enabled, boolean write) {
+        Options.vrEnabled = enabled;
+        VRProxy.setEnabled(enabled);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static void setVRRenderScale(float renderScale, boolean write) {
+        Options.vrRenderScale = renderScale;
+        VRProxy.setRenderScale(renderScale);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static void setVRIPD(float ipd, boolean write) {
+        Options.vrIPD = ipd;
+        VRProxy.setIPD(ipd);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static void setVRWorldScale(float worldScale, boolean write) {
+        Options.vrWorldScale = worldScale;
+        VRProxy.setWorldScale(worldScale);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public native static void nativeSetPostStereoSimulator(boolean enabled, boolean write);
+
+    public static void setPostStereoSimulator(boolean enabled, boolean write) {
+        Options.postStereoSimulator = enabled;
+        nativeSetPostStereoSimulator(enabled, write);
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static void setVRF3Charts(boolean enabled, boolean write) {
+        Options.vrF3Charts = enabled;
+        VRPerformanceConfig.showDetailedCharts = enabled;
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static void setVRF3ChartPosition(VRPerformanceConfig.HudPosition position,
+        boolean write) {
+        Options.vrF3ChartPosition = position == null
+            ? VRPerformanceConfig.HudPosition.TOP_RIGHT
+            : position;
+        VRPerformanceConfig.hudPosition = Options.vrF3ChartPosition;
+        if (write) {
+            overwriteConfig();
+        }
+    }
+
+    public static VRPerformanceConfig.HudPosition parseHudPosition(String value) {
+        if (value == null || value.isBlank()) {
+            return VRPerformanceConfig.HudPosition.TOP_RIGHT;
+        }
+        try {
+            return VRPerformanceConfig.HudPosition.valueOf(value);
+        } catch (IllegalArgumentException e) {
+            return VRPerformanceConfig.HudPosition.TOP_RIGHT;
         }
     }
 }

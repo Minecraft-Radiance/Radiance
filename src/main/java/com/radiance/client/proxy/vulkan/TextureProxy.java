@@ -8,7 +8,11 @@ import com.radiance.client.texture.EmissionRecorder;
 import java.nio.ByteBuffer;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+//#if MC>=260200
+//$$ import com.mojang.blaze3d.platform.NativeImage;
+//#else
 import net.minecraft.client.texture.NativeImage;
+//#endif
 import org.lwjgl.system.MemoryUtil;
 
 public class TextureProxy {
@@ -19,10 +23,19 @@ public class TextureProxy {
     private static final Map<EmissionTileKey, EmissionRecorder.TileUpdate> emissionTileCache =
         new ConcurrentHashMap<>();
 
-    public synchronized static native int generateTextureId();
+    private synchronized static native int generateTextureIdNative();
 
-    public synchronized static native void prepareImage(int id, int mipLevels, int width,
+    public synchronized static int generateTextureId() {
+        return generateTextureIdNative();
+    }
+
+    private synchronized static native void prepareImageNative(int id, int mipLevels, int width,
         int height, int format);
+
+    public synchronized static void prepareImage(int id, int mipLevels, int width, int height,
+        int format) {
+        prepareImageNative(id, mipLevels, width, height, format);
+    }
 
     public static void prepareImage(int id, int mipLevels, int width, int height,
         VulkanConstants.VkFormat format) {
@@ -30,11 +43,20 @@ public class TextureProxy {
         prepareImage(id, mipLevels, width, height, format.getValue());
     }
 
-    public synchronized static native void setFilter(int id, int samplingMode, int mipmapMode);
+    private synchronized static native void setFilterNative(int id, int samplingMode,
+        int mipmapMode);
 
-    public synchronized static native void setClamp(int id, int addressMode);
+    public synchronized static void setFilter(int id, int samplingMode, int mipmapMode) {
+        setFilterNative(id, samplingMode, mipmapMode);
+    }
 
-    public synchronized static native void queueUpload(long srcPointer,
+    private synchronized static native void setClampNative(int id, int addressMode);
+
+    public synchronized static void setClamp(int id, int addressMode) {
+        setClampNative(id, addressMode);
+    }
+
+    private synchronized static native void queueUploadNative(long srcPointer,
         int srcSizeInBytes,
         int srcRowPixels,
         int dstId,
@@ -46,8 +68,28 @@ public class TextureProxy {
         int height,
         int level);
 
-    private synchronized static native void uploadEmissionTileNative(int textureId, long tileKey,
+    public synchronized static void queueUpload(long srcPointer,
+        int srcSizeInBytes,
+        int srcRowPixels,
+        int dstId,
+        int srcOffsetX,
+        int srcOffsetY,
+        int dstOffsetX,
+        int dstOffsetY,
+        int width,
+        int height,
+        int level) {
+        queueUploadNative(srcPointer, srcSizeInBytes, srcRowPixels, dstId, srcOffsetX, srcOffsetY,
+            dstOffsetX, dstOffsetY, width, height, level);
+    }
+
+    private synchronized static native void uploadEmissionTileNativeInternal(int textureId, long tileKey,
         long cellsPtr, int cellCount);
+
+    private synchronized static void uploadEmissionTileNative(int textureId, long tileKey,
+        long cellsPtr, int cellCount) {
+        uploadEmissionTileNativeInternal(textureId, tileKey, cellsPtr, cellCount);
+    }
 
     public static void uploadEmissionTile(EmissionRecorder.TileUpdate tileUpdate) {
         if (tileUpdate == null) {
@@ -122,7 +164,11 @@ public class TextureProxy {
         }
     }
 
+    //#if MC>=260200
+    //$$ public static void prepareImage(NativeImage.Format internalFormat, int id,
+    //#else
     public static void prepareImage(NativeImage.InternalFormat internalFormat, int id,
+    //#endif
         int mipLevels, int width, int height) {
         switch (internalFormat) {
             case RGBA:
@@ -133,11 +179,19 @@ public class TextureProxy {
                 prepareImage(id, mipLevels, width, height,
                     VulkanConstants.VkFormat.VK_FORMAT_R8G8B8_UNORM);
                 break;
+            //#if MC>=260200
+            //$$ case LUMINANCE_ALPHA:
+            //#else
             case RG:
+            //#endif
                 prepareImage(id, mipLevels, width, height,
                     VulkanConstants.VkFormat.VK_FORMAT_R8G8_UNORM);
                 break;
+            //#if MC>=260200
+            //$$ case LUMINANCE:
+            //#else
             case RED:
+            //#endif
                 prepareImage(id, mipLevels, width, height,
                     VulkanConstants.VkFormat.VK_FORMAT_R8_UNORM);
                 break;

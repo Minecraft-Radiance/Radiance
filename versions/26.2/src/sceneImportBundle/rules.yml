@@ -1,0 +1,483 @@
+version: 2
+
+transforms:
+  - id: minecraft_26_2.chunk_section
+    uniform: ChunkSection
+    op: chunk_section_camera_relative
+    fields:
+      chunkPosition: { type: ivec3, offset: 80 }
+
+  - id: minecraft_26_2.dynamic_model_view
+    uniform: DynamicTransforms
+    op: inverse_view_times_model_view
+    fields:
+      modelView: { type: mat4, offset: 0 }
+
+  - id: minecraft_26_2.dynamic_model_view_with_offset
+    uniform: DynamicTransforms
+    op: inverse_view_times_model_view_times_translate
+    fields:
+      modelView: { type: mat4, offset: 0 }
+      modelOffset: { type: vec3, offset: 80 }
+
+rules:
+  - id: minecraft.terrain.chunk_sections
+    semantic: terrain
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 1000
+    match:
+      classContains: net/minecraft/client/renderer/chunk/ChunkSectionsToRender
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.prepared_render_type
+    semantic: render_type_draw
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 930
+    match:
+      classContains: net/minecraft/client/renderer/rendertype/PreparedRenderType
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.particles
+    semantic: particles
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 920
+    match:
+      classContains: net/minecraft/client/renderer/feature/QuadParticleFeatureRenderer
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.weather
+    semantic: weather
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 910
+    match:
+      classContains: net/minecraft/client/renderer/WeatherEffectRenderer
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.clouds
+    semantic: clouds
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: translucent
+    materialPolicy: default
+    priority: 905
+    match:
+      classContains: net/minecraft/client/renderer/CloudRenderer
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.world_border
+    semantic: world_border
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: translucent
+    materialPolicy: default
+    priority: 902
+    match:
+      classContains: net/minecraft/client/renderer/WorldBorderRenderer
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.gui
+    semantic: gui
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: overlay
+    materialPolicy: default
+    priority: 800
+    match:
+      classContains: net/minecraft/client/gui/render/GuiRenderer
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.gui_item_atlas
+    semantic: gui_support
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 795
+    match:
+      classContains: net/minecraft/client/gui/render/GuiItemAtlas
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.picture_in_picture
+    semantic: gui_support
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 792
+    match:
+      classContains: net/minecraft/client/gui/render/pip/PictureInPictureRenderer
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.post
+    semantic: post
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 780
+    match:
+      classContains: net/minecraft/client/renderer/PostPass
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.cubemap_background
+    semantic: background
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 770
+    match:
+      classContains: net/minecraft/client/renderer/CubeMap
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.lightmap
+    semantic: lightmap
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 760
+    match:
+      classContains: net/minecraft/client/renderer/Lightmap
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.texture_atlas
+    semantic: texture_atlas
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 740
+    match:
+      classContains: net/minecraft/client/renderer/texture/
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.debug_crosshair
+    semantic: debug
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 735
+    match:
+      classContains: net/minecraft/client/renderer/DebugCrosshairRenderer
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: minecraft.sky
+    semantic: sky
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 720
+    match:
+      classContains: net/minecraft/client/renderer/SkyRenderer
+      owner: com/mojang/blaze3d/systems/RenderPass
+      name: setPipeline
+
+  - id: blaze3d.backend_internal
+    semantic: backend_internal
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 100
+    match:
+      classContains: com/mojang/blaze3d/
+
+  - id: unknown
+    semantic: unknown
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 0
+    match:
+      classContains: ''
+
+pipelineRules:
+  - id: minecraft.pipeline.terrain.solid
+    semantic: terrain
+    sceneRoute: none
+    format: terrain_chunk_quad_p28_color_uv_light
+    importKernel: terrain_chunk_quad_p28_color_uv_light
+    rasterClass: opaque
+    materialPolicy: vanilla_terrain
+    transform: minecraft_26_2.chunk_section
+    priority: 1000
+    match:
+      locations: [minecraft:pipeline/solid_terrain]
+      topology: QUADS
+      slot: 0
+      stride: 28
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV2@24:RG16_SINT]
+
+  - id: minecraft.pipeline.terrain.cutout
+    semantic: terrain
+    sceneRoute: none
+    format: terrain_chunk_quad_p28_color_uv_light
+    importKernel: terrain_chunk_quad_p28_color_uv_light
+    rasterClass: cutout
+    materialPolicy: vanilla_terrain
+    transform: minecraft_26_2.chunk_section
+    priority: 999
+    match:
+      locations: [minecraft:pipeline/cutout_terrain]
+      topology: QUADS
+      slot: 0
+      stride: 28
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV2@24:RG16_SINT]
+
+  - id: minecraft.pipeline.terrain.translucent
+    semantic: terrain
+    sceneRoute: none
+    format: terrain_chunk_quad_p28_color_uv_light
+    importKernel: terrain_chunk_quad_p28_color_uv_light
+    rasterClass: translucent
+    materialPolicy: vanilla_terrain
+    transform: minecraft_26_2.chunk_section
+    priority: 998
+    match:
+      locations: [minecraft:pipeline/translucent_terrain]
+      topology: QUADS
+      slot: 0
+      stride: 28
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV2@24:RG16_SINT]
+
+  - id: minecraft.pipeline.block_like.solid
+    semantic: block_like
+    sceneRoute: none
+    format: block_like_quad_p28_color_uv_light
+    importKernel: block_like_quad_p28_color_uv_light
+    rasterClass: opaque
+    materialPolicy: vanilla_terrain
+    transform: minecraft_26_2.dynamic_model_view_with_offset
+    priority: 990
+    match:
+      locations: [minecraft:pipeline/solid_block]
+      topology: QUADS
+      slot: 0
+      stride: 28
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV2@24:RG16_SINT]
+
+  - id: minecraft.pipeline.block_like.cutout
+    semantic: block_like
+    sceneRoute: none
+    format: block_like_quad_p28_color_uv_light
+    importKernel: block_like_quad_p28_color_uv_light
+    rasterClass: cutout
+    materialPolicy: vanilla_terrain
+    transform: minecraft_26_2.dynamic_model_view_with_offset
+    priority: 989
+    match:
+      locations: [minecraft:pipeline/cutout_block]
+      topology: QUADS
+      slot: 0
+      stride: 28
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV2@24:RG16_SINT]
+
+  - id: minecraft.pipeline.block_like.translucent
+    semantic: block_like
+    sceneRoute: none
+    format: block_like_quad_p28_color_uv_light
+    importKernel: block_like_quad_p28_color_uv_light
+    rasterClass: translucent
+    materialPolicy: vanilla_terrain
+    transform: minecraft_26_2.dynamic_model_view_with_offset
+    priority: 988
+    match:
+      locations: [minecraft:pipeline/translucent_block]
+      topology: QUADS
+      slot: 0
+      stride: 28
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV2@24:RG16_SINT]
+
+  - id: minecraft.pipeline.entity_item.opaque
+    semantic: entity
+    sceneRoute: none
+    format: entity_item_quad_p36_color_uv_overlay_light_normal
+    importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
+    rasterClass: opaque
+    materialPolicy: vanilla_entity
+    transform: minecraft_26_2.dynamic_model_view
+    priority: 980
+    match:
+      locations: [minecraft:pipeline/entity_solid, minecraft:pipeline/entity_solid_offset_forward]
+      topology: QUADS
+      slot: 0
+      stride: 36
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV1@24:RG16_SINT, UV2@28:RG16_SINT, Normal@32:RGBA8_SNORM]
+
+  - id: minecraft.pipeline.entity_item.cutout
+    semantic: entity
+    sceneRoute: none
+    format: entity_item_quad_p36_color_uv_overlay_light_normal
+    importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
+    rasterClass: cutout
+    materialPolicy: vanilla_entity
+    transform: minecraft_26_2.dynamic_model_view
+    priority: 979
+    match:
+      locations: [minecraft:pipeline/armor_cutout_no_cull, minecraft:pipeline/armor_decal_cutout_no_cull, minecraft:pipeline/entity_cutout_cull, minecraft:pipeline/entity_cutout, minecraft:pipeline/entity_cutout_z_offset, minecraft:pipeline/end_crystal_beam, minecraft:pipeline/item_cutout]
+      topology: QUADS
+      slot: 0
+      stride: 36
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV1@24:RG16_SINT, UV2@28:RG16_SINT, Normal@32:RGBA8_SNORM]
+
+  - id: minecraft.pipeline.entity_dissolve_unsupported
+    semantic: entity_dissolve
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: cutout
+    materialPolicy: vanilla_entity
+    priority: 979
+    match:
+      locations: [minecraft:pipeline/entity_cutout_dissolve]
+
+  - id: minecraft.pipeline.entity_item.translucent
+    semantic: entity
+    sceneRoute: none
+    format: entity_item_quad_p36_color_uv_overlay_light_normal
+    importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
+    rasterClass: translucent
+    materialPolicy: vanilla_entity
+    transform: minecraft_26_2.dynamic_model_view
+    priority: 978
+    match:
+      locations: [minecraft:pipeline/armor_translucent, minecraft:pipeline/entity_translucent, minecraft:pipeline/entity_translucent_emissive, minecraft:pipeline/entity_translucent_cull, minecraft:pipeline/banner_pattern, minecraft:pipeline/breeze_wind, minecraft:pipeline/eyes, minecraft:pipeline/entity_shadow, minecraft:pipeline/item_translucent]
+      topology: QUADS
+      slot: 0
+      stride: 36
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV1@24:RG16_SINT, UV2@28:RG16_SINT, Normal@32:RGBA8_SNORM]
+
+  - id: minecraft.pipeline.entity_item.additive
+    semantic: entity
+    sceneRoute: none
+    format: entity_item_quad_p36_color_uv_overlay_light_normal
+    importKernel: entity_item_quad_p36_color_uv_overlay_light_normal
+    rasterClass: additive
+    materialPolicy: vanilla_entity
+    transform: minecraft_26_2.dynamic_model_view
+    priority: 977
+    match:
+      locations: [minecraft:pipeline/energy_swirl]
+      topology: QUADS
+      slot: 0
+      stride: 36
+      attributes: [Position@0:RGB32_FLOAT, Color@12:RGBA8_UNORM, UV0@16:RG32_FLOAT, UV1@24:RG16_SINT, UV2@28:RG16_SINT, Normal@32:RGBA8_SNORM]
+
+  - id: minecraft.pipeline.particles_weather
+    semantic: particles
+    sceneRoute: none
+    format: particle_quad_p28_uv_color_light
+    importKernel: particle_quad_p28_uv_color_light
+    rasterClass: translucent
+    materialPolicy: particle
+    transform: minecraft_26_2.dynamic_model_view
+    priority: 970
+    match:
+      locations: [minecraft:pipeline/opaque_particle, minecraft:pipeline/translucent_particle, minecraft:pipeline/weather_depth_write, minecraft:pipeline/weather_no_depth_write]
+      topology: QUADS
+      slot: 0
+      stride: 28
+      attributes: [Position@0:RGB32_FLOAT, UV0@12:RG32_FLOAT, Color@20:RGBA8_UNORM, UV2@24:RG16_SINT]
+
+  - id: minecraft.pipeline.unsupported_lines
+    semantic: line
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 900
+    match:
+      locations: [minecraft:pipeline/lines, minecraft:pipeline/lines_translucent, minecraft:pipeline/lines_depth_bias]
+      topology: LINES
+
+  - id: minecraft.pipeline.unsupported_overlay
+    semantic: overlay
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: overlay
+    materialPolicy: default
+    priority: 890
+    match:
+      locations: [minecraft:pipeline/gui, minecraft:pipeline/gui_invert, minecraft:pipeline/gui_text, minecraft:pipeline/gui_text_grayscale, minecraft:pipeline/gui_text_highlight, minecraft:pipeline/gui_textured, minecraft:pipeline/gui_textured_premultiplied_alpha, minecraft:pipeline/block_screen_effect, minecraft:pipeline/fire_screen_effect, minecraft:pipeline/gui_opaque_textured_background, minecraft:pipeline/gui_nausea_overlay, minecraft:pipeline/vignette, minecraft:pipeline/crosshair, minecraft:pipeline/mojang_logo]
+
+  - id: minecraft.pipeline.unsupported_clouds_sky
+    semantic: sky_or_clouds
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 880
+    match:
+      locations: [minecraft:pipeline/clouds, minecraft:pipeline/flat_clouds, minecraft:pipeline/sky, minecraft:pipeline/end_sky, minecraft:pipeline/sunrise_sunset, minecraft:pipeline/stars, minecraft:pipeline/celestial]
+
+  - id: minecraft.pipeline.unsupported_post_support
+    semantic: post_or_support
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 870
+    match:
+      locations: [minecraft:pipeline/entity_outline_blit, minecraft:pipeline/tracy_blit, minecraft:pipeline/panorama, minecraft:pipeline/lightmap, minecraft:pipeline/animate_sprite_blit, minecraft:pipeline/animate_sprite_interpolate]
+
+  - id: unknown
+    semantic: unknown
+    sceneRoute: none
+    format: unknown
+    importKernel: unknown
+    rasterClass: unknown
+    materialPolicy: default
+    priority: 0
+    match:
+      locationContains: ''

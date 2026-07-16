@@ -3,7 +3,11 @@ package com.radiance.client;
 import com.mojang.logging.LogUtils;
 import com.radiance.client.option.Options;
 import com.radiance.client.pipeline.Pipeline;
+//#if MC>=260200
+//$$ import com.radiance.client.blaze3d.abi.RendererProxy;
+//#else
 import com.radiance.client.proxy.vulkan.RendererProxy;
+//#endif
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.JarURLConnection;
@@ -21,25 +25,33 @@ import java.util.Collections;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-import net.fabricmc.api.ClientModInitializer;
-import net.minecraft.client.MinecraftClient;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import org.slf4j.Logger;
 
-public class RadianceClient implements ClientModInitializer {
+public class RadianceClient {
 
     public static final Logger LOGGER = LogUtils.getLogger();
     public static Path radianceDir;
 
-    @Override
-    public void onInitializeClient() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        Path mcBaseDir = mc.runDirectory.toPath();
+    public static void bootstrap(Path mcBaseDir) {
+        bootstrap(mcBaseDir, () -> {
+        });
+    }
+
+    public static void bootstrap(Path mcBaseDir, Runnable registerClientReloaders) {
+        new RadianceClient().initialize(mcBaseDir, registerClientReloaders);
+    }
+
+    private void initialize(Path mcBaseDir, Runnable registerClientReloaders) {
         radianceDir = mcBaseDir.resolve("radiance");
+        RadianceRuntimePaths.radianceDir = radianceDir;
         try {
             Files.createDirectories(radianceDir);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+        registerClientReloaders.run();
 
         // core lib
         String osName = System.getProperty("os.name");
@@ -58,7 +70,6 @@ public class RadianceClient implements ClientModInitializer {
             // currently not used, can be used later for fg
             copyOptionalFileFromResource(xessDx11Path, Path.of("libxess_dx11.dll"));
             copyOptionalFileFromResource(xessFgPath, Path.of("libxess_fg.dll"));
-
             loadOptionalLibrary(xessPath);
 
             System.load(dllTargetPath.toAbsolutePath().toString());
@@ -76,6 +87,8 @@ public class RadianceClient implements ClientModInitializer {
         Path shaderTargetPath = radianceDir.resolve("shaders");
         Path shaderResourcePath = Path.of("shaders");
         copyFolderFromResource(shaderTargetPath, shaderResourcePath);
+
+        copyOptionalFolderFromResource(radianceDir.resolve("common"), Path.of("common"));
 
         // modules
         Path moduleTargetPath = radianceDir.resolve("modules");
@@ -129,14 +142,24 @@ public class RadianceClient implements ClientModInitializer {
     }
 
     public void copyFolderFromResource(Path targetPath, Path resourcePath) {
+        if (!tryCopyFolderFromResource(targetPath, resourcePath)) {
+            throw new RuntimeException("Resource folder not found: " + toResourcePath(resourcePath));
+        }
+    }
+
+    public void copyOptionalFolderFromResource(Path targetPath, Path resourcePath) {
+        tryCopyFolderFromResource(targetPath, resourcePath);
+    }
+
+    private boolean tryCopyFolderFromResource(Path targetPath, Path resourcePath) {
         String resourcePathStr = toResourcePath(resourcePath);
         URL url = getClass().getResource(resourcePathStr);
 
-        if (url == null) {
-            throw new RuntimeException("Resource folder not found: " + resourcePathStr);
-        }
-
         try {
+            if (url == null) {
+                return copyFolderFromCodeSource(targetPath, resourcePath);
+            }
+
             URI uri = url.toURI();
 
             if ("jar".equals(uri.getScheme())) {
@@ -155,7 +178,7 @@ public class RadianceClient implements ClientModInitializer {
                     }
 
                     Path root = fs.getPath(resourcePathStr);
-                    walkAndCopy(root, targetPath, resourcePath);
+                    walkAndCopy(root, targetPath);
                 } finally {
                     if (created) {
                         try {
@@ -166,15 +189,106 @@ public class RadianceClient implements ClientModInitializer {
                 }
             } else {
                 Path root = Paths.get(uri);
-                walkAndCopy(root, targetPath, resourcePath);
+                walkAndCopy(root, targetPath);
             }
+            return true;
         } catch (URISyntaxException | IOException e) {
             throw new RuntimeException("Failed to copy resource folder", e);
         }
     }
 
+    private boolean copyFolderFromCodeSource(Path targetRoot, Path resourcePath)
+        throws IOException, URISyntaxException {
+        if (getClass().getProtectionDomain() == null ||
+            getClass().getProtectionDomain().getCodeSource() == null ||
+            getClass().getProtectionDomain().getCodeSource().getLocation() == null) {
+            return false;
+        }
+
+        Path codeSource = Paths.get(getClass().getProtectionDomain().getCodeSource().getLocation().toURI());
+        if (Files.isDirectory(codeSource)) {
+            Path root = codeSource.resolve(resourcePath);
+            if (!Files.isDirectory(root)) {
+                return false;
+            }
+            walkAndCopy(root, targetRoot);
+            return true;
+        }
+
+        if (!Files.isRegularFile(codeSource)) {
+            return false;
+        }
+
+        String prefix = StreamSupport.stream(resourcePath.spliterator(), false)
+            .map(Object::toString)
+            .collect(Collectors.joining("/"));
+        if (!prefix.endsWith("/")) {
+            prefix += "/";
+        }
+
+        boolean found = false;
+        Path normalizedTargetRoot = targetRoot.toAbsolutePath().normalize();
+        try (ZipFile zip = new ZipFile(codeSource.toFile())) {
+            var entries = zip.entries();
+            while (entries.hasMoreElements()) {
+                ZipEntry entry = entries.nextElement();
+                String name = entry.getName();
+                if (entry.isDirectory() || !name.startsWith(prefix)) {
+                    continue;
+                }
+                String relative = name.substring(prefix.length());
+                if (relative.isEmpty()) {
+                    continue;
+                }
+
+                Path targetFile = normalizedTargetRoot.resolve(relative).normalize();
+                if (!targetFile.startsWith(normalizedTargetRoot)) {
+                    throw new IOException("Invalid resource path outside target: " + name);
+                }
+                Files.createDirectories(targetFile.getParent());
+                try (InputStream is = zip.getInputStream(entry)) {
+                    Files.copy(is, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                }
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    private void walkAndCopy(Path walkRoot, Path targetRoot)
+        throws IOException {
+        if (!Files.isDirectory(walkRoot)) {
+            return;
+        }
+
+        Path normalizedTargetRoot = targetRoot.toAbsolutePath().normalize();
+        try (Stream<Path> stream = Files.walk(walkRoot)) {
+            stream.filter(Files::isRegularFile).forEach(source -> {
+                try {
+                    Path targetFile = normalizedTargetRoot.resolve(walkRoot.relativize(source).toString()).normalize();
+                    if (!targetFile.startsWith(normalizedTargetRoot)) {
+                        throw new IOException("Invalid resource path outside target: " + source);
+                    }
+                    Files.createDirectories(targetFile.getParent());
+                    Files.copy(source, targetFile, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            });
+        } catch (RuntimeException e) {
+            if (e.getCause() instanceof IOException ioException) {
+                throw ioException;
+            }
+            throw e;
+        }
+    }
+
     private void walkAndCopy(Path walkRoot, Path targetRoot, Path baseResourcePath)
         throws IOException {
+        if (!Files.isDirectory(walkRoot)) {
+            return;
+        }
+
         try (Stream<Path> stream = Files.walk(walkRoot)) {
             stream.filter(Files::isRegularFile).forEach(source -> {
                 String relativePathStr = walkRoot.relativize(source).toString();

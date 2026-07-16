@@ -1,5 +1,228 @@
 package com.radiance.client.proxy.world;
 
+//#if MC>=260200
+//$$ import com.radiance.client.constant.Constants;
+//$$ import java.util.Arrays;
+//$$ import java.util.Set;
+//$$ import java.util.concurrent.ConcurrentHashMap;
+//$$
+//$$ public final class ChunkProxy {
+//$$     private static final int UNASSIGNED_SECTION = Integer.MIN_VALUE;
+//$$     private static final Set<Integer> nativeScenePendingIndices = ConcurrentHashMap.newKeySet();
+//$$     private static int sizeX;
+//$$     private static int sizeY;
+//$$     private static int sizeZ;
+//$$     private static int bottomSectionCoord;
+//$$     private static int[] slotSectionX = new int[0];
+//$$     private static int[] slotSectionY = new int[0];
+//$$     private static int[] slotSectionZ = new int[0];
+//$$     private static int currentSectionX;
+//$$     private static int currentSectionY;
+//$$     private static int currentSectionZ;
+//$$     private static boolean hasCurrentSection;
+//$$
+//$$     private ChunkProxy() {
+//$$     }
+//$$
+//$$     public static native void initNative(int numChunks, int sizeX, int sizeY, int sizeZ,
+//$$         int bottomSectionCoord);
+//$$
+//$$     public static native void updateSectionPosNative(int sectionX, int sectionY, int sectionZ);
+//$$
+//$$     public static native void rebuildSingleWithSceneTags(int originX,
+//$$         int originY,
+//$$         int originZ,
+//$$         long index,
+//$$         int size,
+//$$         long geometryTypes,
+//$$         long geometryGroupNames,
+//$$         long geometryTextures,
+//$$         int rasterMetadataVersion,
+//$$         long rasterMetadata,
+//$$         int rasterMetadataIntStride,
+//$$         int sceneTagVersion,
+//$$         long sceneTags,
+//$$         int sceneTagIntStride,
+//$$         long vertexFormats,
+//$$         long vertexCounts,
+//$$         long vertices,
+//$$         boolean important);
+//$$
+//$$     public static native boolean isChunkReady(long index);
+//$$
+//$$     private static native void relocateSingleNative(long index, int originX, int originY,
+//$$         int originZ);
+//$$
+//$$     private static native void invalidateSingleNative(long index);
+//$$
+//$$     public static void initSodium(int renderDistance, int minSectionY, int maxSectionY) {
+//$$         int resolvedSizeX = Math.max(1, renderDistance * 2 + 1);
+//$$         int resolvedSizeY = Math.max(1, maxSectionY - minSectionY + 1);
+//$$         int resolvedSizeZ = resolvedSizeX;
+//$$         init(resolvedSizeX * resolvedSizeY * resolvedSizeZ, resolvedSizeX, resolvedSizeY,
+//$$             resolvedSizeZ, minSectionY);
+//$$     }
+//$$
+//$$     public static synchronized void init(int numChunks, int sizeX, int sizeY, int sizeZ,
+//$$         int bottomSectionCoord) {
+//$$         clear();
+//$$         ChunkProxy.sizeX = sizeX;
+//$$         ChunkProxy.sizeY = sizeY;
+//$$         ChunkProxy.sizeZ = sizeZ;
+//$$         ChunkProxy.bottomSectionCoord = bottomSectionCoord;
+//$$         ChunkProxy.slotSectionX = filledSlots(numChunks);
+//$$         ChunkProxy.slotSectionY = filledSlots(numChunks);
+//$$         ChunkProxy.slotSectionZ = filledSlots(numChunks);
+//$$         ChunkProxy.currentSectionX = 0;
+//$$         ChunkProxy.currentSectionY = bottomSectionCoord;
+//$$         ChunkProxy.currentSectionZ = 0;
+//$$         ChunkProxy.hasCurrentSection = false;
+//$$         initNative(numChunks, sizeX, sizeY, sizeZ, bottomSectionCoord);
+//$$     }
+//$$
+//$$     public static synchronized void updateSodiumCameraSection(int sectionX, int sectionY,
+//$$         int sectionZ) {
+//$$         if (hasCurrentSection && currentSectionX == sectionX && currentSectionY == sectionY
+//$$             && currentSectionZ == sectionZ) {
+//$$             return;
+//$$         }
+//$$         currentSectionX = sectionX;
+//$$         currentSectionY = sectionY;
+//$$         currentSectionZ = sectionZ;
+//$$         hasCurrentSection = true;
+//$$         syncSodiumSlotOrigins();
+//$$         updateSectionPosNative(sectionX, sectionY, sectionZ);
+//$$     }
+//$$
+//$$     public static synchronized int sodiumSectionIndex(int sectionX, int sectionY,
+//$$         int sectionZ) {
+//$$         if (sizeX <= 0 || sizeY <= 0 || sizeZ <= 0) {
+//$$             return -1;
+//$$         }
+//$$         int localY = sectionY - bottomSectionCoord;
+//$$         if (localY < 0 || localY >= sizeY) {
+//$$             return -1;
+//$$         }
+//$$         if (hasCurrentSection) {
+//$$             int viewDistance = (sizeX - 1) / 2;
+//$$             if (Math.abs(sectionX - currentSectionX) > viewDistance
+//$$                 || Math.abs(sectionZ - currentSectionZ) > viewDistance) {
+//$$                 return -1;
+//$$             }
+//$$         }
+//$$         return (Math.floorMod(sectionZ, sizeZ) * sizeY + localY) * sizeX
+//$$             + Math.floorMod(sectionX, sizeX);
+//$$     }
+//$$
+//$$     public static synchronized void submitSodiumSection(int originX, int originY, int originZ,
+//$$         int sectionX, int sectionY, int sectionZ, int geometryCount, long geometryTypes,
+//$$         long geometryGroupNames, long geometryTextures, long rasterMetadata, long sceneTags,
+//$$         long vertexFormats, long vertexCounts, long vertices, boolean important) {
+//$$         int index = sodiumSectionIndex(sectionX, sectionY, sectionZ);
+//$$         if (index < 0) {
+//$$             return;
+//$$         }
+//$$         if (!slotMatches(index, sectionX, sectionY, sectionZ)) {
+//$$             return;
+//$$         }
+//$$         rebuildSingleWithSceneTags(originX, originY, originZ, index, geometryCount,
+//$$             geometryTypes, geometryGroupNames, geometryTextures, Constants.RasterMetadata.VERSION,
+//$$             rasterMetadata, Constants.RasterMetadata.INT_STRIDE, Constants.SceneTags.VERSION,
+//$$             sceneTags, Constants.SceneTags.INT_STRIDE, vertexFormats, vertexCounts, vertices,
+//$$             important);
+//$$         nativeScenePendingIndices.add(index);
+//$$     }
+//$$
+//$$     public static synchronized void clear() {
+//$$         nativeScenePendingIndices.clear();
+//$$     }
+//$$
+//$$     public static void rebuildAll() {
+//$$     }
+//$$
+//$$     public static synchronized boolean isSodiumSectionReady(int sectionX, int sectionY,
+//$$         int sectionZ) {
+//$$         int index = sodiumSectionIndex(sectionX, sectionY, sectionZ);
+//$$         if (index < 0) {
+//$$             return true;
+//$$         }
+//$$         boolean ready = isChunkReady(index);
+//$$         if (ready) {
+//$$             nativeScenePendingIndices.remove(index);
+//$$         }
+//$$         return ready;
+//$$     }
+//$$
+//$$     public static synchronized void relocateSodiumSection(int sectionX, int sectionY, int sectionZ,
+//$$         int originX, int originY, int originZ) {
+//$$         int index = sodiumSectionIndex(sectionX, sectionY, sectionZ);
+//$$         if (index < 0) {
+//$$             return;
+//$$         }
+//$$         if (!slotMatches(index, sectionX, sectionY, sectionZ)) {
+//$$             return;
+//$$         }
+//$$         nativeScenePendingIndices.remove(index);
+//$$         relocateSingleNative(index, originX, originY, originZ);
+//$$     }
+//$$
+//$$     public static synchronized void invalidateSodiumSection(int sectionX, int sectionY,
+//$$         int sectionZ) {
+//$$         int index = sodiumSectionIndex(sectionX, sectionY, sectionZ);
+//$$         if (index < 0) {
+//$$             return;
+//$$         }
+//$$         if (!slotMatches(index, sectionX, sectionY, sectionZ)) {
+//$$             return;
+//$$         }
+//$$         invalidateSingle(index);
+//$$     }
+//$$
+//$$     public static synchronized void invalidateSingle(long index) {
+//$$         nativeScenePendingIndices.remove((int) index);
+//$$         invalidateSingleNative(index);
+//$$     }
+//$$
+//$$     private static int[] filledSlots(int size) {
+//$$         int[] slots = new int[Math.max(0, size)];
+//$$         Arrays.fill(slots, UNASSIGNED_SECTION);
+//$$         return slots;
+//$$     }
+//$$
+//$$     private static void syncSodiumSlotOrigins() {
+//$$         int count = sizeX * sizeY * sizeZ;
+//$$         if (!hasCurrentSection || count <= 0 || slotSectionX.length != count
+//$$             || slotSectionY.length != count || slotSectionZ.length != count) {
+//$$             return;
+//$$         }
+//$$         int viewDistance = (sizeX - 1) / 2;
+//$$         int baseSectionX = currentSectionX - viewDistance;
+//$$         int baseSectionZ = currentSectionZ - viewDistance;
+//$$         for (int index = 0; index < count; index++) {
+//$$             int gridX = index % sizeX;
+//$$             int gridY = index / sizeX % sizeY;
+//$$             int gridZ = index / (sizeX * sizeY);
+//$$             int sectionX = baseSectionX + Math.floorMod(gridX - baseSectionX, sizeX);
+//$$             int sectionY = bottomSectionCoord + gridY;
+//$$             int sectionZ = baseSectionZ + Math.floorMod(gridZ - baseSectionZ, sizeZ);
+//$$             if (slotMatches(index, sectionX, sectionY, sectionZ)) {
+//$$                 continue;
+//$$             }
+//$$             slotSectionX[index] = sectionX;
+//$$             slotSectionY[index] = sectionY;
+//$$             slotSectionZ[index] = sectionZ;
+//$$             nativeScenePendingIndices.remove(index);
+//$$             relocateSingleNative(index, sectionX << 4, sectionY << 4, sectionZ << 4);
+//$$         }
+//$$     }
+//$$
+//$$     private static boolean slotMatches(int index, int sectionX, int sectionY, int sectionZ) {
+//$$         return index >= 0 && index < slotSectionX.length && index < slotSectionY.length
+//$$             && index < slotSectionZ.length && slotSectionX[index] == sectionX
+//$$             && slotSectionY[index] == sectionY && slotSectionZ[index] == sectionZ;
+//$$     }
+//$$ }
+//#else
 import static net.minecraft.client.render.VertexFormat.DrawMode.QUADS;
 import static org.lwjgl.system.MemoryUtil.memAddress;
 
@@ -54,6 +277,7 @@ public class ChunkProxy {
     };
     private static final Map<Integer, ChunkBuilder.BuiltChunk> rebuildQueue = new ConcurrentHashMap<>();
     private static final java.util.Set<Integer> forcedRebuildIndices = ConcurrentHashMap.newKeySet();
+    private static final java.util.Set<Integer> nativeScenePendingIndices = ConcurrentHashMap.newKeySet();
     private static final List<Future<?>> rebuildTasks = new ArrayList<>();
     private static BuiltChunkStorage currentStorage = null;
     private static boolean pendingRebuildAll = false;
@@ -142,6 +366,7 @@ public class ChunkProxy {
 
         rebuildQueue.clear();
         forcedRebuildIndices.clear();
+        nativeScenePendingIndices.clear();
         rebuildTasks.clear();
         currentStorage = null;
         pendingRebuildAll = false;
@@ -179,32 +404,41 @@ public class ChunkProxy {
     public static void rebuild(Camera camera) {
 
         BlockPos blockPos = camera.getBlockPos();
-        for (ChunkBuilder.BuiltChunk builtChunk : rebuildQueue.values()) {
-            boolean forced = forcedRebuildIndices.remove(builtChunk.index);
-            if (builtChunk.needsRebuild() && (forced || builtChunk.shouldBuild())) {
-                builtChunk.cancelRebuild();
+        for (Map.Entry<Integer, ChunkBuilder.BuiltChunk> entry : rebuildQueue.entrySet()) {
+            ChunkBuilder.BuiltChunk builtChunk = entry.getValue();
+            boolean forced = forcedRebuildIndices.contains(builtChunk.index);
+            if (!builtChunk.needsRebuild()) {
+                rebuildQueue.remove(entry.getKey(), builtChunk);
+                forcedRebuildIndices.remove(builtChunk.index);
+                continue;
+            }
+            if (!forced && !builtChunk.shouldBuild()) {
+                continue;
+            }
+            if (!rebuildQueue.remove(entry.getKey(), builtChunk)) {
+                continue;
+            }
+            forcedRebuildIndices.remove(builtChunk.index);
+            builtChunk.cancelRebuild();
 
-                BlockPos
-                    chunkCenterPos =
-                    builtChunk.getOrigin()
-                        .add(8, 8, 8);
-                boolean isImportant = chunkCenterPos.getSquaredDistance(blockPos) < 768.0
-                    || builtChunk.needsImportantRebuild();
+            BlockPos
+                chunkCenterPos =
+                builtChunk.getOrigin()
+                    .add(8, 8, 8);
+            boolean isImportant = chunkCenterPos.getSquaredDistance(blockPos) < 768.0
+                || builtChunk.needsImportantRebuild();
 
-                if (isImportant) {
-                    Future<?> rebuildTask = importantChunkRebuildExecutor.submit(() -> {
-                        rebuildSingle(builtChunk, true);
-                    });
-                    rebuildTasks.add(rebuildTask);
-                } else {
-                    backgroundChunkRebuildExecutor.execute(() -> {
-                        rebuildSingle(builtChunk, false);
-                    });
-                }
+            if (isImportant) {
+                Future<?> rebuildTask = importantChunkRebuildExecutor.submit(() -> {
+                    rebuildSingle(builtChunk, true);
+                });
+                rebuildTasks.add(rebuildTask);
+            } else {
+                backgroundChunkRebuildExecutor.execute(() -> {
+                    rebuildSingle(builtChunk, false);
+                });
             }
         }
-
-        rebuildQueue.clear();
     }
 
     public static void waitImportantChunkRebuild() {
@@ -276,6 +510,7 @@ public class ChunkProxy {
         builtChunk.setNoCullingBlockEntities(renderData.noCullingBlockEntities);
 
         if (buffers.isEmpty()) {
+            nativeScenePendingIndices.remove(builtChunk.index);
             ChunkBuilder.ChunkData chunkData = new ChunkBuilder.ChunkData() {
                 @Override
                 public List<BlockEntity> getBlockEntities() {
@@ -310,15 +545,15 @@ public class ChunkProxy {
 
                 @Override
                 public boolean isEmpty(RenderLayer layer) {
-                    return layer == null || !buffers.containsKey(layer);
+                    return layer != null && !buffers.containsKey(layer);
                 }
             };
-            builtChunk.data.set(chunkData);
-            builtChunkNum++;
 
             ByteBuffer geometryTypeBB = null;
             ByteBuffer geometryGroupNameBB = null;
             ByteBuffer geometryTextureBB = null;
+            ByteBuffer rasterMetadataBB = null;
+            ByteBuffer sceneTagBB = null;
             ByteBuffer vertexFormatBB = null;
             ByteBuffer vertexCountBB = null;
             ByteBuffer verticesBB = null;
@@ -340,6 +575,16 @@ public class ChunkProxy {
                 long geometryTextureAddr = memAddress(geometryTextureBB);
                 int geometryTextureBaseAddr = 0;
 
+                int rasterMetadataSize = buffers.size() * Constants.RasterMetadata.INT_STRIDE * Integer.BYTES;
+                rasterMetadataBB = MemoryUtil.memAlloc(rasterMetadataSize);
+                long rasterMetadataAddr = memAddress(rasterMetadataBB);
+                int rasterMetadataBaseIndex = 0;
+
+                int sceneTagSize = buffers.size() * Constants.SceneTags.INT_STRIDE * Integer.BYTES;
+                sceneTagBB = MemoryUtil.memAlloc(sceneTagSize);
+                long sceneTagAddr = memAddress(sceneTagBB);
+                int sceneTagBaseIndex = 0;
+
                 int vertexFormatSize = buffers.size() * Integer.BYTES;
                 vertexFormatBB = MemoryUtil.memAlloc(vertexFormatSize);
                 long vertexFormatAddr = memAddress(vertexFormatBB);
@@ -355,6 +600,8 @@ public class ChunkProxy {
                 long verticesAddr = memAddress(verticesBB);
                 int verticesBaseAddr = 0;
 
+                int[] rasterMetadata = new int[Constants.RasterMetadata.INT_STRIDE];
+                int[] sceneTags = new int[Constants.SceneTags.INT_STRIDE];
                 for (Map.Entry<RenderLayer, BuiltBuffer> entry : buffers.entrySet()) {
                     RenderLayer renderLayer = entry.getKey();
                     assert renderLayer.getDrawMode() == QUADS;
@@ -397,6 +644,18 @@ public class ChunkProxy {
                     geometryTextureBB.putInt(geometryTextureBaseAddr, geometryTextureID);
                     geometryTextureBaseAddr += Integer.BYTES;
 
+                    Constants.RasterMetadata.write(rasterMetadata, 0, renderLayer, true);
+                    for (int metadataValue : rasterMetadata) {
+                        rasterMetadataBB.putInt(rasterMetadataBaseIndex * Integer.BYTES, metadataValue);
+                        rasterMetadataBaseIndex++;
+                    }
+
+                    Constants.SceneTags.writeVanillaChunk(sceneTags, 0);
+                    for (int tagValue : sceneTags) {
+                        sceneTagBB.putInt(sceneTagBaseIndex * Integer.BYTES, tagValue);
+                        sceneTagBaseIndex++;
+                    }
+
                     vertexFormatBB.putInt(vertexFormatBaseAddr, vertexFormatID);
                     vertexFormatBaseAddr += Integer.BYTES;
 
@@ -407,9 +666,9 @@ public class ChunkProxy {
 
                     verticesBB.putLong(verticesBaseAddr, vertexBufferInfo.addr());
                     verticesBaseAddr += Long.BYTES;
-                }
 
-                rebuildSingle(builtChunk.getOrigin()
+                }
+                rebuildSingleWithSceneTags(builtChunk.getOrigin()
                         .getX(),
                     builtChunk.getOrigin()
                         .getY(),
@@ -420,10 +679,19 @@ public class ChunkProxy {
                     geometryTypeAddr,
                     geometryGroupNameAddr,
                     geometryTextureAddr,
+                    Constants.RasterMetadata.VERSION,
+                    rasterMetadataAddr,
+                    Constants.RasterMetadata.INT_STRIDE,
+                    Constants.SceneTags.VERSION,
+                    sceneTagAddr,
+                    Constants.SceneTags.INT_STRIDE,
                     vertexFormatAddr,
                     vertexCountAddr,
                     verticesAddr,
                     important);
+                nativeScenePendingIndices.add(builtChunk.index);
+                builtChunk.data.set(chunkData);
+                builtChunkNum++;
             } finally {
                 if (geometryTypeBB != null) {
                     MemoryUtil.memFree(geometryTypeBB);
@@ -433,6 +701,12 @@ public class ChunkProxy {
                 }
                 if (geometryTextureBB != null) {
                     MemoryUtil.memFree(geometryTextureBB);
+                }
+                if (rasterMetadataBB != null) {
+                    MemoryUtil.memFree(rasterMetadataBB);
+                }
+                if (sceneTagBB != null) {
+                    MemoryUtil.memFree(sceneTagBB);
                 }
                 if (vertexFormatBB != null) {
                     MemoryUtil.memFree(vertexFormatBB);
@@ -468,13 +742,77 @@ public class ChunkProxy {
         long vertices,
         boolean important);
 
+    private static native void rebuildSingleWithRasterMetadata(int originX,
+        int originY,
+        int originZ,
+        long index,
+        int size,
+        long geometryTypes,
+        long geometryGroupNames,
+        long geometryTextures,
+        int rasterMetadataVersion,
+        long rasterMetadata,
+        int rasterMetadataIntStride,
+        long vertexFormats,
+        long vertexCounts,
+        long vertices,
+        boolean important);
+
+    private static native void rebuildSingleWithSceneTags(int originX,
+        int originY,
+        int originZ,
+        long index,
+        int size,
+        long geometryTypes,
+        long geometryGroupNames,
+        long geometryTextures,
+        int rasterMetadataVersion,
+        long rasterMetadata,
+        int rasterMetadataIntStride,
+        int sceneTagVersion,
+        long sceneTags,
+        int sceneTagIntStride,
+        long vertexFormats,
+        long vertexCounts,
+        long vertices,
+        boolean important);
+
     public static native boolean isChunkReady(long index);
 
+    private static native boolean isChunkRenderingReadyNative(long index);
+
     public static boolean isChunkReady(ChunkBuilder.BuiltChunk builtChunk) {
-        return isChunkReady(builtChunk.index);
+        boolean ready = isChunkReady(builtChunk.index);
+        if (ready) {
+            nativeScenePendingIndices.remove(builtChunk.index);
+        }
+        return ready;
     }
 
-    public static native void relocateSingle(long index, int originX, int originY, int originZ);
+    public static boolean isChunkRenderingReady(ChunkBuilder.BuiltChunk builtChunk) {
+        if (!nativeScenePendingIndices.contains(builtChunk.index)) {
+            return true;
+        }
+        if (isChunkReady(builtChunk.index)) {
+            nativeScenePendingIndices.remove(builtChunk.index);
+            return true;
+        }
+        return isChunkRenderingReadyNative(builtChunk.index);
+    }
 
-    public static native void invalidateSingle(long index);
+    private static native void relocateSingleNative(long index, int originX, int originY,
+        int originZ);
+
+    public static void relocateSingle(long index, int originX, int originY, int originZ) {
+        nativeScenePendingIndices.remove((int) index);
+        relocateSingleNative(index, originX, originY, originZ);
+    }
+
+    private static native void invalidateSingleNative(long index);
+
+    public static void invalidateSingle(long index) {
+        nativeScenePendingIndices.remove((int) index);
+        invalidateSingleNative(index);
+    }
 }
+//#endif

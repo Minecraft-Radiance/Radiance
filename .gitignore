@@ -115,6 +115,8 @@ gradle-app.setting
 run/
 runs/
 
+bin/
+
 # Avoid ignoring Gradle wrapper jar file (.jar files are usually ignored)
 !gradle-wrapper.jar
 
@@ -124,4 +126,6 @@ core.lib
 libnvidia-ngx-dlss*
 include/
 shaders/
+!versions/26.2/src/sceneImportBundle/shaders/
+!versions/26.2/src/sceneImportBundle/shaders/**
 libxess*

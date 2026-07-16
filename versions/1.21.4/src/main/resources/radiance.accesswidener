@@ -1,0 +1,75 @@
+accessWidener v2 named
+accessible class net/minecraft/client/font/BitmapFont$BitmapFontGlyph
+
+accessible class net/minecraft/client/font/TrueTypeFont$TtfGlyph
+accessible method net/minecraft/client/font/TrueTypeFont getInfo ()Lorg/lwjgl/util/freetype/FT_Face;
+accessible field net/minecraft/client/font/TrueTypeFont oversample F
+
+accessible method net/minecraft/client/font/UnihexFont addGlyphPixels (Ljava/nio/IntBuffer;Lnet/minecraft/client/font/UnihexFont$BitmapGlyph;II)V
+accessible class net/minecraft/client/font/UnihexFont$UnicodeTextureGlyph
+accessible field net/minecraft/client/font/UnihexFont$UnicodeTextureGlyph contents Lnet/minecraft/client/font/UnihexFont$BitmapGlyph;
+accessible field net/minecraft/client/font/UnihexFont$UnicodeTextureGlyph left I
+accessible field net/minecraft/client/font/UnihexFont$UnicodeTextureGlyph right I
+
+accessible class net/minecraft/client/font/GlyphAtlasTexture$Slot
+accessible method net/minecraft/client/font/GlyphAtlasTexture$Slot findSlotFor (Lnet/minecraft/client/font/RenderableGlyph;)Lnet/minecraft/client/font/GlyphAtlasTexture$Slot;
+accessible field net/minecraft/client/font/GlyphAtlasTexture$Slot x I
+accessible field net/minecraft/client/font/GlyphAtlasTexture$Slot y I
+
+accessible class net/minecraft/client/texture/SpriteContents$Animation
+accessible field net/minecraft/client/texture/SpriteContents width I
+accessible field net/minecraft/client/texture/SpriteContents height I
+accessible field net/minecraft/client/texture/SpriteContents mipmapLevelsImages [Lnet/minecraft/client/texture/NativeImage;
+
+accessible class net/minecraft/client/texture/SpriteContents$AnimationFrame
+accessible field net/minecraft/client/texture/SpriteContents$AnimationFrame index I
+
+accessible field com/mojang/blaze3d/systems/RenderSystem apiDescription Ljava/lang/String;
+
+accessible class com/mojang/blaze3d/platform/GlStateManager$ScissorTestState
+accessible class com/mojang/blaze3d/platform/GlStateManager$DepthTestState
+
+accessible class com/mojang/blaze3d/platform/GlStateManager$CapabilityTracker
+accessible class com/mojang/blaze3d/platform/GlStateManager$BlendFuncState
+accessible class com/mojang/blaze3d/platform/GlStateManager$CullFaceState
+accessible class com/mojang/blaze3d/platform/GlStateManager$PolygonOffsetState
+accessible class com/mojang/blaze3d/platform/GlStateManager$LogicOpState
+accessible class com/mojang/blaze3d/platform/GlStateManager$ColorMask
+accessible class com/mojang/blaze3d/platform/GlStateManager$StencilState
+accessible class com/mojang/blaze3d/platform/GlStateManager$StencilSubState
+
+accessible field com/mojang/blaze3d/systems/RenderSystem shaderLightDirections [Lorg/joml/Vector3f;
+
+accessible class net/minecraft/client/resource/VideoWarningManager$WarningPatternLoader
+
+accessible class net/minecraft/client/render/chunk/ChunkRendererRegionBuilder$ClientChunk
+accessible method net/minecraft/client/render/BuiltChunkStorage getRenderedChunk (Lnet/minecraft/util/math/BlockPos;)Lnet/minecraft/client/render/chunk/ChunkBuilder$BuiltChunk;
+accessible class net/minecraft/client/render/RenderLayer$MultiPhase
+accessible field net/minecraft/client/render/RenderLayer$MultiPhase phases Lnet/minecraft/client/render/RenderLayer$MultiPhaseParameters;
+
+accessible class net/minecraft/client/render/chunk/ChunkBuilder$BuiltChunk$RebuildTask
+accessible class net/minecraft/client/render/chunk/ChunkBuilder$Result
+
+accessible method net/minecraft/client/render/RenderPhase$Texture getId ()Ljava/util/Optional;
+accessible field net/minecraft/client/render/RenderLayer$MultiPhaseParameters texture Lnet/minecraft/client/render/RenderPhase$TextureBase;
+accessible method net/minecraft/client/render/RenderPhase$TextureBase getId ()Ljava/util/Optional;
+accessible field net/minecraft/client/render/RenderLayer$MultiPhaseParameters transparency Lnet/minecraft/client/render/RenderPhase$Transparency;
+accessible field net/minecraft/client/render/RenderPhase name Ljava/lang/String;
+accessible field net/minecraft/client/render/RenderLayer$MultiPhaseParameters cull Lnet/minecraft/client/render/RenderPhase$Cull;
+accessible method net/minecraft/client/render/RenderPhase setupGlintTexturing (F)V
+accessible method net/minecraft/client/render/chunk/ChunkBuilder$BuiltChunk setNoCullingBlockEntities (Ljava/util/Collection;)V
+accessible method net/minecraft/client/render/item/HeldItemRenderer getHandRenderType (Lnet/minecraft/client/network/ClientPlayerEntity;)Lnet/minecraft/client/render/item/HeldItemRenderer$HandRenderType;
+accessible field net/minecraft/client/render/item/HeldItemRenderer$HandRenderType renderMainHand Z
+accessible field net/minecraft/client/render/item/HeldItemRenderer$HandRenderType renderOffHand Z
+accessible field net/minecraft/client/render/SkyRendering SUN_TEXTURE Lnet/minecraft/util/Identifier;
+accessible field net/minecraft/client/render/SkyRendering MOON_PHASES_TEXTURE Lnet/minecraft/util/Identifier;
+accessible class net/minecraft/client/gui/widget/OptionListWidget$WidgetEntry
+accessible method net/minecraft/client/gui/widget/OptionListWidget$WidgetEntry <init> (Ljava/util/List;Lnet/minecraft/client/gui/screen/Screen;)V
+accessible method net/minecraft/client/gui/widget/EntryListWidget addEntry (Lnet/minecraft/client/gui/widget/EntryListWidget$Entry;)I
+
+accessible class net/minecraft/client/render/CloudRenderer$ViewMode
+
+accessible class net/minecraft/client/option/SimpleOption$CyclingCallbacks
+accessible field net/minecraft/client/option/SimpleOption textGetter Ljava/util/function/Function;
+accessible field net/minecraft/client/option/SimpleOption text Lnet/minecraft/text/Text;
+accessible field net/minecraft/client/gui/screen/Screen drawables Ljava/util/List;

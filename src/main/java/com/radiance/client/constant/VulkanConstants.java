@@ -4,7 +4,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Collectors;
+//#if MC>=260200
+//$$ import com.mojang.blaze3d.platform.NativeImage;
+//#else
 import net.minecraft.client.texture.NativeImage;
+//#endif
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL33;
@@ -13,6 +17,7 @@ public class VulkanConstants {
 
     public enum VkFormat {
         VK_FORMAT_R8_UNORM(9, "R8_UNORM"),
+        VK_FORMAT_R8_UINT(13, "R8_UINT"),
         VK_FORMAT_R8_SRGB(15, "R8_SRGB"),
         VK_FORMAT_R8G8_UNORM(16, "R8G8_UNORM"),
         VK_FORMAT_R8G8_SRGB(22, "R8G8_SRGB"),
@@ -53,6 +58,7 @@ public class VulkanConstants {
             return name;
         }
 
+        //#if MC<260200
         public NativeImage.InternalFormat getNativeImageInternalFormat() {
             return switch (this) {
                 case VK_FORMAT_R8_UNORM -> NativeImage.InternalFormat.RED;
@@ -62,7 +68,9 @@ public class VulkanConstants {
                 default -> throw new IllegalStateException("Unexpected value: " + this.value);
             };
         }
+        //#endif
 
+        //#if MC<260200
         public NativeImage.Format getNativeImageFormat() {
             return switch (this) {
                 case VK_FORMAT_R8G8B8_UNORM -> NativeImage.Format.RGB;
@@ -70,6 +78,7 @@ public class VulkanConstants {
                 default -> throw new IllegalStateException("Unexpected value: " + this.value);
             };
         }
+        //#endif
     }
 
     public enum VkFilter {

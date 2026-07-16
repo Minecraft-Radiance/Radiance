@@ -16,6 +16,7 @@ import com.radiance.client.vertex.StorageVertexConsumerProvider;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IHeldItemRendererExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IParticleExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IParticleManagerExt;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -86,6 +87,22 @@ import org.lwjgl.system.MemoryUtil;
 
 public class EntityProxy {
 
+    private static final int SOURCE_ENTITY_BODY = 1;
+    private static final int SOURCE_ENTITY_WATER_MASK = 2;
+    private static final int SOURCE_ENTITY_NAME_TAG = 3;
+    private static final int SOURCE_ENTITY_TEXT = 4;
+    private static final int SOURCE_BLOCK_ENTITY = 10;
+    private static final int SOURCE_BLOCK_ENTITY_CRUMBLING = 11;
+    private static final int SOURCE_HAND = 20;
+    private static final int SOURCE_CUSTOM_PARTICLES = 30;
+    private static final int SOURCE_TARGET_BLOCK_OUTLINE = 40;
+    private static final int SOURCE_POST_PARTICLE = 50;
+    private static final int SOURCE_POST_WEATHER = 60;
+
+    private static final int ACCELERATION_EXACT = 0;
+    private static final int ACCELERATION_DEFORM_UPDATE = 1;
+    private static final int ACCELERATION_DISABLED = 2;
+
     public static final ConcurrentMap<Class<? extends Particle>, AtomicInteger> PARTICLE_COUNTERS = new ConcurrentHashMap<>();
     public static VertexConsumerProvider postTextVertexConsumerProvider;
 
@@ -105,6 +122,49 @@ public class EntityProxy {
     private static final String NAME_TAG_DEFAULT_CONTENT = "/name_tag/default";
     private static final Set<String> LOGGED_POST_CONTENT_KEYS = ConcurrentHashMap.newKeySet();
 
+    private static int defaultWorldSourceSubKey(Constants.RayTracingFlags rayTracingFlag) {
+        return SOURCE_ENTITY_BODY + rayTracingFlag.getValue();
+    }
+
+    private static int defaultPostSourceSubKey(Constants.PostRenderFlags postRenderFlag,
+        String contentName) {
+        int base = switch (postRenderFlag) {
+            case PARTICLE -> SOURCE_POST_PARTICLE;
+            case WEATHER -> SOURCE_POST_WEATHER;
+            case TEXT -> SOURCE_ENTITY_TEXT;
+            case NAME_TAG -> SOURCE_ENTITY_NAME_TAG;
+        };
+        if (contentName == null || contentName.isBlank()) {
+            return base;
+        }
+        return base ^ stableStringHash(contentName);
+    }
+
+    private static int waterMaskSourceSubKey(int sourceSubKey) {
+        return (sourceSubKey << 4) ^ SOURCE_ENTITY_WATER_MASK;
+    }
+
+    private static int stableStringHash(String value) {
+        int hash = 0x811C9DC5;
+        for (int i = 0; i < value.length(); i++) {
+            hash ^= value.charAt(i);
+            hash *= 0x01000193;
+        }
+        return hash == 0 ? 1 : hash;
+    }
+
+    private static int stableEntitySourceId(Entity entity) {
+        return entity.getUuid().hashCode();
+    }
+
+    private static int stableBlockEntitySourceId(BlockEntity blockEntity) {
+        return stableBlockSourceId(blockEntity.getPos());
+    }
+
+    private static int stableBlockSourceId(BlockPos blockPos) {
+        return Long.hashCode(blockPos.asLong());
+    }
+
     public static void processWorldEntityRenderData(
         StorageVertexConsumerProvider storageVertexConsumerProvider,
         int hashCode,
@@ -114,8 +174,29 @@ public class EntityProxy {
         Constants.RayTracingFlags rayTracingFlag,
         boolean reflect,
         EntityRenderDataList entityRenderDataList) {
+        int policy = rayTracingFlag == RayTracingFlags.PARTICLE || rayTracingFlag == RayTracingFlags.CLOUD
+            ? ACCELERATION_DISABLED
+            : ACCELERATION_DEFORM_UPDATE;
+        processWorldEntityRenderData(storageVertexConsumerProvider, hashCode, entityPosX, entityPosY,
+            entityPosZ, rayTracingFlag, reflect, defaultWorldSourceSubKey(rayTracingFlag), policy,
+            entityRenderDataList);
+    }
+
+    public static void processWorldEntityRenderData(
+        StorageVertexConsumerProvider storageVertexConsumerProvider,
+        int hashCode,
+        double entityPosX,
+        double entityPosY,
+        double entityPosZ,
+        Constants.RayTracingFlags rayTracingFlag,
+        boolean reflect,
+        int sourceSubKey,
+        int accelerationPolicy,
+        EntityRenderDataList entityRenderDataList) {
         processEntityRenderData(storageVertexConsumerProvider,
             hashCode,
+            sourceSubKey,
+            accelerationPolicy,
             entityPosX,
             entityPosY,
             entityPosZ,
@@ -136,8 +217,24 @@ public class EntityProxy {
         double entityPosZ,
         Constants.PostRenderFlags postRenderFlag,
         EntityRenderDataList entityRenderDataList) {
+        processPostEntityRenderData(storageVertexConsumerProvider, hashCode, entityPosX, entityPosY,
+            entityPosZ, postRenderFlag, defaultPostSourceSubKey(postRenderFlag, null),
+            entityRenderDataList);
+    }
+
+    public static void processPostEntityRenderData(
+        StorageVertexConsumerProvider storageVertexConsumerProvider,
+        int hashCode,
+        double entityPosX,
+        double entityPosY,
+        double entityPosZ,
+        Constants.PostRenderFlags postRenderFlag,
+        int sourceSubKey,
+        EntityRenderDataList entityRenderDataList) {
         processEntityRenderData(storageVertexConsumerProvider,
             hashCode,
+            sourceSubKey,
+            ACCELERATION_DISABLED,
             entityPosX,
             entityPosY,
             entityPosZ,
@@ -161,6 +258,8 @@ public class EntityProxy {
         EntityRenderDataList entityRenderDataList) {
         processEntityRenderData(storageVertexConsumerProvider,
             hashCode,
+            defaultPostSourceSubKey(postRenderFlag, contentName),
+            ACCELERATION_DISABLED,
             entityPosX,
             entityPosY,
             entityPosZ,
@@ -184,6 +283,8 @@ public class EntityProxy {
         EntityRenderDataList entityRenderDataList) {
         processEntityRenderData(storageVertexConsumerProvider,
             hashCode,
+            defaultPostSourceSubKey(postRenderFlag, null),
+            ACCELERATION_DISABLED,
             entityPosX,
             entityPosY,
             entityPosZ,
@@ -199,6 +300,8 @@ public class EntityProxy {
     private static void processEntityRenderData(
         StorageVertexConsumerProvider storageVertexConsumerProvider,
         int hashCode,
+        int sourceSubKey,
+        int accelerationPolicy,
         double entityPosX,
         double entityPosY,
         double entityPosZ,
@@ -212,12 +315,12 @@ public class EntityProxy {
         Map<RenderLayer, VertexConsumer> layerBuffers = storageVertexConsumerProvider.getLayers();
         EntityRenderData
             entityRenderData =
-            new EntityRenderData(hashCode, entityPosX, entityPosY,
+            new EntityRenderData(hashCode, sourceSubKey, accelerationPolicy, entityPosX, entityPosY,
                 entityPosZ,
                 rayTracingFlag, postRenderFlag, prebuiltBLAS, post);
         EntityRenderData
             waterMaskRenderData =
-            new EntityRenderData(hashCode, entityPosX, entityPosY,
+            new EntityRenderData(hashCode, waterMaskSourceSubKey(sourceSubKey), accelerationPolicy, entityPosX, entityPosY,
                 entityPosZ,
                 RayTracingFlags.BOAT_WATER_MASK.getValue(), 0, prebuiltBLAS, post);
         for (Map.Entry<RenderLayer, VertexConsumer> layerBuffer : layerBuffers.entrySet()) {
@@ -267,9 +370,15 @@ public class EntityProxy {
         MatrixStack matrixStack = new MatrixStack();
 
         MinecraftClient client = MinecraftClient.getInstance();
+        IntArrayList activeEntityHistoryIds = new IntArrayList();
+        for (Entity entity : Objects.requireNonNull(client.world).getEntities()) {
+            activeEntityHistoryIds.add(stableEntitySourceId(entity));
+        }
+        queueActiveEntityHistoryIds(activeEntityHistoryIds.toIntArray());
+
         TickManager
             tickManager =
-            Objects.requireNonNull(client.world)
+            client.world
                 .getTickManager();
 
         List<StorageVertexConsumerProvider> entityStorageVertexConsumerProviders = new ArrayList<>();
@@ -325,11 +434,12 @@ public class EntityProxy {
                     postTextStorageVertexConsumerProvider,
                     light);
                 processPostEntityRenderData(postTextStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
+                    stableEntitySourceId(entity),
                     entityPosX,
                     entityPosY,
                     entityPosZ,
                     PostRenderFlags.TEXT,
+                    SOURCE_ENTITY_TEXT,
                     entityRenderDataList);
                 continue;
             }
@@ -353,11 +463,12 @@ public class EntityProxy {
             if (!postTextStorageVertexConsumerProvider.getLayers().isEmpty()) {
                 entityStorageVertexConsumerProviders.add(postTextStorageVertexConsumerProvider);
                 processPostEntityRenderData(postTextStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
+                    stableEntitySourceId(entity),
                     entityPosX,
                     entityPosY,
                     entityPosZ,
                     PostRenderFlags.NAME_TAG,
+                    SOURCE_ENTITY_NAME_TAG,
                     entityRenderDataList);
             } else {
                 postTextStorageVertexConsumerProvider.close();
@@ -365,30 +476,36 @@ public class EntityProxy {
 
             if (entity.equals(camera.getFocusedEntity())) {
                 processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
+                    stableEntitySourceId(entity),
                     entityPosX,
                     entityPosY,
                     entityPosZ,
                     Constants.RayTracingFlags.PLAYER,
                     true,
+                    SOURCE_ENTITY_BODY,
+                    ACCELERATION_DEFORM_UPDATE,
                     entityRenderDataList);
             } else if (entity instanceof FishingBobberEntity) {
                 processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
+                    stableEntitySourceId(entity),
                     entityPosX,
                     entityPosY,
                     entityPosZ,
                     Constants.RayTracingFlags.FISHING_BOBBER,
                     true,
+                    SOURCE_ENTITY_BODY,
+                    ACCELERATION_DEFORM_UPDATE,
                     entityRenderDataList);
             } else {
                 processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
+                    stableEntitySourceId(entity),
                     entityPosX,
                     entityPosY,
                     entityPosZ,
                     Constants.RayTracingFlags.WORLD,
                     true,
+                    SOURCE_ENTITY_BODY,
+                    ACCELERATION_DEFORM_UPDATE,
                     entityRenderDataList);
             }
         }
@@ -462,20 +579,24 @@ public class EntityProxy {
                     matrixStack.pop();
 
                     processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                        System.identityHashCode(blockEntity),
+                        stableBlockEntitySourceId(blockEntity),
                         entityPosX,
                         entityPosY,
                         entityPosZ,
                         Constants.RayTracingFlags.WORLD,
                         true,
+                        SOURCE_BLOCK_ENTITY,
+                        ACCELERATION_EXACT,
                         entityRenderDataList);
                     processWorldEntityRenderData(crumblingStorageVertexConsumerProvider,
-                        System.identityHashCode(blockEntity) + 1,
+                        stableBlockEntitySourceId(blockEntity),
                         entityPosX,
                         entityPosY,
                         entityPosZ,
                         Constants.RayTracingFlags.WORLD,
                         true,
+                        SOURCE_BLOCK_ENTITY_CRUMBLING,
+                        ACCELERATION_EXACT,
                         crumblingRenderDataList);
                 }
             }
@@ -497,12 +618,14 @@ public class EntityProxy {
             matrixStack.pop();
 
             processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                System.identityHashCode(blockEntity),
+                stableBlockEntitySourceId(blockEntity),
                 entityPosX,
                 entityPosY,
                 entityPosZ,
                 Constants.RayTracingFlags.WORLD,
                 true,
+                SOURCE_BLOCK_ENTITY,
+                ACCELERATION_EXACT,
                 entityRenderDataList);
         }
 
@@ -559,12 +682,14 @@ public class EntityProxy {
                     matrixStack.pop();
 
                     processWorldEntityRenderData(blockCrumblingStorageVertexConsumerProvider,
-                        0,
+                        stableBlockSourceId(blockPos),
                         entityPosX,
                         entityPosY,
                         entityPosZ,
                         Constants.RayTracingFlags.WORLD,
                         true,
+                        SOURCE_BLOCK_ENTITY_CRUMBLING,
+                        ACCELERATION_EXACT,
                         blockCrumblingRenderDataList);
                 }
             }
@@ -620,12 +745,14 @@ public class EntityProxy {
             .isFirstPerson() && !bl && !client.options.hudHidden &&
             client.interactionManager.getCurrentGameMode() != GameMode.SPECTATOR) {
             processWorldEntityRenderData(storageVertexConsumerProvider,
-                System.identityHashCode(Constants.RayTracingFlags.HAND),
+                stableStringHash("/entity/hand"),
                 0,
                 0,
                 0,
                 Constants.RayTracingFlags.HAND,
                 true,
+                SOURCE_HAND,
+                ACCELERATION_DEFORM_UPDATE,
                 renderDataList);
             queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,
                 Constants.Coordinates.CAMERA,
@@ -707,7 +834,8 @@ public class EntityProxy {
         }
 
         processWorldEntityRenderData(storageVertexConsumerProvider, 0, 0, 0, 0,
-            Constants.RayTracingFlags.PARTICLE, true, renderDataList);
+            Constants.RayTracingFlags.PARTICLE, true, SOURCE_CUSTOM_PARTICLES,
+            ACCELERATION_DISABLED, renderDataList);
 
         queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,
             Constants.Coordinates.CAMERA_SHIFT, false);
@@ -768,6 +896,8 @@ public class EntityProxy {
                         blockPos.getZ(),
                         Constants.RayTracingFlags.FISHING_BOBBER,
                         false,
+                        SOURCE_TARGET_BLOCK_OUTLINE,
+                        ACCELERATION_DISABLED,
                         renderDataList);
                 }
             }
@@ -851,6 +981,8 @@ public class EntityProxy {
         List<ByteBuffer> geometryContentNameBuffers = new ArrayList<>(
             entityRenderDataList.getTotalLayersCount());
         ByteBuffer entityHashCodeBB = null;
+        ByteBuffer entitySourceSubKeyBB = null;
+        ByteBuffer entityAccelerationPolicyBB = null;
         ByteBuffer entityPosXBB = null;
         ByteBuffer entityPosYBB = null;
         ByteBuffer entityPosZBB = null;
@@ -863,6 +995,8 @@ public class EntityProxy {
         ByteBuffer geometryGroupNameBB = null;
         ByteBuffer geometryContentNameBB = null;
         ByteBuffer geometryTextureBB = null;
+        ByteBuffer rasterMetadataBB = null;
+        ByteBuffer sceneTagBB = null;
         ByteBuffer vertexFormatBB = null;
         ByteBuffer indexFormatBB = null;
         ByteBuffer vertexCountBB = null;
@@ -873,6 +1007,16 @@ public class EntityProxy {
             entityHashCodeBB = MemoryUtil.memAlloc(entityHashCodeSize);
             long entityHashCodeAddr = memAddress(entityHashCodeBB);
             int entityHashCodeBaseAddr = 0;
+
+            int entitySourceSubKeySize = entityRenderDataList.getTotalEntityCount() * Integer.BYTES;
+            entitySourceSubKeyBB = MemoryUtil.memAlloc(entitySourceSubKeySize);
+            long entitySourceSubKeyAddr = memAddress(entitySourceSubKeyBB);
+            int entitySourceSubKeyBaseAddr = 0;
+
+            int entityAccelerationPolicySize = entityRenderDataList.getTotalEntityCount() * Integer.BYTES;
+            entityAccelerationPolicyBB = MemoryUtil.memAlloc(entityAccelerationPolicySize);
+            long entityAccelerationPolicyAddr = memAddress(entityAccelerationPolicyBB);
+            int entityAccelerationPolicyBaseAddr = 0;
 
             int entityPosXSize = entityRenderDataList.getTotalEntityCount() * Double.BYTES;
             entityPosXBB = MemoryUtil.memAlloc(entityPosXSize);
@@ -934,6 +1078,18 @@ public class EntityProxy {
             long geometryTextureAddr = memAddress(geometryTextureBB);
             int geometryTextureBaseAddr = 0;
 
+            int rasterMetadataSize =
+                entityRenderDataList.getTotalLayersCount() * Constants.RasterMetadata.INT_STRIDE * Integer.BYTES;
+            rasterMetadataBB = MemoryUtil.memAlloc(rasterMetadataSize);
+            long rasterMetadataAddr = memAddress(rasterMetadataBB);
+            int rasterMetadataBaseIndex = 0;
+
+            int sceneTagSize =
+                entityRenderDataList.getTotalLayersCount() * Constants.SceneTags.INT_STRIDE * Integer.BYTES;
+            sceneTagBB = MemoryUtil.memAlloc(sceneTagSize);
+            long sceneTagAddr = memAddress(sceneTagBB);
+            int sceneTagBaseIndex = 0;
+
             int vertexFormatSize = entityRenderDataList.getTotalLayersCount() * Integer.BYTES;
             vertexFormatBB = MemoryUtil.memAlloc(vertexFormatSize);
             long vertexFormatAddr = memAddress(vertexFormatBB);
@@ -955,8 +1111,18 @@ public class EntityProxy {
             int verticesBaseAddr = 0;
 
             for (EntityRenderData entityRenderData : entityRenderDataList) {
+                int[] rasterMetadata = new int[Constants.RasterMetadata.INT_STRIDE];
+                int[] sceneTags = new int[Constants.SceneTags.INT_STRIDE];
+
                 entityHashCodeBB.putInt(entityHashCodeBaseAddr, entityRenderData.hashCode);
                 entityHashCodeBaseAddr += Integer.BYTES;
+
+                entitySourceSubKeyBB.putInt(entitySourceSubKeyBaseAddr, entityRenderData.sourceSubKey);
+                entitySourceSubKeyBaseAddr += Integer.BYTES;
+
+                entityAccelerationPolicyBB.putInt(entityAccelerationPolicyBaseAddr,
+                    entityRenderData.accelerationPolicy);
+                entityAccelerationPolicyBaseAddr += Integer.BYTES;
 
                 entityPosXBB.putDouble(entityPosXBaseAddr, entityRenderData.x);
                 entityPosXBaseAddr += Double.BYTES;
@@ -1038,6 +1204,23 @@ public class EntityProxy {
                     geometryTextureBB.putInt(geometryTextureBaseAddr, geometryTextureID);
                     geometryTextureBaseAddr += Integer.BYTES;
 
+                    Constants.RasterMetadata.write(rasterMetadata, 0, renderLayer,
+                        entityRenderLayer.reflect);
+                    for (int metadataValue : rasterMetadata) {
+                        rasterMetadataBB.putInt(rasterMetadataBaseIndex * Integer.BYTES, metadataValue);
+                        rasterMetadataBaseIndex++;
+                    }
+
+                    if (entityRenderData.post) {
+                        Constants.SceneTags.writeVanillaPost(sceneTags, 0);
+                    } else {
+                        Constants.SceneTags.writeVanillaEntity(sceneTags, 0);
+                    }
+                    for (int tagValue : sceneTags) {
+                        sceneTagBB.putInt(sceneTagBaseIndex * Integer.BYTES, tagValue);
+                        sceneTagBaseIndex++;
+                    }
+
                     vertexFormatBB.putInt(vertexFormatBaseAddr, vertexFormatID);
                     vertexFormatBaseAddr += Integer.BYTES;
 
@@ -1051,14 +1234,17 @@ public class EntityProxy {
 
                     verticesBB.putLong(verticesBaseAddr, vertexBufferInfo.addr());
                     verticesBaseAddr += Long.BYTES;
+
                 }
             }
 
-            queueBuild(lineWidth,
+            queueBuildWithSceneTags(lineWidth,
                 coordinate.getValue(),
                 normalOffset,
                 entityRenderDataList.getTotalEntityCount(),
                 entityHashCodeAddr,
+                entitySourceSubKeyAddr,
+                entityAccelerationPolicyAddr,
                 entityPosXAddr,
                 entityPosYAddr,
                 entityPosZAddr,
@@ -1071,12 +1257,20 @@ public class EntityProxy {
                 geometryGroupNameAddr,
                 geometryContentNameAddr,
                 geometryTextureAddr,
+                Constants.RasterMetadata.VERSION,
+                rasterMetadataAddr,
+                Constants.RasterMetadata.INT_STRIDE,
+                Constants.SceneTags.VERSION,
+                sceneTagAddr,
+                Constants.SceneTags.INT_STRIDE,
                 vertexFormatAddr,
                 indexFormatAddr,
                 vertexCountAddr,
                 verticesAddr);
         } finally {
             freeDirectBuffer(entityHashCodeBB);
+            freeDirectBuffer(entitySourceSubKeyBB);
+            freeDirectBuffer(entityAccelerationPolicyBB);
             freeDirectBuffer(entityPosXBB);
             freeDirectBuffer(entityPosYBB);
             freeDirectBuffer(entityPosZBB);
@@ -1089,6 +1283,8 @@ public class EntityProxy {
             freeDirectBuffer(geometryGroupNameBB);
             freeDirectBuffer(geometryContentNameBB);
             freeDirectBuffer(geometryTextureBB);
+            freeDirectBuffer(rasterMetadataBB);
+            freeDirectBuffer(sceneTagBB);
             freeDirectBuffer(vertexFormatBB);
             freeDirectBuffer(indexFormatBB);
             freeDirectBuffer(vertexCountBB);
@@ -1138,6 +1334,8 @@ public class EntityProxy {
         boolean normalOffset,
         int size,
         long entityHashCodes,
+        long entitySourceSubKeys,
+        long entityAccelerationPolicies,
         long entityPosXs,
         long entityPosYs,
         long entityPosZs,
@@ -1155,7 +1353,70 @@ public class EntityProxy {
         long vertexCounts,
         long vertices);
 
-    public static native void build();
+    private static native void queueBuildWithRasterMetadata(float lineWidth,
+        int coordinate,
+        boolean normalOffset,
+        int size,
+        long entityHashCodes,
+        long entitySourceSubKeys,
+        long entityAccelerationPolicies,
+        long entityPosXs,
+        long entityPosYs,
+        long entityPosZs,
+        long entityRayTracingFlags,
+        long entityPostRenderFlags,
+        long entityPrebuiltBLASs,
+        long entityPosts,
+        long entityLayerCounts,
+        long geometryTypes,
+        long geometryGroupNames,
+        long geometryContentNames,
+        long geometryTextures,
+        int rasterMetadataVersion,
+        long rasterMetadata,
+        int rasterMetadataIntStride,
+        long vertexFormats,
+        long indexFormats,
+        long vertexCounts,
+        long vertices);
+
+    private static native void queueBuildWithSceneTags(float lineWidth,
+        int coordinate,
+        boolean normalOffset,
+        int size,
+        long entityHashCodes,
+        long entitySourceSubKeys,
+        long entityAccelerationPolicies,
+        long entityPosXs,
+        long entityPosYs,
+        long entityPosZs,
+        long entityRayTracingFlags,
+        long entityPostRenderFlags,
+        long entityPrebuiltBLASs,
+        long entityPosts,
+        long entityLayerCounts,
+        long geometryTypes,
+        long geometryGroupNames,
+        long geometryContentNames,
+        long geometryTextures,
+        int rasterMetadataVersion,
+        long rasterMetadata,
+        int rasterMetadataIntStride,
+        int sceneTagVersion,
+        long sceneTags,
+        int sceneTagIntStride,
+        long vertexFormats,
+        long indexFormats,
+        long vertexCounts,
+        long vertices);
+
+    private static native void buildNative();
+
+    private static native void queueActiveEntityHistoryIds(int[] activeEntityHistoryIds);
+
+    public static void build() {
+        buildNative();
+    }
 
     private static String defaultPostContentName(Constants.PostRenderFlags postRenderFlag) {
         return switch (postRenderFlag) {
@@ -1228,6 +1489,8 @@ public class EntityProxy {
     public static class EntityRenderData extends ArrayList<EntityRenderLayer> {
 
         private final int hashCode;
+        private final int sourceSubKey;
+        private final int accelerationPolicy;
         private final int rayTracingFlag;
         private final int postRenderFlag;
         private final int prebuiltBLAS;
@@ -1236,11 +1499,14 @@ public class EntityProxy {
         private double y;
         private double z;
 
-        public EntityRenderData(int hashCode, double x, double y, double z, int rayTracingFlag,
+        public EntityRenderData(int hashCode, int sourceSubKey, int accelerationPolicy,
+            double x, double y, double z, int rayTracingFlag,
             int postRenderFlag,
             int prebuiltBLAS,
             boolean post) {
             this.hashCode = hashCode;
+            this.sourceSubKey = sourceSubKey;
+            this.accelerationPolicy = accelerationPolicy;
             this.x = x;
             this.y = y;
             this.z = z;
@@ -1288,6 +1554,14 @@ public class EntityProxy {
 
         public int getHashCode() {
             return hashCode;
+        }
+
+        public int getSourceSubKey() {
+            return sourceSubKey;
+        }
+
+        public int getAccelerationPolicy() {
+            return accelerationPolicy;
         }
 
         public boolean isPost() {

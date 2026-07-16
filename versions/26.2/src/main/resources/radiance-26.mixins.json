@@ -1,0 +1,29 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.radiance.mixins.blaze3d_26",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "DirectoryListerMixin",
+    "PreferredGraphicsApiMixin",
+    "LevelRendererFrameObserverMixin",
+    "NativeImageMixin",
+    "PalettedPermutationsMixin",
+    "ReloadableTextureMixin",
+    "SingleFileMixin",
+    "SpriteAnimatedTextureAccessor",
+    "SpriteAnimationStateMixin",
+    "SpriteContentsAccessor",
+    "SpriteFrameInfoAccessor",
+    "TextureAtlasSpriteAccessor",
+    "TextureAtlasSyncMixin",
+    "UnstitcherMixin",
+    "sodium.SodiumChunkBuildOutputMixin",
+    "sodium.SodiumGlDrawContextMixin",
+    "sodium.SodiumRenderSectionMixin",
+    "sodium.SodiumRenderSectionManagerMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

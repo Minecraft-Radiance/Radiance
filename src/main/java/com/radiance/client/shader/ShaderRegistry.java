@@ -2,7 +2,11 @@ package com.radiance.client.shader;
 
 import com.radiance.client.RadianceClient;
 import com.radiance.client.constant.Constants;
+//#if MC>=260200
+//$$ import com.radiance.client.blaze3d.abi.ShaderProxy;
+//#else
 import com.radiance.client.proxy.vulkan.ShaderProxy;
+//#endif
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IGlUniformExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IShaderProgramExt;
 import java.io.IOException;

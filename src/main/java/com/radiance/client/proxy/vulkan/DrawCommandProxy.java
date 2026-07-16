@@ -8,9 +8,17 @@ public class DrawCommandProxy {
     public static class Overlay {
 
         // region <vulkan>
-        public static native void vkCmdClearEntireColorAttachment();
+        private static native void vkCmdClearEntireColorAttachmentNative();
 
-        public static native void vkCmdClearEntireDepthStencilAttachment(int mask);
+        public static void vkCmdClearEntireColorAttachment() {
+            vkCmdClearEntireColorAttachmentNative();
+        }
+
+        private static native void vkCmdClearEntireDepthStencilAttachmentNative(int mask);
+
+        public static void vkCmdClearEntireDepthStencilAttachment(int mask) {
+            vkCmdClearEntireDepthStencilAttachmentNative(mask);
+        }
         // endregion
 
         // region <openGL>

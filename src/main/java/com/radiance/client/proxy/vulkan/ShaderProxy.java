@@ -28,12 +28,24 @@ public final class ShaderProxy {
     private ShaderProxy() {
     }
 
-    public static native int registerShader(String shaderKey, int vertexFormatType,
+    private static native int registerShaderNative(String shaderKey, int vertexFormatType,
         int drawMode, int uniformSize, String vertexShaderPath, String fragmentShaderPath,
         String[] defineNames, String[] defineValues);
 
-    public static native void draw(int vertexId, int indexId, int shaderId, int indexCount,
+    public static int registerShader(String shaderKey, int vertexFormatType,
+        int drawMode, int uniformSize, String vertexShaderPath, String fragmentShaderPath,
+        String[] defineNames, String[] defineValues) {
+        return registerShaderNative(shaderKey, vertexFormatType, drawMode, uniformSize,
+            vertexShaderPath, fragmentShaderPath, defineNames, defineValues);
+    }
+
+    private static native void drawNative(int vertexId, int indexId, int shaderId, int indexCount,
         int indexType, long uniformPtr, int uniformSize);
+
+    public static void draw(int vertexId, int indexId, int shaderId, int indexCount,
+        int indexType, long uniformPtr, int uniformSize) {
+        drawNative(vertexId, indexId, shaderId, indexCount, indexType, uniformPtr, uniformSize);
+    }
 
     public static void draw(BufferProxy.VertexIndexBufferHandle handle, int shaderId, int indexCount,
         int indexType, long uniformPtr, int uniformSize) {

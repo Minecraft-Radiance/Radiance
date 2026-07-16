@@ -6,17 +6,16 @@ import static com.radiance.client.option.Options.UPSCALER_QUALITY_PERFORMANCE;
 import static com.radiance.client.option.Options.UPSCALER_QUALITY_QUALITY;
 
 import com.mojang.serialization.Codec;
-import net.minecraft.util.StringIdentifiable;
-import net.minecraft.util.TranslatableOption;
+import com.radiance.client.option.compat.RadianceOptionEnum;
 
-public enum UpscalerQuality implements TranslatableOption, StringIdentifiable {
+public enum UpscalerQuality implements RadianceOptionEnum {
     NATIVEAA(0, "nativeaa", UPSCALER_QUALITY_NATIVEAA),
     QUALITY(1, "quality", UPSCALER_QUALITY_QUALITY),
     BALANCED(2, "balanced", UPSCALER_QUALITY_BALANCED),
     PERFORMANCE(3, "performance", UPSCALER_QUALITY_PERFORMANCE);
 
     public static final Codec<UpscalerQuality> Codec =
-        StringIdentifiable.createCodec(UpscalerQuality::values);
+        RadianceOptionEnum.codec(UpscalerQuality::values);
     private final int ordinal;
     private final String name;
     private final String translationKey;
@@ -27,18 +26,15 @@ public enum UpscalerQuality implements TranslatableOption, StringIdentifiable {
         this.translationKey = translationKey;
     }
 
-    @Override
-    public String asString() {
+    public String serializedName() {
         return this.name;
     }
 
-    @Override
-    public int getId() {
+    public int optionId() {
         return this.ordinal;
     }
 
-    @Override
-    public String getTranslationKey() {
+    public String translationKey() {
         return this.translationKey;
     }
 }

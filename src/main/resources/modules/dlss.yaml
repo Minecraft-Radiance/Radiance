@@ -16,6 +16,12 @@ inputImageConfigs:
     format: "R16_SFLOAT"
   - name: "first_hit_depth"
     format: "R16_SFLOAT"
+  - name: "transparency_layer"
+    format: "R16G16B16A16_SFLOAT"
+  - name: "color_before_transparency"
+    format: "R16G16B16A16_SFLOAT"
+  - name: "transparency_motion_vector"
+    format: "R16G16_SFLOAT"
 outputImageConfigs:
   - name: "processed"
     format: "R16G16B16A16_SFLOAT"

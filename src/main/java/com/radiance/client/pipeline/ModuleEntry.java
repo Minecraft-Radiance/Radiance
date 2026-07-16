@@ -1,6 +1,6 @@
 package com.radiance.client.pipeline;
 
-import com.radiance.client.RadianceClient;
+import com.radiance.client.RadianceRuntimePaths;
 import com.radiance.client.pipeline.config.ImageConfig;
 import java.io.File;
 import java.io.FileInputStream;
@@ -31,7 +31,7 @@ public class ModuleEntry {
         Map<String, ModuleEntry> entries = new HashMap<>();
         String folderName = "modules";
 
-        URL url = RadianceClient.radianceDir.resolve(folderName).toUri().toURL();
+        URL url = RadianceRuntimePaths.radianceDir.resolve(folderName).toUri().toURL();
 
         String protocol = url.getProtocol();
 
@@ -96,23 +96,30 @@ public class ModuleEntry {
         LoaderOptions options = new LoaderOptions();
         Yaml yaml = new Yaml(new Constructor(Module.class, options));
 
-        try (InputStream inputStream = getClass().getClassLoader()
-            .getResourceAsStream(this.resourcePath)) {
-            if (inputStream == null) {
-                throw new RuntimeException("Module not found in resource: " + this.resourcePath);
-            }
+        try (InputStream inputStream = openModuleStream()) {
             Module module = yaml.load(inputStream);
-            for (ImageConfig imageConfig : module.inputImageConfigs) {
-                imageConfig.owner = module;
-            }
-            for (ImageConfig imageConfig : module.outputImageConfigs) {
-                imageConfig.owner = module;
-            }
             module.staticAttributeConfigs = Module.copyAttributeConfigs(module.attributeConfigs);
+            module.initializeStaticPorts();
             return module;
         } catch (Exception e) {
             throw new RuntimeException("Failed to load module from: " + this.resourcePath, e);
         }
+    }
+
+    private InputStream openModuleStream() throws IOException {
+        if (RadianceRuntimePaths.radianceDir != null) {
+            File file = RadianceRuntimePaths.radianceDir.resolve(this.resourcePath).toFile();
+            if (file.isFile()) {
+                return new FileInputStream(file);
+            }
+        }
+
+        InputStream inputStream = getClass().getClassLoader()
+            .getResourceAsStream(this.resourcePath);
+        if (inputStream == null) {
+            throw new RuntimeException("Module not found: " + this.resourcePath);
+        }
+        return inputStream;
     }
 
     @Override
