@@ -6,20 +6,20 @@ import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import net.minecraft.client.render.VertexFormat;
+import net.minecraft.client.gl.ShaderProgram;
 
 public final class ShaderTranslator {
 
     private static final Pattern VERSION_PATTERN = Pattern.compile("^\\s*#version\\b.*$");
     private static final Pattern UNIFORM_PATTERN = Pattern.compile(
-        "^\\s*(?:layout\\s*\\([^)]*\\)\\s*)?uniform\\s+[\\w\\d_]+(?:\\s*\\[[^]]*])?\\s+(\\w+)\\s*;\\s*$");
+        "^\\s*uniform\\s+[\\w\\d_]+(?:\\s*\\[[^]]*])?\\s+(\\w+)\\s*;\\s*$");
     private static final Pattern INPUT_OUTPUT_PATTERN = Pattern.compile(
         "^\\s*(in|out)\\s+([\\w\\d_]+)\\s+(\\w+)\\s*;\\s*$");
 
     private ShaderTranslator() {
     }
 
-    public static Result translate(VertexFormat vertexFormat, String vertexSource,
+    public static Result translate(ShaderProgram shaderProgram, String vertexSource,
         String fragmentSource, List<ShaderField> fields) {
         Set<String> uniformNames = fields.stream()
             .filter(field -> !field.isSampler())
@@ -31,7 +31,8 @@ public final class ShaderTranslator {
             .collect(java.util.stream.Collectors.toSet());
 
         LinkedHashMap<String, Integer> attributeLocations = new LinkedHashMap<>();
-        List<String> attributeNames = vertexFormat.getAttributeNames();
+        List<String> attributeNames = shaderProgram.getFormat()
+            .getAttributeNames();
         for (int i = 0; i < attributeNames.size(); i++) {
             attributeLocations.put(attributeNames.get(i), i);
         }
@@ -45,7 +46,7 @@ public final class ShaderTranslator {
             .mapToInt(field -> field.offset() + field.size())
             .max()
             .orElse(0);
-        uniformBufferSize = Math.ceilDiv(uniformBufferSize, 16) * 16;
+        uniformBufferSize = ((uniformBufferSize + 15) / 16) * 16;
 
         String header = buildHeader(fields);
         return new Result(header + vertex.source(), header + fragment.source(), uniformBufferSize);
@@ -53,7 +54,8 @@ public final class ShaderTranslator {
 
     private static StageResult rewriteStage(String source, boolean vertexStage,
         Map<String, Integer> inputLocations, Map<String, Integer> varyingLocations,
-        Set<String> uniformNames, Set<String> samplerNames) {
+        Set<String> uniformNames,
+        Set<String> samplerNames) {
         StringBuilder builder = new StringBuilder();
         LinkedHashMap<String, Integer> nextVaryingLocations = new LinkedHashMap<>(varyingLocations);
         LinkedHashMap<String, Integer> outputLocations =
@@ -66,9 +68,12 @@ public final class ShaderTranslator {
                 continue;
             }
 
-            if (UNIFORM_PATTERN.matcher(line)
-                .matches()) {
-                continue;
+            Matcher uniformMatcher = UNIFORM_PATTERN.matcher(line);
+            if (uniformMatcher.matches()) {
+                String uniformName = uniformMatcher.group(1);
+                if (uniformNames.contains(uniformName) || samplerNames.contains(uniformName)) {
+                    continue;
+                }
             }
 
             Matcher ioMatcher = INPUT_OUTPUT_PATTERN.matcher(line);

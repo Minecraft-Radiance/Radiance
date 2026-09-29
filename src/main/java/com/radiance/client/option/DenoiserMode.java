@@ -5,7 +5,6 @@ import static com.radiance.client.option.Options.DENOISER_MODE_NRD;
 import static com.radiance.client.option.Options.DENOISER_MODE_SVGF;
 import static com.radiance.client.option.Options.DENOISER_MODE_TEMPORAL;
 
-import com.mojang.serialization.Codec;
 import net.minecraft.util.StringIdentifiable;
 import net.minecraft.util.TranslatableOption;
 
@@ -15,8 +14,6 @@ public enum DenoiserMode implements TranslatableOption, StringIdentifiable {
     NRD(2, "nrd", DENOISER_MODE_NRD),
     TEMPORAL(3, "temporal", DENOISER_MODE_TEMPORAL);
 
-    public static final Codec<DenoiserMode> Codec =
-        StringIdentifiable.createCodec(DenoiserMode::values);
     private final int ordinal;
     private final String name;
     private final String translationKey;

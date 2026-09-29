@@ -1,3 +1,8 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.util.Locale
+import java.util.zip.ZipFile
+
 plugins {
     id 'fabric-loom' version '1.11-SNAPSHOT'
     id 'maven-publish'
@@ -10,17 +15,252 @@ base {
     archivesName = project.archives_base_name
 }
 
+def profilerEnabled = providers.gradleProperty("radianceProfiler")
+    .map { it.toBoolean() }
+    .getOrElse(false)
+def profilerSuffix = profilerEnabled ? "-profile" : ""
+def uiBackend = providers.gradleProperty("radianceUiBackend")
+    .map { it.toLowerCase(Locale.ROOT) }
+    .getOrElse("opengl")
+if (!["vulkan", "opengl"].contains(uiBackend)) {
+    throw new GradleException("radianceUiBackend must be 'vulkan' or 'opengl', got '${uiBackend}'")
+}
+def openGLUiBackend = uiBackend == "opengl"
+def vulkanUiBackend = uiBackend == "vulkan"
+def operatingSystemName = System.getProperty("os.name").toLowerCase(Locale.ROOT)
+def systemClassifier
+if (operatingSystemName.contains("windows")) {
+    systemClassifier = "windows"
+} else if (operatingSystemName.contains("linux")) {
+    systemClassifier = "linux"
+} else {
+    throw new GradleException("Unsupported operating system: ${System.getProperty('os.name')}")
+}
+def artifactBaseName = "${project.archives_base_name}-${project.version}${profilerSuffix}-fabric-${project.minecraft_version}-${systemClassifier}"
+def nativeLibraryName = systemClassifier == "windows" ? "core.dll" : "libcore.so"
+def nativeLibraryFile = file("src/main/resources/${nativeLibraryName}")
+def nativeProfilerMarkers = [
+    "Java_com_radiance_client_profiler_Profiler_nativeIsAvailable",
+    "mcvr-profiler-jsonl",
+    "texture_upload.frame.main_bytes"
+]
+def generatedProfilerSourceDir = layout.buildDirectory.dir("generated/sources/profiler/java")
+def generatedUiBackendSourceDir = layout.buildDirectory.dir("generated/sources/uiBackend/java")
+def generatedUiBackendResourceDir = layout.buildDirectory.dir("generated/resources/uiBackend")
+def sourceMixinJsonFile = file("src/main/resources/radiance.mixins.json")
+def nativeVulkanUiMarkers = [
+    "Java_com_radiance_client_proxy_vulkan_ShaderProxy_registerShader",
+    "UIModule",
+    "registerOverlayDrawShader"
+]
+def nativeOpenGLUiMarkers = [
+    "MCVR_UI_BACKEND_OPENGL",
+    "OpenGLUiSurface",
+    "Java_com_radiance_client_opengl_1ui_OpenGLUiProxy_prepareFrame",
+    "Java_com_radiance_client_proxy_vulkan_RendererProxy_initRendererWithOpenGLDevice"
+]
+
+def openglExcludedMixins = [
+    "vulkan_render_integration.AbstractTextureMixins",
+    "vulkan_render_integration.BufferRendererMixins",
+    "vulkan_render_integration.CompiledShaderMixins",
+    "vulkan_render_integration.GameRendererMixins",
+    "vulkan_render_integration.GLXMixins",
+    "vulkan_render_integration.GlProgramManagerMixins",
+    "vulkan_render_integration.GlStateManagerMixins",
+    "vulkan_render_integration.GlUniformMixins",
+    "vulkan_render_integration.MinecraftClientMixins",
+    "vulkan_render_integration.NativeImageMixins",
+    "vulkan_render_integration.ReloadableResourceManagerImplMixins",
+    "vulkan_render_integration.RenderPhaseTargetMixins",
+    "vulkan_render_integration.RenderSystemMixins",
+    "vulkan_render_integration.ScreenshotRecorderMixins",
+    "vulkan_render_integration.ScreenMixins",
+    "vulkan_render_integration.ShaderLoaderMixins",
+    "vulkan_render_integration.ShaderProgramMixins",
+    "vulkan_render_integration.ShaderStageMixins",
+    "vulkan_render_integration.TextureUtilMixins",
+    "vulkan_render_integration.VideoWarningManagerWarningPatternLoaderMixins",
+    "vulkan_render_integration.WindowMixins"
+] as Set
+def openglClientMixins = [
+    "opengl_ui.OpenGLUiAbstractTextureMixins",
+    "opengl_ui.OpenGLUiBufferRendererMixins",
+    "opengl_ui.OpenGLUiGameRendererMixins",
+    "opengl_ui.OpenGLUiMinecraftClientMixins",
+    "opengl_ui.OpenGLUiNativeImageMixins",
+    "opengl_ui.OpenGLUiRenderSystemMixins",
+    "opengl_ui.OpenGLUiTextureUtilMixins",
+    "opengl_ui.OpenGLUiWindowMixins"
+]
+
+tasks.register("generateProfilerBuildConfig") {
+    inputs.property "radianceProfiler", profilerEnabled
+    outputs.dir(generatedProfilerSourceDir)
+    doLast {
+        def packageDir = generatedProfilerSourceDir.get().dir("com/radiance/client/profiler").asFile
+        packageDir.mkdirs()
+        new File(packageDir, "ProfilerBuildConfig.java").text =
+            "package com.radiance.client.profiler;\n\n" +
+            "public final class ProfilerBuildConfig {\n" +
+            "    public static final boolean ENABLED = ${profilerEnabled};\n\n" +
+            "    private ProfilerBuildConfig() {\n" +
+            "    }\n" +
+            "}\n"
+    }
+}
+
+tasks.register("generateUiBackendBuildConfig") {
+    inputs.property "radianceUiBackend", uiBackend
+    outputs.dir(generatedUiBackendSourceDir)
+    doLast {
+        def packageDir = generatedUiBackendSourceDir.get().dir("com/radiance/client/ui").asFile
+        packageDir.mkdirs()
+        new File(packageDir, "UiBackendBuildConfig.java").text =
+            "package com.radiance.client.ui;\n\n" +
+            "public final class UiBackendBuildConfig {\n" +
+            "    public static final String BACKEND = \"${uiBackend}\";\n" +
+            "    public static final boolean VULKAN_UI = ${vulkanUiBackend};\n" +
+            "    public static final boolean OPENGL_UI = ${openGLUiBackend};\n\n" +
+            "    private UiBackendBuildConfig() {\n" +
+            "    }\n" +
+            "}\n"
+
+        new File(packageDir, "UiBackendRendererHooks.java").text =
+            "package com.radiance.client.ui;\n\n" +
+            "public final class UiBackendRendererHooks {\n" +
+            "    public static void afterRendererInitialized() {\n" +
+            (vulkanUiBackend
+                ? "        com.radiance.client.proxy.vulkan.PipelineStateProxy.invalidateDynamicStateCache();\n"
+                : "") +
+            "    }\n\n" +
+            "    private UiBackendRendererHooks() {\n" +
+            "    }\n" +
+            "}\n"
+    }
+}
+
+tasks.register("generateUiBackendMixins") {
+    inputs.file(sourceMixinJsonFile)
+    inputs.property "radianceUiBackend", uiBackend
+    outputs.dir(generatedUiBackendResourceDir)
+    doLast {
+        def json = new JsonSlurper().parse(sourceMixinJsonFile)
+        if (openGLUiBackend) {
+            json.mixins = json.mixins.findAll { !openglExcludedMixins.contains(it) }
+            json.client = json.client.findAll { !openglExcludedMixins.contains(it) }
+            json.client.addAll(openglClientMixins)
+        }
+
+        def outputDir = generatedUiBackendResourceDir.get().asFile
+        outputDir.mkdirs()
+        new File(outputDir, "radiance.mixins.json").text =
+            JsonOutput.prettyPrint(JsonOutput.toJson(json)) + "\n"
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            srcDir(generatedProfilerSourceDir)
+            srcDir(generatedUiBackendSourceDir)
+            if (openGLUiBackend) {
+                exclude "com/radiance/client/proxy/vulkan/DrawCommandProxy.java"
+                exclude "com/radiance/client/proxy/vulkan/PipelineStateProxy.java"
+                exclude "com/radiance/client/proxy/vulkan/ShaderProxy.java"
+                exclude "com/radiance/client/proxy/vulkan/VulkanUiProxy.java"
+                exclude "com/radiance/client/shader/**"
+                exclude "com/radiance/mixin_related/extensions/vulkan_render_integration/ICompiledShaderExt.java"
+                exclude "com/radiance/mixin_related/extensions/vulkan_render_integration/IGlUniformExt.java"
+                exclude "com/radiance/mixin_related/extensions/vulkan_render_integration/IShaderProgramExt.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/AbstractTextureMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/BufferRendererMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/CompiledShaderMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/GameRendererMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/GLXMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/GlProgramManagerMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/GlStateManagerMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/GlUniformMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/MinecraftClientMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/NativeImageMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/ReloadableResourceManagerImplMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/RenderPhaseTargetMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/RenderSystemMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/ScreenshotRecorderMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/ScreenMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/ShaderLoaderMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/ShaderProgramMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/ShaderStageMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/TextureUtilMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/VideoWarningManagerWarningPatternLoaderMixins.java"
+                exclude "com/radiance/mixins/vulkan_render_integration/WindowMixins.java"
+            } else {
+                exclude "com/radiance/client/opengl_ui/**"
+                exclude "com/radiance/mixins/opengl_ui/**"
+            }
+        }
+        resources {
+            srcDirs = []
+            srcDir(generatedUiBackendResourceDir)
+        }
+    }
+}
+
 compileJava {
+    dependsOn tasks.named("generateProfilerBuildConfig")
+    dependsOn tasks.named("generateUiBackendBuildConfig")
     options.compilerArgs += ['-h', "${projectDir}/src/main/native/include"]
     outputs.upToDateWhen { false }
 }
 
-loom {
-    accessWidenerPath = file("src/main/resources/radiance.accesswidener")
+tasks.register("verifyNativeProfilerVariant") {
+    inputs.file(nativeLibraryFile)
+    doLast {
+        if (!nativeLibraryFile.isFile()) {
+            throw new GradleException("Native library is not installed: ${nativeLibraryFile}")
+        }
+        def nativeContents = new String(nativeLibraryFile.bytes,
+            java.nio.charset.StandardCharsets.ISO_8859_1)
+        def profilerMarkers = nativeProfilerMarkers.collect { nativeContents.contains(it) }
+        def nativeProfilerEnabled = profilerMarkers.every { it }
+        if ((!nativeProfilerEnabled && profilerMarkers.any { it })
+            || nativeProfilerEnabled != profilerEnabled) {
+            throw new GradleException(
+                "Profiler variant mismatch: Java=${profilerEnabled}, Native=${nativeProfilerEnabled}"
+            )
+        }
+    }
 }
 
-tasks.named("runClient", JavaExec) {
-   args "--width", "1920", "--height", "1080"
+tasks.register("verifyNativeUiBackendVariant") {
+    inputs.file(nativeLibraryFile)
+    inputs.property "radianceUiBackend", uiBackend
+    doLast {
+        if (!nativeLibraryFile.isFile()) {
+            throw new GradleException("Native library is not installed: ${nativeLibraryFile}")
+        }
+        def nativeContents = new String(nativeLibraryFile.bytes,
+            java.nio.charset.StandardCharsets.ISO_8859_1)
+        def hasAllVulkanUiMarkers = nativeVulkanUiMarkers.every { nativeContents.contains(it) }
+        def hasAnyVulkanUiMarker = nativeVulkanUiMarkers.any { nativeContents.contains(it) }
+        def hasAllOpenGLUiMarkers = nativeOpenGLUiMarkers.every { nativeContents.contains(it) }
+        def hasAnyOpenGLUiMarker = nativeOpenGLUiMarkers.any { nativeContents.contains(it) }
+        if (vulkanUiBackend && (!hasAllVulkanUiMarkers || hasAnyOpenGLUiMarker)) {
+            throw new GradleException("Native UI backend mismatch: Java=vulkan, Native vulkan=${hasAllVulkanUiMarkers}, opengl=${hasAnyOpenGLUiMarker}")
+        }
+        if (openGLUiBackend && (!hasAllOpenGLUiMarkers || hasAnyVulkanUiMarker)) {
+            throw new GradleException("Native UI backend mismatch: Java=opengl, Native vulkan=${hasAnyVulkanUiMarker}, opengl=${hasAllOpenGLUiMarkers}")
+        }
+    }
+}
+
+loom {
+    accessWidenerPath = file("src/main/resources/radiance.accesswidener")
+    runs {
+        client {
+            runDir "run"
+        }
+    }
 }
 
 repositories {
@@ -37,6 +277,8 @@ repositories {
         name = "Mojang"
         url = "https://libraries.minecraft.net/"
     }
+    maven { url = "https://api.modrinth.com/maven" }
+    maven { url = "https://maven.createmod.net" }
     mavenCentral()
 }
 
@@ -45,8 +287,15 @@ dependencies {
     minecraft "com.mojang:minecraft:${project.minecraft_version}"
     mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
     modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "io.github.llamalad7:mixinextras-fabric:0.5.0"
+    annotationProcessor "io.github.llamalad7:mixinextras-fabric:0.5.0"
+    include "io.github.llamalad7:mixinextras-fabric:0.5.0"
 
     modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+    modCompileOnly "maven.modrinth:distanthorizons:10i2Xjtv"
+    modCompileOnly "dev.engine-room.flywheel:flywheel-fabric-1.20.1:1.0.5-264"
+
 
     // https://mvnrepository.com/artifact/org.yaml/snakeyaml
     implementation "org.yaml:snakeyaml:2.5"
@@ -54,19 +303,30 @@ dependencies {
 }
 
 processResources {
+    dependsOn tasks.named("verifyNativeProfilerVariant")
+    dependsOn tasks.named("verifyNativeUiBackendVariant")
+    dependsOn tasks.named("generateUiBackendMixins")
+    from("src/main/resources") {
+        exclude "**/*.zip.txt"
+        exclude "radiance.mixins.json"
+    }
     inputs.property "version", project.version
     inputs.property "minecraft_version", project.minecraft_version
     inputs.property "loader_version", project.loader_version
+    inputs.property "fabric_version", project.fabric_version
+    inputs.property "radianceProfiler", profilerEnabled
+    inputs.property "radianceUiBackend", uiBackend
     filteringCharset "UTF-8"
 
     filesMatching("fabric.mod.json") {
         expand "version": project.version,
                 "minecraft_version": project.minecraft_version,
-                "loader_version": project.loader_version
+                "loader_version": project.loader_version,
+                "fabric_version": project.fabric_version
     }
 }
 
-def targetJavaVersion = 21
+def targetJavaVersion = 17
 tasks.withType(JavaCompile).configureEach {
     // ensure that the encoding is set to UTF-8, no matter what the system default is
     // this fixes some edge cases with special characters not displaying correctly
@@ -79,28 +339,203 @@ tasks.withType(JavaCompile).configureEach {
 }
 
 java {
-    def javaVersion = JavaVersion.toVersion(targetJavaVersion)
-    if (JavaVersion.current() < javaVersion) {
-        toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
-    }
+    toolchain.languageVersion = JavaLanguageVersion.of(targetJavaVersion)
     // Loom will automatically attach sourcesJar to a RemapSourcesJar task and to the "build" task
     // if it is present.
     // If you remove this line, sources will not be generated.
     withSourcesJar()
 }
 
+tasks.withType(JavaExec).configureEach {
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(targetJavaVersion)
+    }
+}
+
 jar {
-    from("LICENSE") {
+    archiveFileName.set("${artifactBaseName}-dev.jar")
+    exclude "**/*.zip.txt"
+    if (!profilerEnabled) {
+        exclude "com/radiance/client/profiler/**"
+    }
+    if (openGLUiBackend) {
+        exclude "com/radiance/client/proxy/vulkan/DrawCommandProxy.class"
+        exclude "com/radiance/client/proxy/vulkan/DrawCommandProxy*.class"
+        exclude "com/radiance/client/proxy/vulkan/PipelineStateProxy.class"
+        exclude "com/radiance/client/proxy/vulkan/PipelineStateProxy*.class"
+        exclude "com/radiance/client/proxy/vulkan/ShaderProxy.class"
+        exclude "com/radiance/client/proxy/vulkan/ShaderProxy*.class"
+        exclude "com/radiance/client/proxy/vulkan/VulkanUiProxy.class"
+        exclude "com/radiance/client/shader/**"
+    } else {
+        exclude "com/radiance/client/opengl_ui/**"
+        exclude "com/radiance/mixins/opengl_ui/**"
+    }
+    from("LICENCE") {
         rename { "${it}_${project.archivesBaseName}" }
     }
 }
 
 tasks.named("remapJar") {
-    archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${project.minecraft_version}.jar")
+    archiveFileName.set("${artifactBaseName}.jar")
 }
 
 tasks.named("remapSourcesJar") {
-    archiveFileName.set("${project.archives_base_name}-${project.version}-fabric-${project.minecraft_version}-sources.jar")
+    archiveFileName.set("${artifactBaseName}-sources.jar")
+}
+
+tasks.named("sourcesJar") {
+    archiveFileName.set("${artifactBaseName}-dev-sources.jar")
+    dependsOn tasks.named("generateProfilerBuildConfig")
+    dependsOn tasks.named("generateUiBackendBuildConfig")
+    dependsOn tasks.named("generateUiBackendMixins")
+    from("src/main/resources") {
+        exclude "**/*.zip.txt"
+        exclude "radiance.mixins.json"
+    }
+}
+
+tasks.register("verifyProfilerPackaging") {
+    dependsOn tasks.named("remapJar")
+    doLast {
+        def outputJar = tasks.named("remapJar").get().archiveFile.get().asFile
+        new ZipFile(outputJar).withCloseable { zip ->
+            def expectedProfilerClasses = [
+                "com/radiance/client/profiler/MemoryMetricsCollector.class",
+                "com/radiance/client/profiler/Profiler.class",
+                "com/radiance/client/profiler/ProfilerBuildConfig.class"
+            ]
+            def profilerEntries = zip.entries().findAll {
+                it.name.startsWith("com/radiance/client/profiler/")
+            }
+            if (profilerEnabled && !expectedProfilerClasses.every { zip.getEntry(it) != null }) {
+                throw new GradleException("Profile JAR does not contain all profiler classes")
+            }
+            if (!profilerEnabled && !profilerEntries.isEmpty()) {
+                throw new GradleException("Release JAR contains profiler classes")
+            }
+            def referencedBy = zip.entries().findAll { entry ->
+                if (!entry.name.endsWith(".class")
+                    || entry.name.startsWith("com/radiance/client/profiler/")) {
+                    return false
+                }
+                def bytes = zip.getInputStream(entry).bytes
+                return new String(bytes, java.nio.charset.StandardCharsets.ISO_8859_1)
+                    .contains("com/radiance/client/profiler/")
+            }
+            if (profilerEnabled && referencedBy.isEmpty()) {
+                throw new GradleException("Profile JAR classes do not reference profiler code")
+            }
+            if (!profilerEnabled && !referencedBy.isEmpty()) {
+                throw new GradleException("Release classes reference profiler code: ${referencedBy*.name}")
+            }
+
+            def mutableShaderSettingsEntries = zip.entries().findAll {
+                it.name.endsWith(".zip.txt")
+            }
+            if (!mutableShaderSettingsEntries.isEmpty()) {
+                throw new GradleException(
+                    "JAR must not contain mutable shader settings: ${mutableShaderSettingsEntries*.name}"
+                )
+            }
+
+            def nativeEntry = zip.getEntry(nativeLibraryName)
+            if (nativeEntry == null) {
+                throw new GradleException("JAR does not contain ${nativeLibraryName}")
+            }
+            def nativeContents = new String(zip.getInputStream(nativeEntry).bytes,
+                java.nio.charset.StandardCharsets.ISO_8859_1)
+            def nativeMarkers = nativeProfilerMarkers.collect { nativeContents.contains(it) }
+            if ((profilerEnabled && !nativeMarkers.every { it })
+                || (!profilerEnabled && nativeMarkers.any { it })) {
+                throw new GradleException("Packaged native profiler variant does not match radianceProfiler=${profilerEnabled}")
+            }
+        }
+    }
+}
+
+tasks.register("verifyUiBackendPackaging") {
+    dependsOn tasks.named("remapJar")
+    doLast {
+        def outputJar = tasks.named("remapJar").get().archiveFile.get().asFile
+        new ZipFile(outputJar).withCloseable { zip ->
+            def entries = zip.entries().toList()
+            def entryNames = entries.collect { it.name }
+            def vulkanUiEntries = entryNames.findAll {
+                it == "com/radiance/client/proxy/vulkan/VulkanUiProxy.class"
+                    || it.startsWith("com/radiance/client/proxy/vulkan/ShaderProxy")
+                    || it.startsWith("com/radiance/client/proxy/vulkan/PipelineStateProxy")
+                    || it.startsWith("com/radiance/client/proxy/vulkan/DrawCommandProxy")
+                    || it.startsWith("com/radiance/client/shader/")
+            }
+            def openglUiEntries = entryNames.findAll {
+                it.startsWith("com/radiance/client/opengl_ui/")
+                    || it.startsWith("com/radiance/mixins/opengl_ui/")
+            }
+
+            if (vulkanUiBackend) {
+                if (!vulkanUiEntries.contains("com/radiance/client/proxy/vulkan/VulkanUiProxy.class")
+                    || !entryNames.any { it.startsWith("com/radiance/client/proxy/vulkan/ShaderProxy") }) {
+                    throw new GradleException("Vulkan UI JAR is missing Vulkan UI classes")
+                }
+                if (!openglUiEntries.isEmpty()) {
+                    throw new GradleException("Vulkan UI JAR contains OpenGL UI classes: ${openglUiEntries}")
+                }
+            } else {
+                if (!entryNames.contains("com/radiance/client/opengl_ui/OpenGLUiBridge.class")
+                    || !entryNames.contains("com/radiance/client/opengl_ui/OpenGLUiProxy.class")) {
+                    throw new GradleException("OpenGL UI JAR is missing OpenGL UI classes")
+                }
+                if (!vulkanUiEntries.isEmpty()) {
+                    throw new GradleException("OpenGL UI JAR contains Vulkan UI classes: ${vulkanUiEntries}")
+                }
+
+                def mixinEntry = zip.getEntry("radiance.mixins.json")
+                if (mixinEntry == null) {
+                    throw new GradleException("OpenGL UI JAR is missing radiance.mixins.json")
+                }
+                def mixinConfig = new JsonSlurper().parseText(
+                    new String(zip.getInputStream(mixinEntry).bytes,
+                        java.nio.charset.StandardCharsets.UTF_8))
+                def configuredMixins = (mixinConfig.mixins ?: []) + (mixinConfig.client ?: [])
+                def forbiddenMixins = configuredMixins.findAll {
+                    openglExcludedMixins.contains(it)
+                }
+                if (!forbiddenMixins.isEmpty()) {
+                    throw new GradleException(
+                        "OpenGL UI JAR enables Vulkan UI mixins: ${forbiddenMixins}")
+                }
+            }
+
+            def nativeEntry = zip.getEntry(nativeLibraryName)
+            if (nativeEntry == null) {
+                throw new GradleException("JAR does not contain ${nativeLibraryName}")
+            }
+            def nativeContents = new String(zip.getInputStream(nativeEntry).bytes,
+                java.nio.charset.StandardCharsets.ISO_8859_1)
+            def hasAllNativeVulkanUiMarkers =
+                nativeVulkanUiMarkers.every { nativeContents.contains(it) }
+            def hasAnyNativeVulkanUiMarker =
+                nativeVulkanUiMarkers.any { nativeContents.contains(it) }
+            def hasAllNativeOpenGLUiMarkers =
+                nativeOpenGLUiMarkers.every { nativeContents.contains(it) }
+            def hasAnyNativeOpenGLUiMarker =
+                nativeOpenGLUiMarkers.any { nativeContents.contains(it) }
+            if (vulkanUiBackend
+                && (!hasAllNativeVulkanUiMarkers || hasAnyNativeOpenGLUiMarker)) {
+                throw new GradleException("Packaged native UI backend does not match radianceUiBackend=vulkan")
+            }
+            if (openGLUiBackend
+                && (!hasAllNativeOpenGLUiMarkers || hasAnyNativeVulkanUiMarker)) {
+                throw new GradleException("Packaged native UI backend does not match radianceUiBackend=opengl")
+            }
+        }
+    }
+}
+
+tasks.named("build") {
+    dependsOn tasks.named("verifyProfilerPackaging")
+    dependsOn tasks.named("verifyUiBackendPackaging")
 }
 
 // configure the maven publication

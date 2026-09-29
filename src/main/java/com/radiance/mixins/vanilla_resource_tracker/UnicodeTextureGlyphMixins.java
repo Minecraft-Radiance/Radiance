@@ -2,11 +2,14 @@ package com.radiance.mixins.vanilla_resource_tracker;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.radiance.client.proxy.vulkan.TextureProxy;
+import com.radiance.client.texture.TextureTracker;
+import com.radiance.client.ui.UiBackendBuildConfig;
+import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.IRenderableGlyphExt;
 import java.nio.IntBuffer;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import net.minecraft.client.font.BakedGlyph;
+import net.minecraft.client.font.GlyphRenderer;
 import net.minecraft.client.font.RenderableGlyph;
 import net.minecraft.client.font.UnihexFont;
 import net.minecraft.client.texture.NativeImage;
@@ -51,7 +54,7 @@ public abstract class UnicodeTextureGlyphMixins {
             long srcPointer = MemoryUtil.memAddress(pixels);
 
             int bytesPerPixel = switch (format) {
-                case NativeImage.Format.RGBA -> 4;
+                case RGBA -> 4;
                 default -> throw new IllegalArgumentException("Unsupported format: " + format);
             };
 
@@ -60,10 +63,30 @@ public abstract class UnicodeTextureGlyphMixins {
             int srcOffsetX = 0, srcOffsetY = 0;
 
             assert level == 0;
-            TextureProxy.queueUpload(srcPointer, srcSizeInBytes, srcRowPixels, id, srcOffsetX,
-                srcOffsetY, offsetX, offsetY, width, height, 0);
+            if (UiBackendBuildConfig.OPENGL_UI) {
+                try (NativeImage image = new NativeImage(format, width, height, false)) {
+                    long imagePointer =
+                        ((com.radiance.mixin_related.extensions.vulkan_render_integration.INativeImageExt)
+                            (Object) image).radiance$getPointer();
+                    MemoryUtil.memCopy(srcPointer, imagePointer, srcSizeInBytes);
+                    ((INativeImageExt) (Object) image).radiance$setTarget(
+                        TextureTracker.captureTarget(id));
+                    image.upload(level, offsetX, offsetY, srcOffsetX, srcOffsetY, width, height,
+                        false, false, false, false);
+                }
+            } else {
+                long textureGeneration = TextureTracker.captureTarget(id).generation();
+                TextureProxy.queueUploadRegion(new TextureProxy.TextureUploadRegion(srcPointer,
+                    srcSizeInBytes, srcRowPixels, id, srcOffsetX, srcOffsetY, offsetX, offsetY,
+                    width, height, 0, TextureProxy.UPLOAD_KIND_MAIN, bytesPerPixel,
+                    textureGeneration));
+            }
         } finally {
-            closer.accept(pixels);
+            try {
+                TextureProxy.flushUploadBatch();
+            } finally {
+                closer.accept(pixels);
+            }
         }
 
     }
@@ -71,12 +94,12 @@ public abstract class UnicodeTextureGlyphMixins {
     @Shadow
     public abstract int width();
 
-    /**
-     * @author LJIONG
-     * @reason to pass image targetID
-     */
+
+
+
+
     @Overwrite
-    public BakedGlyph bake(Function<RenderableGlyph, BakedGlyph> function) {
+    public GlyphRenderer bake(Function<RenderableGlyph, GlyphRenderer> function) {
         return function.apply(new IRenderableGlyphExt() {
             public float getOversample() {
                 return 2.0F;

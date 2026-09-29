@@ -18,7 +18,6 @@ public class Module {
     public Map<String, String> dynamicTranslations = new HashMap<>();
     public String dynamicAttributeStoragePath;
 
-    // for GUI
     public double x, y;
 
     @Override
@@ -42,9 +41,66 @@ public class Module {
             cloned.type = attributeConfig.type;
             cloned.name = attributeConfig.name;
             cloned.value = attributeConfig.value;
+            cloned.defaultValue = attributeConfig.defaultValue != null
+                ? attributeConfig.defaultValue
+                : attributeConfig.value;
+            cloned.description = attributeConfig.description;
+            cloned.group = attributeConfig.group;
+            cloned.performanceImpact = attributeConfig.performanceImpact;
+            if (attributeConfig.linkedValues != null) {
+                cloned.linkedValues = new HashMap<>();
+                for (Map.Entry<String, Map<String, String>> entry : attributeConfig.linkedValues.entrySet()) {
+                    if (entry.getValue() == null) {
+                        continue;
+                    }
+                    cloned.linkedValues.put(entry.getKey(), new HashMap<>(entry.getValue()));
+                }
+            }
+            if (attributeConfig.preset != null) {
+                cloned.preset = new AttributeConfig.PresetConfig();
+                cloned.preset.customValue = attributeConfig.preset.customValue;
+                if (attributeConfig.preset.profiles != null) {
+                    cloned.preset.profiles = new HashMap<>();
+                    for (Map.Entry<String, Map<String, String>> entry
+                            : attributeConfig.preset.profiles.entrySet()) {
+                        if (entry.getValue() == null) {
+                            continue;
+                        }
+                        cloned.preset.profiles.put(entry.getKey(), new HashMap<>(entry.getValue()));
+                    }
+                }
+            }
+            if (attributeConfig.visibleWhen != null) {
+                cloned.visibleWhen = new ArrayList<>();
+                for (AttributeConfig.VisibilityCondition condition : attributeConfig.visibleWhen) {
+                    if (condition == null) {
+                        continue;
+                    }
+                    AttributeConfig.VisibilityCondition copiedCondition =
+                            new AttributeConfig.VisibilityCondition();
+                    copiedCondition.attribute = condition.attribute;
+                    copiedCondition.module = condition.module;
+                    if (condition.values != null) {
+                        copiedCondition.values = new ArrayList<>(condition.values);
+                    }
+                    cloned.visibleWhen.add(copiedCondition);
+                }
+            }
             copy.add(cloned);
         }
         return copy;
+    }
+
+    public static void initializeAttributeDefaults(List<AttributeConfig> attributes) {
+        if (attributes == null) {
+            return;
+        }
+        for (AttributeConfig attributeConfig : attributes) {
+            if (attributeConfig == null || attributeConfig.defaultValue != null) {
+                continue;
+            }
+            attributeConfig.defaultValue = attributeConfig.value;
+        }
     }
 
     public Text translateText(String key) {

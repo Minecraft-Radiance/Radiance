@@ -9,6 +9,7 @@ public final class EmissionRecorder {
 
     public static final int MAX_TEXTURES = 4096;
     private static final int TILE_SUBDIVISIONS = 8;
+    private static final float DENSE_RECT_COVERAGE = 0.75f;
 
     private EmissionRecorder() {}
 
@@ -95,14 +96,14 @@ public final class EmissionRecorder {
                         int sampleX = startX + localX;
                         int sampleY = startY + localY;
 
-                        int argb = albedo.getColorArgb(sampleX, sampleY);
+                        int argb = MipmapUtil.getColorArgb(albedo, sampleX, sampleY);
                         float alphaCoverage = decodeAlphaCoverage(argb);
                         if (alphaCoverage <= 0.0f) {
                             continue;
                         }
 
                         float emission = decodeLabPbrEmission(
-                            specular.getColorArgb(sampleX, sampleY));
+                            MipmapUtil.getColorArgb(specular, sampleX, sampleY));
                         if (emission <= 0.0f) {
                             continue;
                         }
@@ -136,6 +137,41 @@ public final class EmissionRecorder {
                 cell.avgB = weightedRadianceB / weightedEmissionSum;
                 grid[gridY][gridX] = cell;
             }
+        }
+
+        return mergeGrid(grid);
+    }
+
+    private static List<EmissionCell> mergeGrid(EmissionCell[][] grid) {
+        int minX = grid[0].length;
+        int minY = grid.length;
+        int maxX = -1;
+        int maxY = -1;
+        int occupied = 0;
+
+        for (int y = 0; y < grid.length; y++) {
+            for (int x = 0; x < grid[y].length; x++) {
+                if (grid[y][x] == null) {
+                    continue;
+                }
+                minX = Math.min(minX, x);
+                minY = Math.min(minY, y);
+                maxX = Math.max(maxX, x);
+                maxY = Math.max(maxY, y);
+                occupied++;
+            }
+        }
+
+        if (occupied == 0) {
+            return new ArrayList<>();
+        }
+
+        int width = maxX - minX + 1;
+        int height = maxY - minY + 1;
+        if (occupied >= width * height * DENSE_RECT_COVERAGE) {
+            List<EmissionCell> mergedCells = new ArrayList<>(1);
+            mergedCells.add(mergeRect(grid, minX, minY, width, height));
+            return mergedCells;
         }
 
         return mergeGreedy(grid);
@@ -213,7 +249,6 @@ public final class EmissionRecorder {
         float v0 = Float.POSITIVE_INFINITY;
         float u1 = Float.NEGATIVE_INFINITY;
         float v1 = Float.NEGATIVE_INFINITY;
-        float totalArea = 0.0f;
         float emissionArea = 0.0f;
         float weightedRadianceR = 0.0f;
         float weightedRadianceG = 0.0f;
@@ -222,6 +257,9 @@ public final class EmissionRecorder {
         for (int y = startY; y < startY + height; y++) {
             for (int x = startX; x < startX + width; x++) {
                 EmissionCell cell = grid[y][x];
+                if (cell == null) {
+                    continue;
+                }
                 float area = Math.max(0.0f, (cell.u1 - cell.u0) * (cell.v1 - cell.v0));
                 float cellEmissionArea = cell.avgEmission * area;
 
@@ -229,7 +267,6 @@ public final class EmissionRecorder {
                 v0 = Math.min(v0, cell.v0);
                 u1 = Math.max(u1, cell.u1);
                 v1 = Math.max(v1, cell.v1);
-                totalArea += area;
                 emissionArea += cellEmissionArea;
                 weightedRadianceR += cell.avgR * cellEmissionArea;
                 weightedRadianceG += cell.avgG * cellEmissionArea;
@@ -242,7 +279,8 @@ public final class EmissionRecorder {
         merged.v0 = v0;
         merged.u1 = u1;
         merged.v1 = v1;
-        merged.avgEmission = totalArea > 0.0f ? emissionArea / totalArea : 0.0f;
+        float mergedArea = Math.max(0.0f, (u1 - u0) * (v1 - v0));
+        merged.avgEmission = mergedArea > 0.0f ? emissionArea / mergedArea : 0.0f;
         if (emissionArea > 0.0f) {
             merged.avgR = weightedRadianceR / emissionArea;
             merged.avgG = weightedRadianceG / emissionArea;

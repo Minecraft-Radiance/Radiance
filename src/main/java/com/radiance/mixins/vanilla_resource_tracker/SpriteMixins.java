@@ -2,6 +2,7 @@ package com.radiance.mixins.vanilla_resource_tracker;
 
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.ISpriteContentsExt;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.ISpriteExt;
+import com.radiance.client.texture.TextureTracker.TextureTarget;
 import net.minecraft.client.texture.Sprite;
 import net.minecraft.client.texture.SpriteContents;
 import org.spongepowered.asm.mixin.Final;
@@ -15,7 +16,7 @@ public abstract class SpriteMixins implements ISpriteExt {
     @Shadow
     private SpriteContents contents;
 
-    public void radiance$setTargetID(int targetID) {
-        ((ISpriteContentsExt) contents).radiance$setTargetID(targetID);
+    public void radiance$setTarget(TextureTarget target) {
+        ((ISpriteContentsExt) contents).radiance$setTarget(target);
     }
 }

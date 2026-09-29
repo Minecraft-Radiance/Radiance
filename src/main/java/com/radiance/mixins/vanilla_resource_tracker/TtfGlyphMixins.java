@@ -1,13 +1,15 @@
 package com.radiance.mixins.vanilla_resource_tracker;
 
+import com.radiance.client.texture.TextureTracker;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.IRenderableGlyphExt;
+import com.radiance.mixin_related.extensions.vanilla_resource_tracker.ITrueTypeFontExt;
 import java.util.function.Function;
-import net.minecraft.client.font.BakedGlyph;
+import net.minecraft.client.font.GlyphRenderer;
 import net.minecraft.client.font.RenderableGlyph;
 import net.minecraft.client.font.TrueTypeFont;
 import net.minecraft.client.texture.NativeImage;
-import org.lwjgl.util.freetype.FT_Face;
+import org.lwjgl.stb.STBTTFontinfo;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Overwrite;
@@ -44,12 +46,12 @@ public class TtfGlyphMixins {
     @Shadow
     private float advance;
 
-    /**
-     * @author LJIONG
-     * @reason to pass image targetID
-     */
+
+
+
+
     @Overwrite
-    public BakedGlyph bake(Function<RenderableGlyph, BakedGlyph> function) {
+    public GlyphRenderer bake(Function<RenderableGlyph, GlyphRenderer> function) {
         return function.apply(new IRenderableGlyphExt() {
 
             @Override
@@ -64,7 +66,7 @@ public class TtfGlyphMixins {
 
             @Override
             public float getOversample() {
-                return field_2336.oversample;
+                return ((ITrueTypeFontExt) field_2336).getOversampleValue();
             }
 
             @Override
@@ -86,13 +88,14 @@ public class TtfGlyphMixins {
             public void upload(int id, int x, int y) {
                 NativeImage nativeImage = new NativeImage(NativeImage.Format.LUMINANCE, width,
                     height, false);
-                FT_Face fT_Face = field_2336.getInfo();
-                if (nativeImage.makeGlyphBitmapSubpixel(fT_Face, glyphIndex)) {
-                    ((INativeImageExt) (Object) nativeImage).radiance$setTargetID(id);
-                    nativeImage.upload(0, x, y, 0, 0, width, height, true);
-                } else {
-                    nativeImage.close();
-                }
+                ITrueTypeFontExt font = (ITrueTypeFontExt) field_2336;
+                STBTTFontinfo fontInfo = font.getFontInfo();
+                nativeImage.makeGlyphBitmapSubpixel(fontInfo, glyphIndex, width, height,
+                    font.getScaleFactorValue(), font.getScaleFactorValue(), font.getShiftXValue(),
+                    font.getShiftYValue(), 0, 0);
+                ((INativeImageExt) (Object) nativeImage).radiance$setTarget(
+                    TextureTracker.captureTarget(id));
+                nativeImage.upload(0, x, y, 0, 0, width, height, false, false, false, true);
             }
 
             @Override

@@ -5,7 +5,6 @@ import static com.radiance.client.option.Options.UPSCALER_QUALITY_NATIVEAA;
 import static com.radiance.client.option.Options.UPSCALER_QUALITY_PERFORMANCE;
 import static com.radiance.client.option.Options.UPSCALER_QUALITY_QUALITY;
 
-import com.mojang.serialization.Codec;
 import net.minecraft.util.StringIdentifiable;
 import net.minecraft.util.TranslatableOption;
 
@@ -15,8 +14,6 @@ public enum UpscalerQuality implements TranslatableOption, StringIdentifiable {
     BALANCED(2, "balanced", UPSCALER_QUALITY_BALANCED),
     PERFORMANCE(3, "performance", UPSCALER_QUALITY_PERFORMANCE);
 
-    public static final Codec<UpscalerQuality> Codec =
-        StringIdentifiable.createCodec(UpscalerQuality::values);
     private final int ordinal;
     private final String name;
     private final String translationKey;

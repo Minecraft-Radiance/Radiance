@@ -38,9 +38,9 @@ public class DrawContextMixins implements IDrawContextExt {
         Matrix4f matrix = matrices.peek().getPositionMatrix();
         VertexConsumer buffer = vertexConsumers.getBuffer(layer);
 
-        buffer.vertex(matrix, x1 + nx, y1 + ny, 0).color(color);
-        buffer.vertex(matrix, x2 + nx, y2 + ny, 0).color(color);
-        buffer.vertex(matrix, x2 - nx, y2 - ny, 0).color(color);
-        buffer.vertex(matrix, x1 - nx, y1 - ny, 0).color(color);
+        buffer.vertex(matrix, x1 + nx, y1 + ny, 0).color(color).next();
+        buffer.vertex(matrix, x2 + nx, y2 + ny, 0).color(color).next();
+        buffer.vertex(matrix, x2 - nx, y2 - ny, 0).color(color).next();
+        buffer.vertex(matrix, x1 - nx, y1 - ny, 0).color(color).next();
     }
 }

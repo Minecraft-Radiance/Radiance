@@ -18,14 +18,8 @@ public class ScreenshotRecorderMixins {
     private static void redirectTakeScreenshot(Framebuffer framebuffer,
         CallbackInfoReturnable<NativeImage> cir) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        int
-            width =
-            mc.getWindow()
-                .getWidth();
-        int
-            height =
-            mc.getWindow()
-                .getHeight();
+        int width = mc.getWindow().getWidth();
+        int height = mc.getWindow().getHeight();
         NativeImage nativeImage = new NativeImage(width, height, false);
         nativeImage.loadFromTextureImage(0, true);
         cir.setReturnValue(nativeImage);

@@ -17,6 +17,9 @@
   "icon": "assets/radiance/icon.png",
   "environment": "client",
   "entrypoints": {
+    "preLaunch": [
+      "com.radiance.client.mod_support.ModSupport"
+    ],
     "client": [
       "com.radiance.client.RadianceClient"
     ],
@@ -29,8 +32,12 @@
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
-    "fabric": "*",
+    "fabric": ">=${fabric_version}",
     "minecraft": "${minecraft_version}"
+  },
+  "breaks": {
+    "distanthorizons": ["<3.3.0", ">3.3.0"],
+    "flywheel": ["<1.0.1", ">1.0.6"]
   },
   "accessWidener": "radiance.accesswidener"
 }

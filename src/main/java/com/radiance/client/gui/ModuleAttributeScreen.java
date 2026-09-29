@@ -57,7 +57,7 @@ public class ModuleAttributeScreen extends Screen {
         }
 
         for (AttributeConfig cfg : list) {
-            if (Pipeline.isRayTracingShaderPackAttribute(module, cfg)) {
+            if (Pipeline.isMainRenderShaderPackAttribute(module, cfg)) {
                 continue;
             }
             List<ClickableWidget> ws = AttributeWidgetUtil.buildWidgets(module, cfg, textRenderer, WIDGET_WIDTH,
@@ -145,7 +145,7 @@ public class ModuleAttributeScreen extends Screen {
     }
 
     @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
+    public boolean mouseScrolled(double mouseX, double mouseY, double verticalAmount) {
         int rowH = 22;
         int contentH = 60 + rows.size() * rowH + 20;
         int minScroll = Math.min(0, this.height - contentH);

@@ -4,14 +4,16 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import net.minecraft.resource.ResourceManager;
 import net.minecraft.resource.ResourceReloader;
+import net.minecraft.util.profiler.Profiler;
 
 public class AuxiliaryTextureReloader implements ResourceReloader {
 
     @Override
     public CompletableFuture<Void> reload(Synchronizer synchronizer, ResourceManager manager,
-        Executor prepareExecutor, Executor applyExecutor) {
-        return AuxiliaryTextures.prepareDecodedImagesAsync(manager, prepareExecutor)
+        Profiler prepareProfiler, Profiler applyProfiler, Executor prepareExecutor,
+        Executor applyExecutor) {
+        return AuxiliaryTextures.decodeImagesAsync(manager, prepareExecutor)
             .thenCompose(synchronizer::whenPrepared)
-            .thenAcceptAsync(AuxiliaryTextures::applyPreparedImages, applyExecutor);
+            .thenAcceptAsync(AuxiliaryTextures::applyDecodedImages, applyExecutor);
     }
 }

@@ -64,7 +64,7 @@ public class ShaderPackScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+        this.renderBackground(context);
         super.render(context, mouseX, mouseY, delta);
         context.drawCenteredTextWithShadow(textRenderer, Text.translatable(TITLE), this.width / 2, 16, 0xFFFFFF);
 
@@ -128,7 +128,7 @@ public class ShaderPackScreen extends Screen {
 
     class ShaderPackListWidget extends AlwaysSelectedEntryListWidget<ShaderPackListWidget.ShaderPackEntry> {
         ShaderPackListWidget(MinecraftClient client, int width, int height, int y, int itemHeight) {
-            super(client, width, height, y, itemHeight);
+            super(client, width, height, y, height, itemHeight);
             this.centerListVertically = false;
 
             for (Pipeline.ShaderPackChoice choice : entries) {
@@ -218,7 +218,9 @@ public class ShaderPackScreen extends Screen {
                     return true;
                 }
                 ShaderPackListWidget.this.setSelected(this);
-                Pipeline.setShaderPack(this.choice, false);
+                if (Pipeline.setShaderPack(this.choice, false)) {
+                    Pipeline.savePipeline();
+                }
                 return super.mouseClicked(mouseX, mouseY, button);
             }
 

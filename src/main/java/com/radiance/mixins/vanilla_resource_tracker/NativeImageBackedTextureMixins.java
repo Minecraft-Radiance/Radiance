@@ -1,5 +1,6 @@
 package com.radiance.mixins.vanilla_resource_tracker;
 
+import com.radiance.client.texture.TextureTracker;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.client.texture.NativeImageBackedTexture;
@@ -18,6 +19,6 @@ public abstract class NativeImageBackedTextureMixins extends AbstractTextureMixi
     @Inject(method = "upload()V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/texture/NativeImage;upload(IIIZ)V"))
     public void setTargetIDBeforeUpload(CallbackInfo ci) {
         int id = getGlId();
-        ((INativeImageExt) (Object) image).radiance$setTargetID(id);
+        ((INativeImageExt) (Object) image).radiance$setTarget(TextureTracker.captureTarget(id));
     }
 }

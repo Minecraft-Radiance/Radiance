@@ -20,26 +20,28 @@ public class ItemRendererMixins {
 
     @Inject(method =
         "getArmorGlintConsumer(Lnet/minecraft/client/render/VertexConsumerProvider;Lnet/minecraft/client/render/RenderLayer;"
-            +
-            "Z)Lnet/minecraft/client/render/VertexConsumer;", at = @At(value = "HEAD"), cancellable = true)
+            + "ZZ)Lnet/minecraft/client/render/VertexConsumer;", at = @At(value = "HEAD"),
+        cancellable = true)
     private static void redirectGetArmorGlintConsumer(VertexConsumerProvider provider,
         RenderLayer layer,
+        boolean solid,
         boolean glint,
         CallbackInfoReturnable<VertexConsumer> cir) {
         VertexConsumer vertexConsumer = provider.getBuffer(layer);
+        RenderLayer glintRenderLayer = solid ? RenderLayer.getArmorGlint()
+            : RenderLayer.getArmorEntityGlint();
 
         if (vertexConsumer instanceof PBRVertexConsumer pbrVertexConsumer) {
             if (glint) {
                 cir.setReturnValue(new PBRVertexConsumer.GLint(pbrVertexConsumer,
-                    RenderLayer.getArmorEntityGlint()));
+                    glintRenderLayer));
             } else {
                 cir.setReturnValue(vertexConsumer);
             }
         } else {
             if (glint) {
-                cir.setReturnValue(
-                    VertexConsumers.union(provider.getBuffer(RenderLayer.getArmorEntityGlint()),
-                        vertexConsumer));
+                cir.setReturnValue(VertexConsumers.union(provider.getBuffer(glintRenderLayer),
+                    vertexConsumer));
             } else {
                 cir.setReturnValue(vertexConsumer);
             }
@@ -64,7 +66,8 @@ public class ItemRendererMixins {
         } else {
             cir.setReturnValue(VertexConsumers.union(
                 new OverlayVertexConsumer(provider.getBuffer(RenderLayer.getGlint()),
-                    entry,
+                    entry.getPositionMatrix(),
+                    entry.getNormalMatrix(),
                     0.0078125F), vertexConsumer));
         }
     }
@@ -107,6 +110,39 @@ public class ItemRendererMixins {
                         VertexConsumers.union(vertexConsumers.getBuffer(
                                 solid ? RenderLayer.getGlint() : RenderLayer.getEntityGlint()),
                             vertexConsumer));
+            } else {
+                cir.setReturnValue(vertexConsumer);
+            }
+        }
+    }
+
+    @Inject(method =
+        "getDirectItemGlintConsumer(Lnet/minecraft/client/render/VertexConsumerProvider;Lnet/minecraft/client/render/RenderLayer;"
+            +
+            "ZZ)Lnet/minecraft/client/render/VertexConsumer;",
+        at = @At(value = "HEAD"),
+        cancellable = true)
+    private static void redirectGetDirectItemGlintConsumer(VertexConsumerProvider vertexConsumers,
+        RenderLayer layer,
+        boolean solid,
+        boolean glint,
+        CallbackInfoReturnable<VertexConsumer> cir) {
+        VertexConsumer vertexConsumer = vertexConsumers.getBuffer(layer);
+
+        if (vertexConsumer instanceof PBRVertexConsumer pbrVertexConsumer) {
+            if (glint) {
+                cir.setReturnValue(
+                    new PBRVertexConsumer.GLint(pbrVertexConsumer,
+                        solid ? RenderLayer.getGlint() : RenderLayer.getDirectEntityGlint()));
+            } else {
+                cir.setReturnValue(vertexConsumer);
+            }
+        } else {
+            if (glint) {
+                cir.setReturnValue(
+                    VertexConsumers.union(vertexConsumers.getBuffer(
+                            solid ? RenderLayer.getGlint() : RenderLayer.getDirectEntityGlint()),
+                        vertexConsumer));
             } else {
                 cir.setReturnValue(vertexConsumer);
             }
