@@ -7,13 +7,13 @@ public class DrawCommandProxy {
 
     public static class Overlay {
 
-        // region <vulkan>
+
         public static native void vkCmdClearEntireColorAttachment();
 
         public static native void vkCmdClearEntireDepthStencilAttachment(int mask);
-        // endregion
 
-        // region <openGL>
+
+
         public static void glClear(int mask) {
             if ((mask & GL11.GL_COLOR_BUFFER_BIT) > 0) {
                 vkCmdClearEntireColorAttachment();
@@ -30,6 +30,6 @@ public class DrawCommandProxy {
                 vkCmdClearEntireDepthStencilAttachment(vkMask);
             }
         }
-        // endregion
+
     }
 }

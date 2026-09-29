@@ -133,7 +133,7 @@ public class WindowMixins {
         at = @At(value = "INVOKE", target = "Lorg/lwjgl/glfw/GLFW;glfwSetWindowSizeLimits(JIIII)V", remap = false))
     public void cancelGetMaxSupportedTextureSize(long window, int minwidth, int minheight,
         int maxwidth, int maxheight) {
-        // Don't allow user to set window size manually
+
     }
 
     @Inject(method = "onFramebufferSizeChanged(JII)V",

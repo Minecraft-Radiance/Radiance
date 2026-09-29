@@ -16,7 +16,15 @@ public class MipmapUtil {
     private MipmapUtil() {
     }
 
-    // straight forward, need speed up
+    public static int getColorArgb(NativeImage image, int x, int y) {
+        return ColorHelper.Abgr.toAbgr(image.getColor(x, y));
+    }
+
+    public static void setColorArgb(NativeImage image, int x, int y, int color) {
+        image.setColor(x, y, ColorHelper.Abgr.toAbgr(color));
+    }
+
+
     public static NativeImage getSpecificMipmapLevelImage(NativeImage original, int targetLevel) {
         if (targetLevel == 0) {
             NativeImage ret = new NativeImage(original.getFormat(), original.getWidth(),
@@ -43,10 +51,10 @@ public class MipmapUtil {
 
             for (int x = 0; x < newWidth; x++) {
                 for (int y = 0; y < newHeight; y++) {
-                    nextLevel.setColorArgb(x, y, blend(currentSource.getColorArgb(x * 2, y * 2),
-                        currentSource.getColorArgb(x * 2 + 1, y * 2),
-                        currentSource.getColorArgb(x * 2, y * 2 + 1),
-                        currentSource.getColorArgb(x * 2 + 1, y * 2 + 1), bl));
+                    setColorArgb(nextLevel, x, y, blend(getColorArgb(currentSource, x * 2, y * 2),
+                        getColorArgb(currentSource, x * 2 + 1, y * 2),
+                        getColorArgb(currentSource, x * 2, y * 2 + 1),
+                        getColorArgb(currentSource, x * 2 + 1, y * 2 + 1), bl));
                 }
             }
 
@@ -82,10 +90,10 @@ public class MipmapUtil {
 
             for (int x = 0; x < next.getWidth(); x++) {
                 for (int y = 0; y < next.getHeight(); y++) {
-                    next.setColorArgb(x, y, blend(previous.getColorArgb(x * 2, y * 2),
-                        previous.getColorArgb(x * 2 + 1, y * 2),
-                        previous.getColorArgb(x * 2, y * 2 + 1),
-                        previous.getColorArgb(x * 2 + 1, y * 2 + 1), hasAlpha));
+                    setColorArgb(next, x, y, blend(getColorArgb(previous, x * 2, y * 2),
+                        getColorArgb(previous, x * 2 + 1, y * 2),
+                        getColorArgb(previous, x * 2, y * 2 + 1),
+                        getColorArgb(previous, x * 2 + 1, y * 2 + 1), hasAlpha));
                 }
             }
 
@@ -115,11 +123,11 @@ public class MipmapUtil {
 
                     for (int l = 0; l < j; l++) {
                         for (int m = 0; m < k; m++) {
-                            nativeImage2.setColorArgb(l, m,
-                                blend(nativeImage.getColorArgb(l * 2, m * 2),
-                                    nativeImage.getColorArgb(l * 2 + 1, m * 2),
-                                    nativeImage.getColorArgb(l * 2, m * 2 + 1),
-                                    nativeImage.getColorArgb(l * 2 + 1, m * 2 + 1), bl));
+                            setColorArgb(nativeImage2, l, m,
+                                blend(getColorArgb(nativeImage, l * 2, m * 2),
+                                    getColorArgb(nativeImage, l * 2 + 1, m * 2),
+                                    getColorArgb(nativeImage, l * 2, m * 2 + 1),
+                                    getColorArgb(nativeImage, l * 2 + 1, m * 2 + 1), bl));
                         }
                     }
 
@@ -134,7 +142,7 @@ public class MipmapUtil {
     public static boolean hasAlpha(NativeImage image) {
         for (int i = 0; i < image.getWidth(); i++) {
             for (int j = 0; j < image.getHeight(); j++) {
-                if (ColorHelper.getAlpha(image.getColorArgb(i, j)) == 0) {
+                if (ColorHelper.Argb.getAlpha(getColorArgb(image, i, j)) == 0) {
                     return true;
                 }
             }
@@ -174,12 +182,13 @@ public class MipmapUtil {
 
         if (checkAlpha) {
             float alphaCoverage =
-                (ColorHelper.getAlpha(one) + ColorHelper.getAlpha(two) + ColorHelper.getAlpha(three)
-                    + ColorHelper.getAlpha(four)) / (4.0F * 255.0F);
+                (ColorHelper.Argb.getAlpha(one) + ColorHelper.Argb.getAlpha(two)
+                    + ColorHelper.Argb.getAlpha(three)
+                    + ColorHelper.Argb.getAlpha(four)) / (4.0F * 255.0F);
             resA = alphaCoverage >= CUTOUT_ALPHA_COVERAGE_THRESHOLD ? 255 : 0;
         }
 
-        return ColorHelper.getArgb(resA, resR, resG, resB);
+        return ColorHelper.Argb.getArgb(resA, resR, resG, resB);
     }
 
     public static int getColorComponent(int one, int two, int three, int four, int bits) {

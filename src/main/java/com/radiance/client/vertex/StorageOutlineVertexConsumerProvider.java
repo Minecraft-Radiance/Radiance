@@ -57,7 +57,7 @@ public class StorageOutlineVertexConsumerProvider implements VertexConsumerProvi
 
         public OutlineVertexConsumer(VertexConsumer delegate, int red, int green, int blue,
             int alpha) {
-            this(delegate, ColorHelper.getArgb(alpha, red, green, blue));
+            this(delegate, ColorHelper.Argb.getArgb(alpha, red, green, blue));
         }
 
         @Override

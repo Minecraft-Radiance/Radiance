@@ -2,6 +2,7 @@ package com.radiance.mixins.vanilla_resource_tracker;
 
 import com.radiance.client.texture.IdentifierInputStream;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
+import com.radiance.client.texture.TextureTracker.TextureTarget;
 import java.io.InputStream;
 import net.minecraft.client.texture.NativeImage;
 import net.minecraft.util.Identifier;
@@ -15,7 +16,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 public abstract class NativeImageMixins implements INativeImageExt {
 
     @Unique
-    private int targetID = -1;
+    private TextureTarget target;
 
     @Unique
     private Identifier identifier = null;
@@ -46,13 +47,13 @@ public abstract class NativeImageMixins implements INativeImageExt {
     }
 
     @Override
-    public int radiance$getTargetID() {
-        return targetID;
+    public TextureTarget radiance$getTarget() {
+        return target;
     }
 
     @Override
-    public void radiance$setTargetID(int id) {
-        this.targetID = id;
+    public void radiance$setTarget(TextureTarget target) {
+        this.target = target;
     }
 
     @Override

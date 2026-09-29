@@ -52,14 +52,14 @@ public class BlockModelRendererMixins {
         float g;
         float h;
         float emission;
-        if (quad.hasTint()) {
-            int i = this.colors.getColor(state, world, pos, quad.getTintIndex());
+        if (quad.hasColor()) {
+            int i = this.colors.getColor(state, world, pos, quad.getColorIndex());
             f = (i >> 16 & 0xFF) / 255.0F;
             g = (i >> 8 & 0xFF) / 255.0F;
             h = (i & 0xFF) / 255.0F;
 
             emission = ((IBlockColorsExt) this.colors).radiance$getEmission(state, world, pos,
-                quad.getTintIndex());
+                quad.getColorIndex());
         } else {
             f = 1.0F;
             g = 1.0F;

@@ -21,21 +21,21 @@ public class BlockColorsMixins implements IBlockColorsExt {
     @Shadow
     private IdList<BlockColorProvider> providers;
 
-//    @Redirect(method = "create()Lnet/minecraft/client/color/block/BlockColors;",
-//              at = @At(value = "INVOKE",
-//                       target = "Lnet/minecraft/client/color/block/BlockColors;registerColorProvider" +
-//                           "(Lnet/minecraft/client/color/block/BlockColorProvider;[Lnet/minecraft/block/Block;)V",
-//                       ordinal = 7))
-//    private static void addEmissionToRedstoneWire(BlockColors blockColors, BlockColorProvider provider, Block[] blocks) {
-//        BlockColorEmissionProvider blockColorEmissionProvider = (state, world, pos, tintIndex) -> {
-//            int power = state.get(RedstoneWireBlock.POWER);
-//            int color = RedstoneWireBlock.getWireColor(power);
-//            float emission = 10; // (float) (power * 0.5);
-//            return new Pair<>(color, emission);
-//        };
-//
-//        blockColors.registerColorProvider(blockColorEmissionProvider, Blocks.REDSTONE_WIRE);
-//    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     @Override
     public float radiance$getEmission(BlockState state, @Nullable BlockRenderView world,

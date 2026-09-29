@@ -9,7 +9,7 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(Screen.class)
 public class ScreenMixins {
 
-    @Redirect(method = "applyBlur()V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gl/Framebuffer;beginWrite(Z)V"))
+    @Redirect(method = "applyBlur(F)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gl/Framebuffer;beginWrite(Z)V"))
     public void cancelFrameBufferInApplyBlur(Framebuffer instance, boolean setViewport) {
 
     }

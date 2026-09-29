@@ -1,11 +1,13 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.radiance.client.render.CustomParticleRenderer;
+import com.radiance.client.proxy.world.EntityProxy;
+import net.minecraft.client.render.BuiltBuffer;
 import net.minecraft.client.render.RenderLayer;
 import net.minecraft.client.render.RenderPhase;
 import net.minecraft.client.render.VertexFormat;
 import net.minecraft.client.render.VertexFormats;
 import net.minecraft.util.Identifier;
-import net.minecraft.util.TriState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Mutable;
@@ -38,8 +40,20 @@ public class RenderLayerMixins {
                     .target(RenderLayer.WEATHER_TARGET)
                     .texture(new RenderPhase.Texture(
                         Identifier.ofVanilla("textures/block/lightning.png"),
-                        TriState.FALSE,
+                        false,
                         false))
                     .build(false));
+    }
+
+    @Inject(method = "draw(Lnet/minecraft/client/render/BuiltBuffer;)V", at = @At("HEAD"),
+        cancellable = true)
+    private void captureCustomParticleDraw(BuiltBuffer buffer, CallbackInfo ci) {
+        if (EntityProxy.captureWorldRenderLayer((RenderLayer) (Object) this, buffer)) {
+            ci.cancel();
+            return;
+        }
+        if (CustomParticleRenderer.capture((RenderLayer) (Object) this, buffer)) {
+            ci.cancel();
+        }
     }
 }

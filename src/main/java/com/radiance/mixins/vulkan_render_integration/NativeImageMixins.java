@@ -1,10 +1,13 @@
 package com.radiance.mixins.vulkan_render_integration;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.radiance.client.profiler.Profiler;
 import com.radiance.client.proxy.vulkan.RendererProxy;
 import com.radiance.client.proxy.vulkan.TextureProxy;
 import com.radiance.client.texture.AuxiliaryTextures;
+import com.radiance.client.texture.TextureTracker.TextureTarget;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
+import java.util.List;
 import java.util.function.IntUnaryOperator;
 import net.minecraft.client.texture.NativeImage;
 import org.lwjgl.system.MemoryUtil;
@@ -44,32 +47,72 @@ public abstract class NativeImageMixins implements
     @Shadow
     public abstract NativeImage.Format getFormat();
 
-    @Inject(method = "uploadInternal(IIIIIIIZ)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/texture/NativeImage;checkAllocated()V", shift = At.Shift.AFTER), cancellable = true)
+    @Inject(method = "uploadInternal(IIIIIIIZZZZ)V",
+        at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/texture/NativeImage;checkAllocated()V",
+            shift = At.Shift.AFTER),
+        cancellable = true)
     public void redirectUploadInternal(int level, int offsetX, int offsetY, int unpackSkipPixels,
-        int unpackSkipRows, int regionWidth, int regionHeight, boolean blur, CallbackInfo ci) {
+        int unpackSkipRows, int regionWidth, int regionHeight, boolean blur, boolean clamp,
+        boolean mipmap, boolean close, CallbackInfo ci) {
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.NativeImage.uploadInternal");
+        }
         try {
-            INativeImageExt self = (INativeImageExt) this;
-            int targetId = self.radiance$getTargetID();
+            try {
+                INativeImageExt nativeImageExt = (INativeImageExt) this;
+                TextureTarget target = nativeImageExt.radiance$getTarget();
+                if (target == null) {
+                    throw new IllegalStateException("Native image upload has no target texture");
+                }
 
-            AuxiliaryTextures.loadAndUpload((NativeImage) (Object) this, self, level, offsetX,
-                offsetY, unpackSkipPixels, unpackSkipRows, regionWidth, regionHeight, blur);
+                List<TextureProxy.TextureUploadRegion> auxiliaryRegions =
+                    AuxiliaryTextures.buildUploadRegions((NativeImage) (Object) this, nativeImageExt, level,
+                        offsetX, offsetY, unpackSkipPixels, unpackSkipRows, regionWidth, regionHeight);
 
-            TextureProxy.queueUpload(pointer, (int) sizeBytes, width, targetId, unpackSkipPixels,
-                unpackSkipRows, offsetX, offsetY, regionWidth, regionHeight, level);
+                if (Profiler.ENABLED) {
+                    Profiler.enter("java.NativeImage.queueTextureUpload");
+                }
+                try {
+                    TextureProxy.TextureUploadRegion mainRegion =
+                        new TextureProxy.TextureUploadRegion(pointer, (int) sizeBytes, width,
+                            target.id(), unpackSkipPixels, unpackSkipRows, offsetX, offsetY,
+                            regionWidth, regionHeight, level, TextureProxy.UPLOAD_KIND_MAIN, format.getChannelCount(),
+                            target.generation());
+                    if (auxiliaryRegions.isEmpty()) {
+                        TextureProxy.queueUploadRegion(mainRegion);
+                    } else {
+                        TextureProxy.queueUploads(mainRegion, auxiliaryRegions);
+                    }
+                } finally {
+                    if (Profiler.ENABLED) {
+                        Profiler.exit();
+                    }
+                }
+            } finally {
+                if (close) {
+                    try {
+                        TextureProxy.flushUploadBatch();
+                    } finally {
+                        this.close();
+                    }
+                }
+            }
+            ci.cancel();
         } finally {
-            if (blur) {
-                this.close();
+            if (Profiler.ENABLED) {
+                Profiler.exit();
             }
         }
-        ci.cancel();
     }
 
     @Inject(method = "close()V", at = @At(value = "HEAD"))
     public void closeImage(CallbackInfo ci) {
-        INativeImageExt self = (INativeImageExt) this;
-        NativeImage specularImage = self.radiance$getSpecularNativeImage();
-        NativeImage normalImage = self.radiance$getNormalNativeImage();
-        NativeImage flagImage = self.radiance$getFlagNativeImage();
+        TextureProxy.flushUploadBatch();
+        INativeImageExt nativeImageExt = (INativeImageExt) this;
+        NativeImage specularImage = nativeImageExt.radiance$getSpecularNativeImage();
+        NativeImage normalImage = nativeImageExt.radiance$getNormalNativeImage();
+        NativeImage flagImage = nativeImageExt.radiance$getFlagNativeImage();
         if (specularImage != null) {
             specularImage.close();
         }
@@ -91,36 +134,37 @@ public abstract class NativeImageMixins implements
             return (NativeImage) (Object) this;
         }
 
-        NativeImage dest = new NativeImage(targetFormat, targetWidth, targetHeight, false);
+        NativeImage destinationImage = new NativeImage(targetFormat, targetWidth, targetHeight, false);
 
-        int srcChannels = this.format.getChannelCount();
-        int destChannels = targetFormat.getChannelCount();
-        int commonChannels = Math.min(srcChannels, destChannels);
+        int sourceChannelCount = this.format.getChannelCount();
+        int destinationChannelCount = targetFormat.getChannelCount();
+        int sharedChannelCount = Math.min(sourceChannelCount, destinationChannelCount);
 
         for (int y = 0; y < targetHeight; y++) {
             for (int x = 0; x < targetWidth; x++) {
                 int sampleX = (x < this.width) ? x : (x % this.width);
                 int sampleY = (y < this.height) ? y : (y % this.height);
 
-                long srcPixelPtr =
-                    this.pointer + (sampleX + (long) sampleY * this.width) * srcChannels;
-                long destPixelPtr =
-                    ((com.radiance.mixin_related.extensions.vulkan_render_integration.INativeImageExt) (Object) dest).radiance$getPointer()
-                        + (long) (x + (long) y * targetWidth) * destChannels;
+                long sourcePixelPointer =
+                    this.pointer + (sampleX + (long) sampleY * this.width) * sourceChannelCount;
+                long destinationPixelPointer = ((com.radiance.mixin_related.extensions
+                    .vulkan_render_integration.INativeImageExt) (Object) destinationImage).radiance$getPointer()
+                    + (long) (x + (long) y * targetWidth) * destinationChannelCount;
 
-                for (int c = 0; c < commonChannels; c++) {
-                    byte val = MemoryUtil.memGetByte(srcPixelPtr + c);
-                    MemoryUtil.memPutByte(destPixelPtr + c, val);
+                for (int channelIndex = 0; channelIndex < sharedChannelCount; channelIndex++) {
+                    byte channelValue = MemoryUtil.memGetByte(sourcePixelPointer + channelIndex);
+                    MemoryUtil.memPutByte(destinationPixelPointer + channelIndex, channelValue);
                 }
 
-                if (destChannels > srcChannels) {
-                    for (int c = srcChannels; c < destChannels; c++) {
-                        MemoryUtil.memPutByte(destPixelPtr + c, (byte) 0);
+                if (destinationChannelCount > sourceChannelCount) {
+                    for (int channelIndex = sourceChannelCount; channelIndex < destinationChannelCount;
+                        channelIndex++) {
+                        MemoryUtil.memPutByte(destinationPixelPointer + channelIndex, (byte) 0);
                     }
                 }
             }
         }
-        return dest;
+        return destinationImage;
     }
 
     @Override
@@ -153,9 +197,10 @@ public abstract class NativeImageMixins implements
         RendererProxy.takeScreenshot(true, this.width, this.height, this.format.getChannelCount(),
             this.pointer);
         if (removeAlpha && this.format.hasAlpha()) {
-            for (int i = 0; i < this.getHeight(); i++) {
-                for (int j = 0; j < this.getWidth(); j++) {
-                    this.setColor(j, i, this.getColor(j, i) | 255 << this.format.getAlphaOffset());
+            for (int row = 0; row < this.getHeight(); row++) {
+                for (int column = 0; column < this.getWidth(); column++) {
+                    this.setColor(column, row,
+                        this.getColor(column, row) | 255 << this.format.getAlphaOffset());
                 }
             }
         }
@@ -169,9 +214,10 @@ public abstract class NativeImageMixins implements
         RendererProxy.takeScreenshot(false, this.width, this.height, this.format.getChannelCount(),
             this.pointer);
         if (removeAlpha && this.format.hasAlpha()) {
-            for (int i = 0; i < this.getHeight(); i++) {
-                for (int j = 0; j < this.getWidth(); j++) {
-                    this.setColor(j, i, this.getColor(j, i) | 255 << this.format.getAlphaOffset());
+            for (int row = 0; row < this.getHeight(); row++) {
+                for (int column = 0; column < this.getWidth(); column++) {
+                    this.setColor(column, row,
+                        this.getColor(column, row) | 255 << this.format.getAlphaOffset());
                 }
             }
         }

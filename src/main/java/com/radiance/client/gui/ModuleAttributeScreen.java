@@ -27,14 +27,19 @@ public class ModuleAttributeScreen extends Screen {
     private static final int VEC3_GAP = 2;
 
     private static final int HEADER_HEIGHT = 32;
+    private static final int ROW_HEIGHT = 22;
+    private static final int VIEWPORT_BOTTOM_PADDING = 24;
     private static final String MODULE_ATTRIBUTE_SCREEN_NO_ATTRIBUTES = "module_attribute_screen.no_attributes";
 
     private final Screen parent;
     private final Module module;
 
     private final List<Row> rows = new ArrayList<>();
+    private ButtonWidget resetAllButton;
 
     private int scrollY = 0;
+    private boolean scrollbarDragging = false;
+    private int scrollbarDragOffsetY = 0;
 
     public ModuleAttributeScreen(Screen parent, Module module) {
         super(module.translateText(module.name));
@@ -44,29 +49,40 @@ public class ModuleAttributeScreen extends Screen {
 
     @Override
     protected void init() {
+        rebuild();
+    }
+
+    private void rebuild() {
+        clearChildren();
         addDrawableChild(
             ButtonWidget.builder(Text.translatable("Back"), button -> close())
                 .dimensions(10, 6, 60, 20)
                 .build());
+        resetAllButton = addDrawableChild(
+            AttributeWidgetUtil.buildGlobalResetButton(75, 6, this::resetAllAttributes));
 
         rows.clear();
 
         List<AttributeConfig> list = module.attributeConfigs;
         if (list == null || list.isEmpty()) {
+            syncResetAllButton();
             return;
         }
 
         for (AttributeConfig cfg : list) {
-            if (Pipeline.isRayTracingShaderPackAttribute(module, cfg)) {
+            if (Pipeline.isMainRenderShaderPackAttribute(module, cfg)) {
                 continue;
             }
-            List<ClickableWidget> ws = AttributeWidgetUtil.buildWidgets(module, cfg, textRenderer, WIDGET_WIDTH,
-                VEC3_COMPONENT_WIDTH);
+            List<ClickableWidget> ws = AttributeWidgetUtil.buildWidgets(module, cfg, textRenderer,
+                WIDGET_WIDTH, VEC3_COMPONENT_WIDTH, this::rebuild);
+            Row row = new Row(cfg, ws);
+            setRowVisible(row, Pipeline.isAttributeVisible(module, cfg));
             for (ClickableWidget w : ws) {
                 addDrawableChild(w);
             }
-            rows.add(new Row(cfg, ws));
+            rows.add(row);
         }
+        syncResetAllButton();
     }
 
     @Override
@@ -78,26 +94,50 @@ public class ModuleAttributeScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+        syncResetAllButton();
         super.render(context, mouseX, mouseY, delta);
 
         context.drawTextWithShadow(textRenderer, module.translateText(module.name), 10, HEADER_HEIGHT + 8, 0xFFEAEAEA);
 
-        if (rows.isEmpty()) {
-            context.drawTextWithShadow(textRenderer, MODULE_ATTRIBUTE_SCREEN_NO_ATTRIBUTES, 10, 60, 0xFFB0B0B0);
+        int visibleRowCount = visibleRowCount();
+
+        if (visibleRowCount == 0) {
+            for (Row row : rows) {
+                setRowVisible(row, false);
+            }
+            context.drawTextWithShadow(textRenderer,
+                Text.translatable(MODULE_ATTRIBUTE_SCREEN_NO_ATTRIBUTES), 10, 60, 0xFFB0B0B0);
             return;
         }
 
-        int baseY = (HEADER_HEIGHT + 28) + scrollY;
-        int rowH = 22;
+        scrollY = AttributeWidgetUtil.clampScroll(scrollY, viewportHeight(),
+            visibleContentHeight());
+        int baseY = listTopY() + scrollY;
+        int visibleIndex = 0;
+        AttributeConfig hoveredConfig = null;
+        AttributeWidgetUtil.TooltipFocus hoveredFocus = null;
 
-        for (int i = 0; i < rows.size(); i++) {
-            Row row = rows.get(i);
-            int y = baseY + i * rowH;
+        for (Row row : rows) {
+            boolean rowVisible = Pipeline.isAttributeVisible(module, row.cfg);
+            if (!rowVisible) {
+                setRowVisible(row, false);
+                continue;
+            }
 
-            boolean visible = y >= (HEADER_HEIGHT + 18) && y <= (this.height - 24);
-            if (visible) {
-                context.drawTextWithShadow(textRenderer, module.translateText(row.cfg.name), ROW_LEFT, y + 6,
-                    0xFFD0D0D0);
+            int y = baseY + visibleIndex * ROW_HEIGHT;
+            visibleIndex++;
+
+            boolean withinViewport = y >= listTopY() && y <= viewportBottomY();
+            Text label = module.translateText(row.cfg.name);
+            AttributeWidgetUtil.TooltipFocus rowFocus = AttributeWidgetUtil.tooltipFocus(ROW_LEFT,
+                y, this.width - ROW_RIGHT, y + ROW_HEIGHT);
+            if (withinViewport) {
+                context.drawTextWithShadow(textRenderer, label, ROW_LEFT, y + 6, 0xFFD0D0D0);
+                if (mouseX >= ROW_LEFT && mouseX <= ROW_LEFT + textRenderer.getWidth(label)
+                    && mouseY >= y + 4 && mouseY <= y + 18) {
+                    hoveredConfig = row.cfg;
+                    hoveredFocus = rowFocus;
+                }
             }
 
             layoutRowWidgets(row, y);
@@ -105,9 +145,14 @@ public class ModuleAttributeScreen extends Screen {
             String type = row.cfg.type == null ? "" : row.cfg.type.toLowerCase(Locale.ROOT);
             boolean doBorder = AttributeWidgetUtil.shouldValidateBorder(type);
 
+            AttributeWidgetUtil.syncWidgetVisibility(row.widgets, withinViewport);
+
             for (ClickableWidget w : row.widgets) {
-                w.visible = visible;
-                w.active = visible;
+                if (withinViewport && !AttributeWidgetUtil.isResetButton(w)
+                    && w.isMouseOver(mouseX, mouseY)) {
+                    hoveredConfig = row.cfg;
+                    hoveredFocus = rowFocus;
+                }
 
                 if (!doBorder) {
                     continue;
@@ -135,6 +180,14 @@ public class ModuleAttributeScreen extends Screen {
                 }
             }
         }
+
+        AttributeWidgetUtil.drawVerticalScrollbar(context, this.width, listTopY(),
+            viewportHeight(), visibleContentHeight(), scrollY, scrollbarDragging, mouseX, mouseY);
+
+        if (hoveredConfig != null) {
+            AttributeWidgetUtil.drawAttributeTooltip(context, textRenderer, module, hoveredConfig,
+                hoveredFocus, mouseX, mouseY);
+        }
     }
 
     private void layoutRowWidgets(Row row, int y) {
@@ -146,18 +199,97 @@ public class ModuleAttributeScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        int rowH = 22;
-        int contentH = 60 + rows.size() * rowH + 20;
-        int minScroll = Math.min(0, this.height - contentH);
-
-        scrollY += (int) (verticalAmount * 10);
-        if (scrollY > 0) {
-            scrollY = 0;
-        }
-        if (scrollY < minScroll) {
-            scrollY = minScroll;
-        }
+        scrollY = AttributeWidgetUtil.clampScroll(scrollY + (int) (verticalAmount * 10),
+            viewportHeight(), visibleContentHeight());
         return true;
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0 && AttributeWidgetUtil.isVerticalScrollbarMouseOver(mouseX, mouseY,
+            this.width, listTopY(), viewportHeight(), visibleContentHeight())) {
+            scrollbarDragging = true;
+            scrollbarDragOffsetY = AttributeWidgetUtil.verticalScrollbarDragOffsetY(mouseY,
+                listTopY(), viewportHeight(), visibleContentHeight(), scrollY);
+            scrollY = AttributeWidgetUtil.scrollFromVerticalScrollbarDrag(mouseY,
+                scrollbarDragOffsetY, listTopY(), viewportHeight(), visibleContentHeight());
+            return true;
+        }
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double deltaX,
+        double deltaY) {
+        if (scrollbarDragging && button == 0) {
+            scrollY = AttributeWidgetUtil.scrollFromVerticalScrollbarDrag(mouseY,
+                scrollbarDragOffsetY, listTopY(), viewportHeight(), visibleContentHeight());
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, deltaX, deltaY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0 && scrollbarDragging) {
+            scrollbarDragging = false;
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    private int listTopY() {
+        return HEADER_HEIGHT + 28;
+    }
+
+    private int viewportBottomY() {
+        return this.height - VIEWPORT_BOTTOM_PADDING;
+    }
+
+    private int viewportHeight() {
+        return Math.max(0, viewportBottomY() - listTopY());
+    }
+
+    private int visibleRowCount() {
+        int visibleRowCount = 0;
+        for (Row row : rows) {
+            if (Pipeline.isAttributeVisible(module, row.cfg)) {
+                visibleRowCount++;
+            }
+        }
+        return visibleRowCount;
+    }
+
+    private int visibleContentHeight() {
+        return visibleRowCount() * ROW_HEIGHT;
+    }
+
+    private void setRowVisible(Row row, boolean visible) {
+        AttributeWidgetUtil.syncWidgetVisibility(row.widgets, visible);
+    }
+
+    private void resetAllAttributes() {
+        List<AttributeConfig> configs = new ArrayList<>();
+        for (Row row : rows) {
+            configs.add(row.cfg);
+        }
+        if (AttributeWidgetUtil.resetAttributesToDefaults(module, configs)) {
+            rebuild();
+        }
+        syncResetAllButton();
+    }
+
+    private void syncResetAllButton() {
+        if (resetAllButton == null) {
+            return;
+        }
+        List<AttributeConfig> configs = new ArrayList<>();
+        for (Row row : rows) {
+            configs.add(row.cfg);
+        }
+        boolean show = AttributeWidgetUtil.hasNonDefaultValue(configs);
+        resetAllButton.visible = show;
+        resetAllButton.active = show;
     }
 
     private static class Row {

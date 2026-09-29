@@ -112,4 +112,37 @@ public class ItemRendererMixins {
             }
         }
     }
+
+    @Inject(method =
+        "getDirectItemGlintConsumer(Lnet/minecraft/client/render/VertexConsumerProvider;Lnet/minecraft/client/render/RenderLayer;"
+            +
+            "ZZ)Lnet/minecraft/client/render/VertexConsumer;",
+        at = @At(value = "HEAD"),
+        cancellable = true)
+    private static void redirectGetDirectItemGlintConsumer(VertexConsumerProvider vertexConsumers,
+        RenderLayer layer,
+        boolean solid,
+        boolean glint,
+        CallbackInfoReturnable<VertexConsumer> cir) {
+        VertexConsumer vertexConsumer = vertexConsumers.getBuffer(layer);
+
+        if (vertexConsumer instanceof PBRVertexConsumer pbrVertexConsumer) {
+            if (glint) {
+                cir.setReturnValue(
+                    new PBRVertexConsumer.GLint(pbrVertexConsumer,
+                        solid ? RenderLayer.getGlint() : RenderLayer.getDirectEntityGlint()));
+            } else {
+                cir.setReturnValue(vertexConsumer);
+            }
+        } else {
+            if (glint) {
+                cir.setReturnValue(
+                    VertexConsumers.union(vertexConsumers.getBuffer(
+                            solid ? RenderLayer.getGlint() : RenderLayer.getDirectEntityGlint()),
+                        vertexConsumer));
+            } else {
+                cir.setReturnValue(vertexConsumer);
+            }
+        }
+    }
 }

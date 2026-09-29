@@ -218,7 +218,9 @@ public class ShaderPackScreen extends Screen {
                     return true;
                 }
                 ShaderPackListWidget.this.setSelected(this);
-                Pipeline.setShaderPack(this.choice, false);
+                if (Pipeline.setShaderPack(this.choice, false)) {
+                    Pipeline.savePipeline();
+                }
                 return super.mouseClicked(mouseX, mouseY, button);
             }
 

@@ -1,10 +1,9 @@
 package com.radiance.mixins.vulkan_render_integration;
 
 import com.mojang.blaze3d.systems.RenderSystem;
-import com.radiance.client.UnsafeManager;
+import com.radiance.client.texture.MipmapUtil;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.ILightMapManagerExt;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.SimpleFramebuffer;
 import net.minecraft.client.render.GameRenderer;
 import net.minecraft.client.render.LightmapTextureManager;
 import net.minecraft.client.texture.NativeImage;
@@ -15,17 +14,13 @@ import net.minecraft.entity.effect.StatusEffects;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.MathHelper;
 import net.minecraft.util.profiler.Profiler;
-import net.minecraft.util.profiler.Profilers;
 import org.joml.Vector3f;
-import org.objectweb.asm.Opcodes;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Mutable;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
-import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Mixin(LightmapTextureManager.class)
@@ -56,10 +51,6 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
     @Unique
     private Identifier radiance$textureIdentifier;
 
-    @Mutable
-    @Final
-    @Shadow
-    private SimpleFramebuffer lightmapFramebuffer;
     @Shadow
     private boolean dirty;
     @Shadow
@@ -70,42 +61,6 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
     @Final
     @Shadow
     private MinecraftClient client;
-
-    // region <init>
-    @Redirect(method = "<init>(Lnet/minecraft/client/render/GameRenderer;Lnet/minecraft/client/MinecraftClient;)V",
-        at = @At(value = "NEW", target = "net/minecraft/client/gl/SimpleFramebuffer"))
-    public SimpleFramebuffer cancelFramebufferConstruction(int width, int height,
-        boolean useDepth) {
-        return UnsafeManager.INSTANCE.allocateInstance(SimpleFramebuffer.class);
-    }
-
-    @Redirect(method = "<init>",
-        at = @At(value = "FIELD",
-            target = "Lnet/minecraft/client/render/LightmapTextureManager;" +
-                "lightmapFramebuffer:Lnet/minecraft/client/gl/SimpleFramebuffer;",
-            opcode = Opcodes.PUTFIELD))
-    public void writeNullFramebuffer(LightmapTextureManager instance, SimpleFramebuffer value) {
-        this.lightmapFramebuffer = null;
-    }
-
-    @Redirect(method = "<init>(Lnet/minecraft/client/render/GameRenderer;Lnet/minecraft/client/MinecraftClient;)V",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gl/SimpleFramebuffer;setTexFilter(I)V"))
-    public void cancelFramebufferSetTexFilter(SimpleFramebuffer instance, int i) {
-
-    }
-
-    @Redirect(method = "<init>(Lnet/minecraft/client/render/GameRenderer;Lnet/minecraft/client/MinecraftClient;)V",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gl/SimpleFramebuffer;setClearColor(FFFF)V"))
-    public void cancelFramebufferSetClearColor(SimpleFramebuffer instance, float r, float g,
-        float b, float a) {
-
-    }
-
-    @Redirect(method = "<init>(Lnet/minecraft/client/render/GameRenderer;Lnet/minecraft/client/MinecraftClient;)V",
-        at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gl/SimpleFramebuffer;clear()V"))
-    public void cancelFramebufferClear(SimpleFramebuffer instance) {
-
-    }
 
     @Inject(method = "<init>(Lnet/minecraft/client/render/GameRenderer;Lnet/minecraft/client/MinecraftClient;)V",
         at = @At("TAIL"))
@@ -122,20 +77,12 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
 
         for (int y = 0; y < 16; y++) {
             for (int x = 0; x < 16; x++) {
-                this.radiance$image.setColorArgb(x, y, 0xFFFFFFFF);
+                MipmapUtil.setColorArgb(this.radiance$image, x, y, 0xFFFFFFFF);
             }
         }
 
-        this.radiance$texture.setClamp(true);
         this.radiance$texture.setFilter(true, false);
         this.radiance$texture.upload();
-    }
-    // endregion
-
-    // region <close>
-    @Redirect(method = "close()V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gl/SimpleFramebuffer;delete()V"))
-    public void cancelFramebufferDelete(SimpleFramebuffer instance) {
-
     }
 
     @Inject(method = "close()V", at = @At("HEAD"))
@@ -147,18 +94,14 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
             this.radiance$textureIdentifier = null;
         }
     }
-    // endregion
 
-    // region <disable>
-    @Inject(method = "disable()V", at = @At(value = "HEAD"), cancellable = true)
+    @Inject(method = "disable()V", at = @At("HEAD"), cancellable = true)
     public void cancelDisable(CallbackInfo ci) {
         RenderSystem.setShaderTexture(2, 0);
         ci.cancel();
     }
-    // endregion
 
-    // region <enable>
-    @Inject(method = "enable()V", at = @At(value = "HEAD"), cancellable = true)
+    @Inject(method = "enable()V", at = @At("HEAD"), cancellable = true)
     public void cancelEnable(CallbackInfo ci) {
         if (this.radiance$textureIdentifier != null) {
             RenderSystem.setShaderTexture(2, this.radiance$textureIdentifier);
@@ -167,23 +110,22 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
         }
         ci.cancel();
     }
-    // endregion
 
-    // region <update>
     @Shadow
     protected abstract float getDarknessFactor(float delta);
 
     @Shadow
     protected abstract float getDarkness(LivingEntity entity, float factor, float delta);
 
-    @Inject(method = "update(F)V", at = @At(value = "HEAD"), cancellable = true)
+    @Inject(method = "update(F)V", at = @At("HEAD"), cancellable = true)
     public void redirectUpdate(float delta, CallbackInfo ci) {
         if (this.dirty) {
             this.dirty = false;
-            Profiler profiler = Profilers.get();
-            profiler.push("lightTex");
             ClientWorld clientWorld = this.client.world;
-            if (clientWorld != null && this.radiance$image != null && this.radiance$texture != null) {
+            Profiler profiler = this.client.getProfiler();
+            profiler.push("lightTex");
+            if (clientWorld != null && this.radiance$image != null && this.radiance$texture != null
+                && this.client.player != null) {
                 float f = clientWorld.getSkyBrightness(1.0F);
                 float skyFactor;
                 if (clientWorld.getLightningTicksLeft() > 0) {
@@ -192,11 +134,7 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
                     skyFactor = f * 0.95F + 0.05F;
                 }
 
-                float
-                    h =
-                    this.client.options.getDarknessEffectScale()
-                        .getValue()
-                        .floatValue();
+                float h = this.client.options.getDarknessEffectScale().getValue().floatValue();
                 float i = this.getDarknessFactor(delta) * h;
                 float darknessScale = this.getDarkness(this.client.player, i, delta) * h;
                 float k = this.client.player.getUnderwaterVisibility();
@@ -204,8 +142,8 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
                 if (this.client.player.hasStatusEffect(StatusEffects.NIGHT_VISION)) {
                     nightVisionFactor = GameRenderer.getNightVisionStrength(this.client.player,
                         delta);
-                } else if (k > 0.0F && this.client.player.hasStatusEffect(
-                    StatusEffects.CONDUIT_POWER)) {
+                } else if (k > 0.0F
+                    && this.client.player.hasStatusEffect(StatusEffects.CONDUIT_POWER)) {
                     nightVisionFactor = k;
                 } else {
                     nightVisionFactor = 0.0F;
@@ -214,22 +152,12 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
                 Vector3f skyLightColor = new Vector3f(f, f, 1.0F).lerp(
                     new Vector3f(1.0F, 1.0F, 1.0F), 0.35F);
                 float blockFactor = this.flickerIntensity + 1.5F;
-                float
-                    ambientLightFactor =
-                    clientWorld.getDimension()
-                        .ambientLight();
-                boolean
-                    useBrightLightmap =
-                    clientWorld.getDimensionEffects()
-                        .shouldBrightenLighting();
-                float
-                    o =
-                    this.client.options.getGamma()
-                        .getValue()
-                        .floatValue();
-
+                float ambientLightFactor = clientWorld.getDimension().ambientLight();
+                boolean useBrightLightmap = clientWorld.getDimensionEffects()
+                    .shouldBrightenLighting();
+                float gamma = this.client.options.getGamma().getValue().floatValue();
                 float darkenWorldFactor = this.renderer.getSkyDarkness(delta);
-                float brightnessFactor = Math.max(0.0F, o - i);
+                float brightnessFactor = Math.max(0.0F, gamma - i);
 
                 Vector3f workingColor = new Vector3f();
                 for (int sky = 0; sky < 16; sky++) {
@@ -240,8 +168,8 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
                             clientWorld.getDimension(), block) * blockFactor;
                         float green = blockBrightness
                             * ((blockBrightness * 0.6F + 0.4F) * 0.6F + 0.4F);
-                        float blue = blockBrightness * (blockBrightness * blockBrightness * 0.6F
-                            + 0.4F);
+                        float blue = blockBrightness
+                            * (blockBrightness * blockBrightness * 0.6F + 0.4F);
                         workingColor.set(blockBrightness, green, blue);
                         if (useBrightLightmap) {
                             workingColor.lerp(new Vector3f(0.99F, 1.12F, 1.0F), 0.25F);
@@ -274,9 +202,6 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
                             radiance$clamp(workingColor);
                         }
 
-                        float gamma = this.client.options.getGamma()
-                            .getValue()
-                            .floatValue();
                         Vector3f eased = new Vector3f(radiance$easeOutQuart(workingColor.x()),
                             radiance$easeOutQuart(workingColor.y()),
                             radiance$easeOutQuart(workingColor.z()));
@@ -288,7 +213,7 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
                         int red = (int) workingColor.x();
                         int greenInt = (int) workingColor.y();
                         int blueInt = (int) workingColor.z();
-                        this.radiance$image.setColorArgb(block, sky,
+                        MipmapUtil.setColorArgb(this.radiance$image, block, sky,
                             0xFF000000 | red << 16 | greenInt << 8 | blueInt);
                     }
                 }
@@ -308,7 +233,6 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
         }
         ci.cancel();
     }
-    // endregion
 
     @Unique
     private static void radiance$clamp(Vector3f vec) {
@@ -328,38 +252,47 @@ public abstract class LightmapTextureManagerMixins implements ILightMapManagerEx
         return this.radiance$texture != null ? this.radiance$texture.getGlId() : 0;
     }
 
+    @Override
     public float radiance$getAmbientLightFactor() {
         return ambientLightFactor;
     }
 
+    @Override
     public float radiance$getSkyFactor() {
         return skyFactor;
     }
 
+    @Override
     public float radiance$getBlockFactor() {
         return blockFactor;
     }
 
+    @Override
     public boolean radiance$isUseBrightLightmap() {
         return useBrightLightmap;
     }
 
+    @Override
     public Vector3f radiance$getSkyLightColor() {
         return skyLightColor;
     }
 
+    @Override
     public float radiance$getNightVisionFactor() {
         return nightVisionFactor;
     }
 
+    @Override
     public float radiance$getDarknessScale() {
         return darknessScale;
     }
 
+    @Override
     public float radiance$getDarkenWorldFactor() {
         return darkenWorldFactor;
     }
 
+    @Override
     public float radiance$getBrightnessFactor() {
         return brightnessFactor;
     }

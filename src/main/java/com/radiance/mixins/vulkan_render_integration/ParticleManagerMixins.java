@@ -3,8 +3,8 @@ package com.radiance.mixins.vulkan_render_integration;
 import static com.radiance.client.proxy.world.EntityProxy.PARTICLE_COUNTERS;
 
 import com.llamalad7.mixinextras.sugar.Local;
-import com.radiance.mixin_related.extensions.vulkan_render_integration.IParticleManagerExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IParticleExt;
+import com.radiance.mixin_related.extensions.vulkan_render_integration.IParticleManagerExt;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -73,20 +73,6 @@ public class ParticleManagerMixins implements IParticleManagerExt {
         double velocityZ,
         CallbackInfoReturnable<Particle> cir,
         @Local Particle particle) {
-        AtomicInteger counter = PARTICLE_COUNTERS.get(particle.getClass());
-        if (counter != null) {
-            int numParticles = counter.get();
-//            if (particle instanceof WaterSuspendParticle) {
-//                if (numParticles > 128) {
-//                    cir.setReturnValue(null);
-//                }
-//            } else if (particle instanceof RainSplashParticle || particle instanceof WaterSplashParticle) {
-//                if (numParticles > 32) {
-//                    cir.setReturnValue(null);
-//                }
-//            }
-        }
-
         Identifier particleId = Registries.PARTICLE_TYPE.getId(parameters.getType());
         if (particleId != null) {
             ((IParticleExt) particle).radiance$setContentName(

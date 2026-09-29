@@ -37,6 +37,15 @@ public class VulkanConstants {
             this.name = name;
         }
 
+        public static VkFormat fromValue(int value) {
+            for (VkFormat format : values()) {
+                if (format.value == value) {
+                    return format;
+                }
+            }
+            throw new IllegalArgumentException("Unsupported Vulkan format value: " + value);
+        }
+
         public static int getVkFormatByName(String name) {
             if (BY_NAME.containsKey(name)) {
                 return BY_NAME.get(name);

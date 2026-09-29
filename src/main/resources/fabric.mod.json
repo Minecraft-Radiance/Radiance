@@ -22,6 +22,9 @@
     ],
     "main": [
       "com.radiance.Radiance"
+    ],
+    "preLaunch": [
+      "com.radiance.client.mod_support.ModSupport"
     ]
   },
   "mixins": [
@@ -29,8 +32,23 @@
   ],
   "depends": {
     "fabricloader": ">=${loader_version}",
-    "fabric": "*",
+    "fabric": ">=${fabric_version}",
     "minecraft": "${minecraft_version}"
+  },
+  "breaks": {
+    "distanthorizons": [
+      "<3.3.1",
+      ">3.3.1 <3.3.2",
+      ">3.3.2"
+    ],
+    "flywheel": [
+      "<1.0.1",
+      ">1.0.6"
+    ],
+    "sable": [
+      "<2.0.5",
+      ">2.0.5"
+    ]
   },
   "accessWidener": "radiance.accesswidener"
 }

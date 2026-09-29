@@ -1,9 +1,10 @@
 package com.radiance.mixins.vanilla_resource_tracker;
 
+import com.radiance.client.texture.TextureTracker;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.IRenderableGlyphExt;
 import java.util.function.Function;
-import net.minecraft.client.font.BakedGlyph;
+import net.minecraft.client.font.GlyphRenderer;
 import net.minecraft.client.font.RenderableGlyph;
 import net.minecraft.client.font.TrueTypeFont;
 import net.minecraft.client.texture.NativeImage;
@@ -44,12 +45,12 @@ public class TtfGlyphMixins {
     @Shadow
     private float advance;
 
-    /**
-     * @author LJIONG
-     * @reason to pass image targetID
-     */
+
+
+
+
     @Overwrite
-    public BakedGlyph bake(Function<RenderableGlyph, BakedGlyph> function) {
+    public GlyphRenderer bake(Function<RenderableGlyph, GlyphRenderer> function) {
         return function.apply(new IRenderableGlyphExt() {
 
             @Override
@@ -88,8 +89,10 @@ public class TtfGlyphMixins {
                     height, false);
                 FT_Face fT_Face = field_2336.getInfo();
                 if (nativeImage.makeGlyphBitmapSubpixel(fT_Face, glyphIndex)) {
-                    ((INativeImageExt) (Object) nativeImage).radiance$setTargetID(id);
-                    nativeImage.upload(0, x, y, 0, 0, width, height, true);
+                    ((INativeImageExt) (Object) nativeImage).radiance$setTarget(
+                        TextureTracker.captureTarget(id));
+                    nativeImage.upload(0, x, y, 0, 0, width, height, false, false, false,
+                        true);
                 } else {
                     nativeImage.close();
                 }

@@ -71,7 +71,7 @@ public abstract class SectionBuilderMixins {
 
         for (BlockPos blockPos3 : BlockPos.iterate(blockPos, blockPos2)) {
             BlockState blockState = renderRegion.getBlockState(blockPos3);
-            if (blockState.isOpaqueFullCube()) {
+            if (blockState.isOpaqueFullCube(renderRegion, blockPos3)) {
                 chunkOcclusionDataBuilder.markClosed(blockPos3);
             }
 
@@ -128,7 +128,7 @@ public abstract class SectionBuilderMixins {
         PBRVertexConsumer pbrVertexConsumer = builders.get(layer);
         if (pbrVertexConsumer == null) {
             BufferAllocator bufferAllocator = allocatorStorage.get(layer);
-            pbrVertexConsumer = new PBRVertexConsumer(bufferAllocator, layer);
+            pbrVertexConsumer = PBRVertexConsumer.chunk(bufferAllocator, layer);
             builders.put(layer, pbrVertexConsumer);
         }
 

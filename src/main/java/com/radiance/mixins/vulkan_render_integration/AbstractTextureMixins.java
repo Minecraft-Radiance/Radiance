@@ -35,16 +35,6 @@ public class AbstractTextureMixins implements IAbstractTextureExt {
         ci.cancel();
     }
 
-    @Inject(method = "setClamp(Z)V", at = @At(value = "HEAD"), cancellable = true)
-    public void redirectSetClamp(boolean clamp, CallbackInfo ci) {
-        TextureProxy.setClamp(glId,
-            clamp
-                ? VulkanConstants.VkSamplerAddressMode.VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE.getValue()
-                :
-                    VulkanConstants.VkSamplerAddressMode.VK_SAMPLER_ADDRESS_MODE_REPEAT.getValue());
-        ci.cancel();
-    }
-
     @Inject(method = "clearGlId()V", at = @At(value = "HEAD"), cancellable = true)
     public void cancelClearGlId(CallbackInfo ci) {
         ci.cancel();

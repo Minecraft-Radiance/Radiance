@@ -1,7 +1,7 @@
 package com.radiance.client.vertex;
 
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_ALBEDO_EMISSION;
 import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_COLOR_LAYER;
+import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_COORDINATE;
 import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_GLINT_TEXTURE;
 import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_GLINT_UV;
 import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_LIGHT_UV;
@@ -11,12 +11,6 @@ import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_POS;
 import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_POST_BASE;
 import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_TEXTURE_ID;
 import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_TEXTURE_UV;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_COLOR_LAYER;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_GLINT;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_LIGHT;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_NORM;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_OVERLAY;
-import static com.radiance.client.vertex.PBRVertexFormatElements.PBR_USE_TEXTURE;
 
 import java.nio.ByteOrder;
 import java.util.stream.Collectors;
@@ -41,6 +35,16 @@ import org.lwjgl.system.MemoryUtil;
 public class PBRVertexConsumer implements VertexConsumer {
 
     private static final boolean LITTLE_ENDIAN = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
+    private static final int USE_COLOR_LAYER_BIT = 1 << 0;
+    private static final int USE_TEXTURE_BIT = 1 << 1;
+    private static final int USE_OVERLAY_BIT = 1 << 2;
+    private static final int USE_GLINT_BIT = 1 << 3;
+    private static final int USE_NORM_BIT = 1 << 4;
+    private static final int USE_LIGHT_BIT = 1 << 5;
+    private static final int TEXT_MATERIAL_BIT = 1 << 7;
+    private static final int ALPHA_MODE_SHIFT = 8;
+    private static final int COORDINATE_SHIFT = 12;
+    private static final int ALBEDO_EMISSION_SHIFT = 16;
     private static final int ALPHA_MODE_OPAQUE = 0;
     private static final int ALPHA_MODE_CUTOUT = 1;
     private static final int ALPHA_MODE_TRANSPARENT = 2;
@@ -61,19 +65,26 @@ public class PBRVertexConsumer implements VertexConsumer {
     private final int writableMask;
     private final int requiredMask;
     private final int[] offsetsByElementId;
-    private final float albedoEmission = 0;
     private long vertexPointer = -1L;
     private int vertexCount = 0;
     private int currentMask = 0;
     private boolean building = true;
     private int textureID;
     private final int alphaMode;
+    private final boolean textMaterial;
     private float baseX = 0;
     private float baseY = 0;
     private float baseZ = 0;
+    private int coordinate = 0;
+    private boolean normalOffset = false;
 
     public PBRVertexConsumer(BufferAllocator allocator, RenderLayer renderLayer) {
-        this(allocator, VertexFormat.DrawMode.QUADS, PBRVertexFormats.PBR_TRIANGLE, renderLayer);
+        this(allocator, VertexFormat.DrawMode.QUADS, PBRVertexFormats.ENTITY_PBR_TRIANGLE, renderLayer);
+    }
+
+    public static PBRVertexConsumer chunk(BufferAllocator allocator, RenderLayer renderLayer) {
+        return new PBRVertexConsumer(allocator, VertexFormat.DrawMode.QUADS,
+            PBRVertexFormats.CHUNK_PBR_TRIANGLE, renderLayer);
     }
 
     private PBRVertexConsumer(BufferAllocator allocator, VertexFormat.DrawMode drawMode,
@@ -87,9 +98,9 @@ public class PBRVertexConsumer implements VertexConsumer {
         this.requiredMask = 0;
         this.offsetsByElementId = format.getOffsetsByElementId();
 
-        if (this.vertexSizeByte != 128) {
+        if (this.vertexSizeByte != 64 && this.vertexSizeByte != 40) {
             throw new IllegalStateException(
-                "PBR vertex stride must be 128, got " + this.vertexSizeByte);
+                "PBR vertex stride must be 64 or 40, got " + this.vertexSizeByte);
         }
         if (!format.has(PBR_POS)) {
             throw new IllegalArgumentException("PBR format must contain POSITION element");
@@ -107,6 +118,8 @@ public class PBRVertexConsumer implements VertexConsumer {
                     .getGlId();
         }
         this.alphaMode = getAlphaMode(renderLayer);
+        this.textMaterial = renderLayer instanceof RenderLayer.MultiPhase multiPhase
+            && getPostTextMode(multiPhase.name) != ALPHA_MODE_OPAQUE;
     }
 
     private static void putInt(long ptr, int v) {
@@ -116,6 +129,104 @@ public class PBRVertexConsumer implements VertexConsumer {
             MemoryUtil.memPutShort(ptr, (short) (v & 0xFFFF));
             MemoryUtil.memPutShort(ptr + 2L, (short) ((v >>> 16) & 0xFFFF));
         }
+    }
+
+    private static int getInt(long ptr) {
+        if (LITTLE_ENDIAN) {
+            return MemoryUtil.memGetInt(ptr);
+        }
+        return (MemoryUtil.memGetShort(ptr) & 0xFFFF)
+            | ((MemoryUtil.memGetShort(ptr + 2L) & 0xFFFF) << 16);
+    }
+
+    private static int packU16x2(int u, int v) {
+        return (u & 0xFFFF) | ((v & 0xFFFF) << 16);
+    }
+
+    private static int packColorRGBA8(int red, int green, int blue, int alpha) {
+        return (red & 0xFF) | ((green & 0xFF) << 8) | ((blue & 0xFF) << 16)
+            | ((alpha & 0xFF) << 24);
+    }
+
+    private static int floatToHalfBits(float value) {
+        int bits = Float.floatToRawIntBits(value);
+        int sign = (bits >>> 16) & 0x8000;
+        int exponent = (bits >>> 23) & 0xFF;
+        int mantissa = bits & 0x7FFFFF;
+
+        if (exponent == 0xFF) {
+            return sign | (mantissa == 0 ? 0x7C00 : 0x7E00);
+        }
+
+        int halfExponent = exponent - 127 + 15;
+        if (halfExponent >= 0x1F) {
+            return sign | 0x7C00;
+        }
+        if (halfExponent <= 0) {
+            if (halfExponent < -10) {
+                return sign;
+            }
+            mantissa |= 0x800000;
+            int shift = 14 - halfExponent;
+            int halfMantissa = mantissa >> shift;
+            if (((mantissa >> (shift - 1)) & 1) != 0) {
+                halfMantissa++;
+            }
+            return sign | halfMantissa;
+        }
+
+        int halfMantissa = mantissa >> 13;
+        if ((mantissa & 0x1000) != 0) {
+            halfMantissa++;
+            if ((halfMantissa & 0x400) != 0) {
+                halfMantissa = 0;
+                halfExponent++;
+                if (halfExponent >= 0x1F) {
+                    return sign | 0x7C00;
+                }
+            }
+        }
+        return sign | (halfExponent << 10) | (halfMantissa & 0x3FF);
+    }
+
+    private static int packHalf2(float x, float y) {
+        return (floatToHalfBits(x) & 0xFFFF) | ((floatToHalfBits(y) & 0xFFFF) << 16);
+    }
+
+    private static float clamp(float value, float min, float max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private static float octSignNotZero(float value) {
+        return value >= 0.0f ? 1.0f : -1.0f;
+    }
+
+    private static int packSnorm16(float value) {
+        return Math.round(clamp(value, -1.0f, 1.0f) * 32767.0f) & 0xFFFF;
+    }
+
+    private static int packNormalOct(float x, float y, float z) {
+        float lengthSquared = x * x + y * y + z * z;
+        if (lengthSquared <= 0.0f || Float.isNaN(lengthSquared)) {
+            return 0;
+        }
+
+        float inverseLength = 1.0f / (float) Math.sqrt(lengthSquared);
+        x *= inverseLength;
+        y *= inverseLength;
+        z *= inverseLength;
+
+        float inverseOctLength = 1.0f / Math.max(Math.abs(x) + Math.abs(y) + Math.abs(z), 1e-8f);
+        x *= inverseOctLength;
+        y *= inverseOctLength;
+
+        if (z < 0.0f) {
+            float oldX = x;
+            x = (1.0f - Math.abs(y)) * octSignNotZero(oldX);
+            y = (1.0f - Math.abs(oldX)) * octSignNotZero(y);
+        }
+
+        return packSnorm16(x) | (packSnorm16(y) << 16);
     }
 
     private static int getAlphaMode(RenderLayer renderLayer) {
@@ -169,6 +280,13 @@ public class PBRVertexConsumer implements VertexConsumer {
         this.baseX = x;
         this.baseY = y;
         this.baseZ = z;
+    }
+
+    public void setEntityBuildContext(int coordinate, boolean normalOffset, float baseX,
+        float baseY, float baseZ) {
+        this.coordinate = coordinate;
+        this.normalOffset = normalOffset;
+        setBase(baseX, baseY, baseZ);
     }
 
     private void ensureBuilding() {
@@ -228,13 +346,19 @@ public class PBRVertexConsumer implements VertexConsumer {
             }
         }
 
+        int offCoordinate = this.offsetsByElementId[PBR_COORDINATE.id()];
+        if (offCoordinate >= 0) {
+            putInt(ptr + offCoordinate,
+                ((this.alphaMode & 0xF) << ALPHA_MODE_SHIFT)
+                    | ((this.coordinate & 0xF) << COORDINATE_SHIFT)
+                    | (this.textMaterial ? TEXT_MATERIAL_BIT : 0));
+        }
+
         int offBase = this.offsetsByElementId[PBR_POST_BASE.id()];
         if (offBase >= 0) {
             MemoryUtil.memPutFloat(ptr + offBase, baseX);
             MemoryUtil.memPutFloat(ptr + offBase + 4L, baseY);
             MemoryUtil.memPutFloat(ptr + offBase + 8L, baseZ);
-            // Reuse the trailing padding word after postBase for alpha mode.
-            putInt(ptr + offBase + 12L, this.alphaMode);
         }
 
         return ptr;
@@ -256,13 +380,19 @@ public class PBRVertexConsumer implements VertexConsumer {
             }
         }
 
+        int offCoordinate = this.offsetsByElementId[PBR_COORDINATE.id()];
+        if (offCoordinate >= 0) {
+            putInt(ptr + offCoordinate,
+                ((this.alphaMode & 0xF) << ALPHA_MODE_SHIFT)
+                    | ((this.coordinate & 0xF) << COORDINATE_SHIFT)
+                    | (this.textMaterial ? TEXT_MATERIAL_BIT : 0));
+        }
+
         int offBase = this.offsetsByElementId[PBR_POST_BASE.id()];
         if (offBase >= 0) {
             MemoryUtil.memPutFloat(ptr + offBase, baseX);
             MemoryUtil.memPutFloat(ptr + offBase + 4L, baseY);
             MemoryUtil.memPutFloat(ptr + offBase + 8L, baseZ);
-            // Reuse the trailing padding word after postBase for alpha mode.
-            putInt(ptr + offBase + 12L, this.alphaMode);
         }
 
         if (glintTextureID != 0) {
@@ -296,6 +426,31 @@ public class PBRVertexConsumer implements VertexConsumer {
                 "Element present in mask but not in format: " + element);
         }
         return base + off;
+    }
+
+    private long packedDataPointer() {
+        long base = vertexPointer;
+        if (base == -1L) {
+            throw new IllegalStateException("Not currently building vertex");
+        }
+
+        int off = offsetsByElementId[PBR_COORDINATE.id()];
+        if (off < 0) {
+            throw new IllegalStateException("PBR format must contain packed data element");
+        }
+        return base + off;
+    }
+
+    private void setPackedFlag(int flag) {
+        long p = packedDataPointer();
+        putInt(p, getInt(p) | flag);
+    }
+
+    private void setPackedAlbedoEmission(float emission) {
+        long p = packedDataPointer();
+        int packedData = getInt(p);
+        int half = floatToHalfBits(Math.max(emission, 0.0f));
+        putInt(p, (packedData & 0x0000FFFF) | (half << ALBEDO_EMISSION_SHIFT));
     }
 
     private void endVertex() {
@@ -357,27 +512,18 @@ public class PBRVertexConsumer implements VertexConsumer {
 
     @Override
     public VertexConsumer color(int red, int green, int blue, int alpha) {
-        long f = beginElement(PBR_USE_COLOR_LAYER);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
+        setPackedFlag(USE_COLOR_LAYER_BIT);
 
         long p = beginElement(PBR_COLOR_LAYER);
         if (p != -1L) {
-            MemoryUtil.memPutFloat(p, red / 255.0f);
-            MemoryUtil.memPutFloat(p + 4L, green / 255.0f);
-            MemoryUtil.memPutFloat(p + 8L, blue / 255.0f);
-            MemoryUtil.memPutFloat(p + 12L, alpha / 255.0f);
+            putInt(p, packColorRGBA8(red, green, blue, alpha));
         }
         return this;
     }
 
     @Override
     public VertexConsumer texture(float u, float v) {
-        long f = beginElement(PBR_USE_TEXTURE);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
+        setPackedFlag(USE_TEXTURE_BIT);
 
         long p = beginElement(PBR_TEXTURE_UV);
         if (p != -1L) {
@@ -389,56 +535,72 @@ public class PBRVertexConsumer implements VertexConsumer {
 
     @Override
     public VertexConsumer overlay(int u, int v) {
-        long f = beginElement(PBR_USE_OVERLAY);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
-
         long p = beginElement(PBR_OVERLAY_UV);
         if (p != -1L) {
-            putInt(p, u);
-            putInt(p + 4L, v);
+            setPackedFlag(USE_OVERLAY_BIT);
+            putInt(p, packU16x2(u, v));
         }
         return this;
     }
 
     @Override
     public VertexConsumer light(int u, int v) {
-        long f = beginElement(PBR_USE_LIGHT);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
+        setPackedFlag(USE_LIGHT_BIT);
 
         long p = beginElement(PBR_LIGHT_UV);
         if (p != -1L) {
-            putInt(p, u);
-            putInt(p + 4L, v);
+            putInt(p, packU16x2(u, v));
         }
         return this;
     }
 
     @Override
     public VertexConsumer normal(float x, float y, float z) {
-        long f = beginElement(PBR_USE_NORM);
-        if (f != -1L) {
-            putInt(f, 1);
-        }
+        setPackedFlag(USE_NORM_BIT);
 
         long p = beginElement(PBR_NORM);
         if (p != -1L) {
-            MemoryUtil.memPutFloat(p, x);
-            MemoryUtil.memPutFloat(p + 4L, y);
-            MemoryUtil.memPutFloat(p + 8L, z);
+            putInt(p, packNormalOct(x, y, z));
+        }
+
+        if (normalOffset) {
+            applyNormalOffset(x, y, z);
         }
         return this;
     }
 
-    public VertexConsumer albedoEmission(float emission) {
-        long p = beginElement(PBR_ALBEDO_EMISSION);
-        if (p != -1L) {
-            MemoryUtil.memPutFloat(p, emission);
+    private void applyNormalOffset(float x, float y, float z) {
+        long base = vertexPointer;
+        if (base == -1L) {
+            return;
         }
+
+        float lengthSquared = x * x + y * y + z * z;
+        if (lengthSquared <= 0.0f || Float.isNaN(lengthSquared)) {
+            return;
+        }
+
+        int posOff = offsetsByElementId[PBR_POS.id()];
+        if (posOff < 0) {
+            return;
+        }
+
+        float scale = 0.00001f / (float) Math.sqrt(lengthSquared);
+        long pos = base + posOff;
+        MemoryUtil.memPutFloat(pos, MemoryUtil.memGetFloat(pos) + x * scale);
+        MemoryUtil.memPutFloat(pos + 4L, MemoryUtil.memGetFloat(pos + 4L) + y * scale);
+        MemoryUtil.memPutFloat(pos + 8L, MemoryUtil.memGetFloat(pos + 8L) + z * scale);
+    }
+
+    public VertexConsumer albedoEmission(float emission) {
+        setPackedAlbedoEmission(emission);
         return this;
+    }
+
+    public static boolean canUseExternalPbr(BuiltBuffer builtBuffer) {
+        BuiltBuffer.DrawParameters drawParameters = builtBuffer.getDrawParameters();
+        return drawParameters.format() == PBRVertexFormats.ENTITY_PBR_TRIANGLE &&
+            drawParameters.mode() == VertexFormat.DrawMode.QUADS;
     }
 
     public static class GLint implements VertexConsumer {
@@ -477,15 +639,10 @@ public class PBRVertexConsumer implements VertexConsumer {
         public VertexConsumer texture(float u, float v) {
             delegate.texture(u, v);
 
-            long f = delegate.beginElement(PBR_USE_GLINT);
-            if (f != -1L) {
-                putInt(f, 1);
-            }
-
             long p = delegate.beginElement(PBR_GLINT_UV);
             if (p != -1L) {
-                MemoryUtil.memPutFloat(p, u);
-                MemoryUtil.memPutFloat(p + 4L, v);
+                delegate.setPackedFlag(USE_GLINT_BIT);
+                putInt(p, packHalf2(u, v));
             }
             return this;
         }
@@ -586,15 +743,11 @@ public class PBRVertexConsumer implements VertexConsumer {
             vector3f2.rotateX((float) (-Math.PI / 2));
             vector3f2.rotate(direction.getRotationQuaternion());
 
-            long f = delegate.beginElement(PBR_USE_GLINT);
-            if (f != -1L) {
-                putInt(f, 1);
-            }
-
             long p = delegate.beginElement(PBR_GLINT_UV);
             if (p != -1L) {
-                MemoryUtil.memPutFloat(p, -vector3f2.x() * this.textureScale);
-                MemoryUtil.memPutFloat(p + 4L, -vector3f2.y() * this.textureScale);
+                delegate.setPackedFlag(USE_GLINT_BIT);
+                putInt(p, packHalf2(-vector3f2.x() * this.textureScale,
+                    -vector3f2.y() * this.textureScale));
             }
             return this;
         }

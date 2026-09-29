@@ -97,7 +97,8 @@ public class Constants {
             net.minecraft.client.render.VertexFormats.POSITION_TEXTURE_LIGHT_COLOR, 10),
         POSITION_TEXTURE_COLOR_NORMAL(
             net.minecraft.client.render.VertexFormats.POSITION_TEXTURE_COLOR_NORMAL, 11),
-        PBR_TRIANGLE(PBRVertexFormats.PBR_TRIANGLE, 12);
+        ENTITY_PBR_TRIANGLE(PBRVertexFormats.ENTITY_PBR_TRIANGLE, 12),
+        CHUNK_PBR_TRIANGLE(PBRVertexFormats.CHUNK_PBR_TRIANGLE, 13);
 
         private static final Map<VertexFormat, Integer>
             BY_VERTEX_FORMAT =
@@ -143,7 +144,7 @@ public class Constants {
         }
 
         public static GeometryTypes getGeometryType(RenderLayer renderLayer, boolean reflect) {
-            // single objects
+
             if (renderLayer.name.contains("water_mask")) {
                 return BOAT_WATER_MASK;
             } else if (renderLayer.name.contains("end_portal")) {
@@ -162,12 +163,12 @@ public class Constants {
 
             RenderLayer.MultiPhase multiPhase = (RenderLayer.MultiPhase) renderLayer;
             if (multiPhase.name.contains("solid")) {
-                // solid
+
                 return WORLD_SOLID;
             }
 
             if (multiPhase.isTranslucent()) {
-                // transparent
+
                 if (RenderPhase.NO_TRANSPARENCY.equals(multiPhase.phases.transparency)) {
                     return WORLD_TRANSPARENT;
                 } else if (RenderPhase.ADDITIVE_TRANSPARENCY.equals(
@@ -181,9 +182,6 @@ public class Constants {
                 } else if (RenderPhase.CRUMBLING_TRANSPARENCY.equals(
                     multiPhase.phases.transparency)) {
                     return WORLD_TRANSPARENT;
-                } else if (RenderPhase.OVERLAY_TRANSPARENCY.equals(
-                    multiPhase.phases.transparency)) {
-                    return WORLD_TRANSPARENT;
                 } else if (RenderPhase.TRANSLUCENT_TRANSPARENCY.equals(
                     multiPhase.phases.transparency)) {
                     return WORLD_TRANSPARENT;
@@ -191,7 +189,7 @@ public class Constants {
                     throw new IllegalArgumentException("Invalid render layer " + multiPhase);
                 }
             } else {
-                // cut out
+
                 return WORLD_TRANSPARENT;
             }
         }
@@ -241,7 +239,8 @@ public class Constants {
         WEATHER(0b0001),
         PARTICLE(0b0010),
         TEXT(0b0100),
-        NAME_TAG(0b1000);
+        NAME_TAG(0b1000),
+        WORLD_OVERLAY(0b10000);
 
         private final int value;
 
