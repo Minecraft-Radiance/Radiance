@@ -45,101 +45,126 @@
   <br><br>
 </h1>
 
-| English | [简体中文](https://github.com/Minecraft-Radiance/Radiance/blob/main/README-CN.md) |
-
-> This is the Java part of the Radiance mod. For C++ part, please refer to [Minecraft Vulkan Renderer (MCVR)](https://github.com/Minecraft-Radiance/MCVR)
+English | [简体中文](README-CN.md)
 
 # Radiance
 
-[Radiance](https://www.minecraft-radiance.com/) is a Minecraft mod that completely replace the vanilla OpenGL renderer with our Vulkan C++ renderer, which supports high performance rendering and hardware-accelerated ray tracing.
-Due to the variety of C++ usage in the modern industrial rendering pipeline, a seamless integration of a modern industrial rendering module (such as DLSS and FSR) into our Vulkan C++ renderer is thus possible.
+[Radiance](https://www.minecraft-radiance.com/) brings Vulkan world rendering and hardware ray tracing to Minecraft. Version **0.1.6-alpha** adds DLSS and FSR frame generation, expands Minecraft and mod loader support, and improves lighting, materials, performance, and stability.
 
-[Showcase Video (Youtube)](https://www.youtube.com/watch?v=jGIQffPM1Wg)
+![Radiance 0.1.6: a hot-air balloon above a sunlit landscape](.assets/cover-0.1.6.png)
 
-<img src="https://image.puxuan.cc/PicGo/corridor.png"/>
+[Modrinth — Windows](https://modrinth.com/mod/radiance-mod-windows) · [Modrinth — Linux](https://modrinth.com/mod/radiance-mod-linux) · [CurseForge](https://www.curseforge.com/minecraft/mc-mods/radiance)
 
-# PBR Texture Packs
+## Features
 
-Starting from 0.1.4, no pre-processing  is necessary. Load directly!
+- Hardware ray tracing for world geometry, entities, lighting, reflections, and transparent materials.
+- Advanced lighting with atmosphere, clouds, fog, water, and rain-driven surface wetness.
+- DLSS Ray Reconstruction, NRD with DLSS Super Resolution or FSR, and DLSS / FSR frame generation where supported.
+- Dedicated rendering support for Distant Horizons, Flywheel / Create, and Sable.
+- OpenGL UI rendering alongside Vulkan world rendering.
 
-Although there are already internal emission textures, it is still recommended to use a PBR texture pack for better experience.
+This repository contains the Java mod. The native renderer is in [MCVR](https://github.com/Minecraft-Radiance/MCVR), and the Advanced shader source is in [Shaderpack-Advanced](https://github.com/Minecraft-Radiance/Shaderpack-Advanced).
 
-# Installation Guide
+## Supported versions
 
-We assume that the Minecraft base is installed in `.minecraft` folder. If the installation folder is different, please replace the corresponding part yourself.
+Radiance is a **client-side** mod for **64-bit Windows and Linux**, with **macOS support planned** (we've just acquired a Mac laptop for development).
 
-## Download and install `.jar` as usual
+| Minecraft | Fabric source | Forge source | NeoForge source | Java |
+| --- | --- | --- | --- | --- |
+| 1.20.1 | [Fabric](https://github.com/Minecraft-Radiance/Radiance/tree/release-0.1.6-1.20.1-fabric) | [Forge](https://github.com/Minecraft-Radiance/Radiance/tree/release-0.1.6-1.20.1-forge) | [NeoForge](https://github.com/Minecraft-Radiance/Radiance/tree/release-0.1.6-1.20.1-neoforge) | 17 |
+| 1.21.1 | [Fabric](https://github.com/Minecraft-Radiance/Radiance/tree/release-0.1.6-1.21.1-fabric) | [Forge](https://github.com/Minecraft-Radiance/Radiance/tree/release-0.1.6-1.21.1-forge) | [NeoForge](https://github.com/Minecraft-Radiance/Radiance/tree/release-0.1.6-1.21.1-neoforge) | 21 |
+| 1.21.4 | [Fabric](https://github.com/Minecraft-Radiance/Radiance/tree/release-0.1.6-1.21.4-fabric) | [Forge](https://github.com/Minecraft-Radiance/Radiance/tree/release-0.1.6-1.21.4-forge) | [NeoForge](https://github.com/Minecraft-Radiance/Radiance/tree/release-0.1.6-1.21.4-neoforge) | 21 |
+| **26.x (port in progress)** | — | — | — | — |
 
-Download and install the mod jar to the `.minecraft/mods` folder as usual.
+## Installation
 
-## (Windows Fix) Adjust JDK's runtime libraries
+1. Install the matching Minecraft version and mod loader. Fabric builds also require [Fabric API](https://modrinth.com/mod/fabric-api).
+2. Download the Radiance JAR for your Minecraft version, loader, and operating system, and place it in your instance's `mods` directory.
+3. **Forge and NeoForge must launch directly on the high-performance GPU.**
+4. On Windows, install the [Microsoft Visual C++ v14 x64 Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist).
+5. To use DLSS features, install the optional NVIDIA runtime libraries described below. Otherwise, use an available NRD + FSR pipeline.
 
-Due to a known [MSVC issue](https://stackoverflow.com/questions/78598141/first-stdmutexlock-crashes-in-application-built-with-latest-visual-studio), some libraries from JDK itself may cause a crash. 
+### Windows fix: JDK runtime libraries
 
-In those circumstances, one possible solution could be:
+Some JDK distributions bundle older MSVC runtime DLLs in their `bin` directory. Windows may load these instead of the newer system libraries, even after installing the latest Visual C++ Redistributable. This mismatch can crash native code at `std::mutex::lock`, as documented in this [MSVC runtime compatibility issue](https://github.com/microsoft/STL/issues/4730).
 
-First, try to manipulate (rename, delete, etc.) the `msvcp140.dll`, `vcruntime140.dll` and `vcruntime140_1.dll` in the JDK's bin folder (`${PATH_TO_JDK}/bin`) so that these files do not exist in that folder. 
-This step aims to remove the JDK's dependency on those libraries.
+If this issue causes a startup crash:
 
-Then, install the [latest Microsoft Visual C++ Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170), with version `Latest supported v14 (for Visual Studio 2017–2026)`.
-This step let JDK depends on the latest system libraries.
+1. Close the game and launcher, then open the `bin` directory of the Java installation used by your launcher (`<JDK>/bin`).
+2. Rename `msvcp140.dll`, `vcruntime140.dll`, and `vcruntime140_1.dll` by adding `.bak`, or move them to a backup directory. This prevents Java from loading those bundled copies.
+3. Install the [latest Microsoft Visual C++ v14 x64 Redistributable](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist), then restart the launcher and game so Java can use the updated system runtime libraries.
 
-## Download and install DLSS runtime libraries
+### Optional DLSS runtime libraries
 
-To respect and comply with NVIDIA DLSS SDK licensing terms, this project and its releases do not include or redistribute any NVIDIA DLSS binaries or SDK components (e.g., nvngx_dlss.dll), and we do not auto-download them at runtime.
-If you want to enable the DLSS denoising / upscaling module in this mod, you must follow the **download instructions below** and obtain the appropriate DLSS runtime library yourself from official NVIDIA DLSS repository and place it at `.minecraft/radiance` folder. 
+Paths below are relative to the **game instance directory**, which may differ from the launcher's main `.minecraft` directory.
 
-By downloading, installing, or using the NVIDIA DLSS runtime library (e.g., nvngx_dlss.dll), you acknowledge that you have read and agree to comply with the NVIDIA DLSS SDK License Agreement. 
-If you do not agree to the License Agreement, do not download, install, or use the runtime libraries, and use alternative options provided by this mod instead (after the first alpha version).
+Radiance does not bundle or automatically download NVIDIA DLSS runtime binaries. Obtain them from [NVIDIA's official DLSS repository](https://github.com/NVIDIA/DLSS), follow its license terms, and put the release libraries in `<instance>/radiance/`. Create that directory if necessary.
 
-Currently, if the DLSS runtime libraries are not found, the mod will **cause a crash**. After the first alpha version, DLSS will be disabled and fall back to alternative implementations.
+| Feature | Windows | Linux |
+| --- | --- | --- |
+| Super Resolution | `nvngx_dlss.dll` | `libnvidia-ngx-dlss.so.<version>` |
+| Ray Reconstruction | `nvngx_dlssd.dll` | `libnvidia-ngx-dlssd.so.<version>` |
+| Frame Generation | `nvngx_dlssg.dll` | `libnvidia-ngx-dlssg.so.<version>` |
 
-### Download Instructions
+Official download directories: [Windows](https://github.com/NVIDIA/DLSS/tree/v310.9.1/lib/Windows_x86_64/rel) · [Linux](https://github.com/NVIDIA/DLSS/tree/v310.9.1/lib/Linux_x86_64/rel). Keep the original filenames and use libraries from the same release. For these links, the Linux version suffix is `310.9.1`.
 
-Note for AMD Users: If the DLSS runtime is missing, download the DLSS runtime libraries or create a dummy empty file with the same filename to bypass the startup check. This will be fixed in the next update.
+DLSS requires compatible NVIDIA hardware. Super Resolution, Ray Reconstruction, and Frame Generation are detected separately; support for one does not imply support for all three. Missing or unsupported DLSS features are unavailable in the pipeline selection. Empty placeholder DLL or SO files are not needed.
 
-#### Windows
+## Mod compatibility
 
-Download the files listed below from [here](https://github.com/NVIDIA/DLSS/tree/v310.5.3/lib/Windows_x86_64/rel) to the `.minecraft/radiance` folder (if the folder not exist, create one).
+The table below lists mods with dedicated rendering integrations; other mods may also be compatible without special integration. For compatibility requests or contributions, please open an [issue](https://github.com/Minecraft-Radiance/Radiance/issues) or [pull request](https://github.com/Minecraft-Radiance/Radiance/pulls).
 
-* `nvngx_dlss.dll`
-* `nvngx_dlssd.dll`
+| Minecraft / loader | Distant Horizons | Flywheel | Sable |
+| --- | --- | --- | --- |
+| 1.20.1 Fabric | 3.3.0 | 1.0.1–1.0.6 | — |
+| 1.20.1 Forge / NeoForge | 3.3.0 | 1.0.1–1.0.6-281 | — |
+| 1.21.1 Fabric | 3.3.1 or 3.3.2 | 1.0.1–1.0.6 | 2.0.5 |
+| 1.21.1 NeoForge | 3.3.1 or 3.3.2 | 1.0.1–1.0.6-44 | 2.0.5 |
+| 1.21.4 Fabric / NeoForge | 3.3.1 | — | — |
+| 1.21.1 / 1.21.4 Forge | — | — | — |
 
-#### Linux
+## FAQ
 
-Download the files listed below from [here](https://github.com/NVIDIA/DLSS/tree/v310.5.3/lib/Linux_x86_64/rel) to the `.minecraft/radiance` folder (if the folder not exist, create one).
+### How do I clear the cache?
 
-* `libnvidia-ngx-dlss.so.310.5.3`
-* `libnvidia-ngx-dlssd.so.310.5.3`
+If you run into problems, try closing the game, clearing the contents of the `radiance` folder in your game instance, and restarting the game. You can keep the DLSS runtime libraries if you want to use DLSS.
 
-# Build
+### Why must Forge / NeoForge start on the high-performance GPU?
 
-First, compile Java with `gradle` to generate the JNI native headers.
+Forge and NeoForge create an OpenGL context for their early loading window before Radiance initializes. Radiance's Vulkan renderer must use the same GPU, so the game must start on the high-performance GPU.
 
+### What do GPU matching or OpenGL extension errors mean?
+
+Errors mentioning `GL_EXT_memory_object`, `GL_EXT_semaphore`, or a Vulkan device that does not match the OpenGL UI context indicate a missing interoperability feature or an unsuitable GPU selection. Check which GPU Java is using, update the graphics driver, and restart the game.
+
+### Why is a DLSS or frame generation option unavailable?
+
+The mode needs compatible hardware, a suitable driver, and its required runtime. Try updating your graphics driver if the mode is unavailable. DLSS frame generation has separate requirements from DLSS reconstruction. AMD and Intel users should choose an available NRD + FSR pipeline. FSR frame generation is also subject to the capabilities detected by Radiance. Available modes and multipliers are shown in the settings.
+
+### Do I need a PBR resource pack?
+
+Radiance includes emissive texture data, and a PBR pack can add richer material detail. Since 0.1.4, resource packs load normally without preprocessing. Use textures with the appropriate PBR channels for material and parallax effects.
+
+## Build
+
+Choose the source branch for your Minecraft version and loader from the table above. Use the corresponding Java toolchain and the **0.1.6 MCVR source**.
+
+From the Java repository, generate JNI headers:
+
+```sh
+./gradlew compileJava -PradianceUiBackend=opengl
 ```
-./gradlew compileJava
+
+Then build and install MCVR into that Java checkout, following the [native build instructions](https://github.com/Minecraft-Radiance/MCVR#build), with `-DMCVR_UI_BACKEND=OPENGL` and `JAVA_PROJECT_ROOT_DIR` pointing to the checkout's absolute path. Return to the Java repository and package the mod:
+
+```sh
+./gradlew build -PradianceUiBackend=opengl
 ```
 
-Then, clone the [Minecraft Vulkan Renderer (MCVR)](https://github.com/Minecraft-Radiance/MCVR) repository.
+On Windows, use `gradlew.bat`. JARs are written to `build/libs/`; select the normal mod JAR for distribution. To build the alternative Vulkan UI variant, use `-PradianceUiBackend=vulkan` for both Gradle commands and `-DMCVR_UI_BACKEND=VULKAN` for CMake, with a separate native build directory. Build each Minecraft/loader combination against its own generated JNI headers.
 
-```
-git clone https://github.com/Minecraft-Radiance/MCVR.git
-```
+## Credits
 
-Use `cmake` to build it and install it. Please refer to [this](https://github.com/Minecraft-Radiance/MCVR) for detail.
-
-Finally, build with `./gradlew build`.
-
-# TODO List
-
-- [ ] port to more versions and mod loaders (WIP, first priority)
-- [x] XESS support
-- [ ] Frame Generation
-- [ ] HDR
-
-And more...
-
-# Credits
 
 This project uses Vulkan technology. Please refer to [this page](https://www.vulkan.org/) for more information.
 
@@ -151,7 +176,7 @@ This project uses XeSS SR. Please refer to [this page](https://www.intel.com/con
 
 Special thanks to all contributors of open-source libraries used in this project, including [NRD](https://github.com/NVIDIA-RTX/NRD), [GLFW](https://github.com/glfw/glfw), [GLM](https://github.com/icaven/glm), [STB Image](https://github.com/nothings/stb) and [VMA](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator). If any are not credited and should be, please inform the author and credit will be applied where required.
 
-# Disclaimer
+## Disclaimer
 
 * This is a community-made third-party mod and is **not affiliated with, authorized, sponsored, endorsed by, or otherwise officially connected to Mojang Studios or Microsoft**. A commonly used wording on mod platforms is: **"NOT AN OFFICIAL MINECRAFT SERVICE. NOT APPROVED BY OR ASSOCIATED WITH MOJANG OR MICROSOFT."**
 * **Minecraft** and related names, logos, and assets are trademarks and/or intellectual property of Mojang Studios and/or Microsoft.

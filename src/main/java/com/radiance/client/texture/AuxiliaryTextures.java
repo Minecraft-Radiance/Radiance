@@ -1,7 +1,14 @@
 package com.radiance.client.texture;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.platform.TextureUtil;
+import com.radiance.client.constant.VulkanConstants;
+import com.radiance.client.option.Options;
+import com.radiance.client.profiler.Profiler;
 import com.radiance.client.proxy.vulkan.TextureProxy;
+import com.radiance.client.texture.TextureTracker.TextureBinding;
+import com.radiance.client.texture.TextureTracker.TextureTarget;
+import com.radiance.client.ui.UiBackendBuildConfig;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
 import java.io.IOException;
 import java.io.InputStream;
@@ -14,87 +21,47 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.atlas.AtlasSource;
-import net.minecraft.resource.Resource;
-import net.minecraft.resource.ResourceManager;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.renderer.texture.atlas.SpriteSource;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
 
 public enum AuxiliaryTextures {
-    SPECULAR("specular", "_s", (identifier, source) -> {
-        String namespace = identifier.getNamespace();
-        String path = identifier.getPath();
-        String[] pathComponents = path.split("/");
-        String[] fileNameComponents = pathComponents[pathComponents.length - 1].split("\\.");
-        String specularFileName = String.join("",
-            new String[]{fileNameComponents[0], "_s.", fileNameComponents[1]});
+    SPECULAR("specular", "_s", TextureProxy.UPLOAD_KIND_SPECULAR,
+        new float[] {0.0f, 0.0f, 0.0f, 0.0f}, true, TextureTracker.GLID2SpecularGLID),
+    NORMAL("normal", "_n", TextureProxy.UPLOAD_KIND_NORMAL,
+        new float[] {0.5f, 0.5f, 1.0f, 1.0f}, true, TextureTracker.GLID2NormalGLID),
+    FLAG("flag", "_f", TextureProxy.UPLOAD_KIND_FLAG,
+        new float[] {0.0f, 0.0f, 0.0f, 0.0f}, false, TextureTracker.GLID2FlagGLID);
 
-        pathComponents[pathComponents.length - 1] = specularFileName;
-        String specularPath = String.join("/", pathComponents);
-        Identifier specularIdentifier = Identifier.of(namespace, specularPath);
-        return List.of(specularIdentifier);
-    }, INativeImageExt::radiance$getSpecularNativeImage,
-        INativeImageExt::radiance$setSpecularNativeImage, source -> 0,
-        TextureTracker.GLID2SpecularGLID),
-    NORMAL("normal", "_n", (identifier, source) -> {
-        String namespace = identifier.getNamespace();
-        String path = identifier.getPath();
-        String[] pathComponents = path.split("/");
-        String[] fileNameComponents = pathComponents[pathComponents.length - 1].split("\\.");
-        String normalFileName = String.join("",
-            new String[]{fileNameComponents[0], "_n.", fileNameComponents[1]});
-
-        pathComponents[pathComponents.length - 1] = normalFileName;
-        String normalPath = String.join("/", pathComponents);
-        Identifier normalIdentifier = Identifier.of(namespace, normalPath);
-        return List.of(normalIdentifier);
-    }, INativeImageExt::radiance$getNormalNativeImage,
-        INativeImageExt::radiance$setNormalNativeImage,
-        source -> source.getFormat().hasAlpha() ? 255 << source.getFormat().getAlphaOffset() : 0,
-        TextureTracker.GLID2NormalGLID),
-    FLAG(
-        "flag", "_f", (identifier, source) -> {
-        String namespace = identifier.getNamespace();
-        String path = identifier.getPath();
-        String[] pathComponents = path.split("/");
-        String[] fileNameComponents = pathComponents[pathComponents.length - 1].split("\\.");
-        String flagFileName = String.join("",
-            new String[]{fileNameComponents[0], "_f.", fileNameComponents[1]});
-
-        pathComponents[pathComponents.length - 1] = flagFileName;
-        String flagPath = String.join("/", pathComponents)
-            .replace("textures/", "textures/flag/");
-        Identifier flagIdentifier = Identifier.of(namespace, flagPath);
-        return List.of(flagIdentifier);
-    }, INativeImageExt::radiance$getFlagNativeImage,
-        INativeImageExt::radiance$setFlagNativeImage, source -> 0,
-        TextureTracker.GLID2FlagGLID);
-
-    private static final List<AuxiliaryTextures> ALL_TEXTURES = Collections.unmodifiableList(
+    private static final List<AuxiliaryTextures> AUXILIARY_TEXTURES = Collections.unmodifiableList(
         Arrays.stream(values()).collect(Collectors.toList()));
-    private static final Object DECODED_IMAGE_CACHE_LOCK = new Object();
-    private static final Map<CacheKey, CacheEntry> DECODED_IMAGE_CACHE = new ConcurrentHashMap<>();
+    private static final Object decodedImageCacheLock = new Object();
+    private static final Map<BaseImageKey, DecodedImageLevels> decodedImageLevelsByKey = new ConcurrentHashMap<>();
+    private static final Map<AlignedImageKey, NativeImage> alignedImagesByKey =
+        new ConcurrentHashMap<>();
+    private static final Map<UploadRegionKey, CachedUploadRegions> uploadRegionsByKey =
+        new ConcurrentHashMap<>();
     private final String suffix;
-    private final IdentifierCandidateProvider identifierCandidateProvider;
-    private final Getter getter;
-    private final Setter setter;
-    private final DefaultValueProvider defaultValueProvider;
     private final String name;
-    private final Map<Integer, Integer> GLIDMapping;
+    private final int uploadKind;
+    private final float[] defaultClearColor;
+    private final boolean linearFilter;
+    private final Map<Integer, TextureBinding> auxiliaryBindingsByBaseTextureId;
+    private final Map<Integer, Integer> allocatedTextureIdsByBaseTextureId = new ConcurrentHashMap<>();
+    private final Map<Integer, Long> preparedBaseGenerationsByBaseTextureId = new ConcurrentHashMap<>();
 
-    AuxiliaryTextures(String name, String suffix,
-        IdentifierCandidateProvider identifierCandidateProvider, Getter getter, Setter setter,
-        DefaultValueProvider defaultValueProvider, Map<Integer, Integer> GLIDMapping) {
+    AuxiliaryTextures(String name, String suffix, int uploadKind, float[] defaultClearColor,
+        boolean linearFilter, Map<Integer, TextureBinding> auxiliaryBindingsByBaseTextureId) {
         this.suffix = suffix;
-        this.identifierCandidateProvider = identifierCandidateProvider;
-        this.getter = getter;
-        this.setter = setter;
-        this.defaultValueProvider = defaultValueProvider;
         this.name = name;
-        this.GLIDMapping = GLIDMapping;
+        this.uploadKind = uploadKind;
+        this.defaultClearColor = defaultClearColor;
+        this.linearFilter = linearFilter;
+        this.auxiliaryBindingsByBaseTextureId = auxiliaryBindingsByBaseTextureId;
     }
 
-    public static boolean isAuxiliaryTexture(Identifier identifier) {
+    public static boolean isAuxiliaryTexture(ResourceLocation identifier) {
         if (identifier == null) {
             return false;
         }
@@ -103,20 +70,20 @@ public enum AuxiliaryTextures {
         int dotIndex = path.lastIndexOf('.');
         String baseName = (dotIndex != -1) ? path.substring(0, dotIndex) : path;
 
-        return ALL_TEXTURES.stream().anyMatch(texture -> texture.matchesSuffix(baseName));
+        return AUXILIARY_TEXTURES.stream().anyMatch(texture -> texture.matchesSuffix(baseName));
     }
 
     public static boolean shouldSkipAtlasSprite(ResourceManager resourceManager,
-        Identifier spriteId) {
+        ResourceLocation spriteId) {
         String spritePath = spriteId.getPath();
-        for (AuxiliaryTextures auxiliaryTexture : ALL_TEXTURES) {
+        for (AuxiliaryTextures auxiliaryTexture : AUXILIARY_TEXTURES) {
             if (!auxiliaryTexture.matchesSuffix(spritePath)) {
                 continue;
             }
 
-            Identifier baseSpriteId = auxiliaryTexture.toBaseSpriteId(spriteId);
+            ResourceLocation baseSpriteId = auxiliaryTexture.toBaseSpriteId(spriteId);
             if (resourceManager.getResource(
-                    AtlasSource.RESOURCE_FINDER.toResourcePath(baseSpriteId))
+                    SpriteSource.TEXTURE_ID_CONVERTER.idToFile(baseSpriteId))
                 .isPresent()) {
                 return true;
             }
@@ -126,132 +93,273 @@ public enum AuxiliaryTextures {
     }
 
     public static void clearDecodedImageCache() {
-        synchronized (DECODED_IMAGE_CACHE_LOCK) {
-            for (CacheEntry entry : DECODED_IMAGE_CACHE.values()) {
-                if (entry.levels == null) {
+        synchronized (decodedImageCacheLock) {
+            for (DecodedImageLevels decodedLevels : decodedImageLevelsByKey.values()) {
+                if (decodedLevels.levels == null) {
                     continue;
                 }
-                for (NativeImage level : entry.levels) {
+                for (NativeImage level : decodedLevels.levels) {
                     if (level != null) {
                         level.close();
                     }
                 }
             }
-            DECODED_IMAGE_CACHE.clear();
+            decodedImageLevelsByKey.clear();
+            closeCachedImages(alignedImagesByKey);
+            uploadRegionsByKey.clear();
+            for (AuxiliaryTextures auxiliaryTexture : AUXILIARY_TEXTURES) {
+                auxiliaryTexture.releaseAllocatedTextures();
+            }
         }
     }
 
-    public static void loadAndUpload(NativeImage source, INativeImageExt sourceExt, int level,
+    public static List<TextureProxy.TextureUploadRegion> buildUploadRegions(NativeImage source,
+        INativeImageExt sourceImageExt, int level,
         int offsetX, int offsetY, int unpackSkipPixels, int unpackSkipRows, int regionWidth,
-        int regionHeight, boolean blur) {
-        int targetId = sourceExt.radiance$getTargetID();
-        Identifier identifier = sourceExt.radiance$getIdentifier();
+        int regionHeight) {
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.AuxiliaryTextures.buildUploadRegions");
+        }
+        try {
+            List<TextureProxy.TextureUploadRegion> uploadRegions = null;
+            TextureTarget baseTarget = sourceImageExt.radiance$getTarget();
+            ResourceLocation identifier = sourceImageExt.radiance$getIdentifier();
 
-        if (identifier != null) {
-            if (isAuxiliaryTexture(identifier)) {
-                return;
+            TextureTracker.Texture texture = TextureTracker.currentTexture(baseTarget);
+            if (texture == null || identifier == null || isAuxiliaryTexture(identifier)) {
+                return List.of();
+            }
+            if (level != 0) {
+                return List.of();
             }
 
-            for (AuxiliaryTextures auxiliaryTexture : ALL_TEXTURES) {
-                NativeImage auxiliaryTemplateImage = null;
-                int auxiliaryTargetId;
+            int baseTextureId = baseTarget.id();
+            String identifierPath = identifier.getPath();
+            UploadRegionKey uploadRegionKey = new UploadRegionKey(baseTextureId, identifier, level,
+                offsetX, offsetY, unpackSkipPixels, unpackSkipRows, regionWidth, regionHeight,
+                source.getWidth(), source.getHeight(), source.format(), texture);
+            CachedUploadRegions cachedUploadRegions = uploadRegionsByKey.get(uploadRegionKey);
+            if (cachedUploadRegions != null) {
+                cachedUploadRegions.replayEmissionUpdate();
+                return cachedUploadRegions.uploadRegions();
+            }
 
-                // ensure the texture exists
-                TextureTracker.Texture texture = TextureTracker.GLID2Texture.get(targetId);
-                if (!auxiliaryTexture.GLIDMapping.containsKey(targetId)) {
-                    auxiliaryTargetId = TextureProxy.generateTextureId();
-//                    System.out.println(
-//                        "generate " + auxiliaryTexture.name + " texture for " + targetId + ": "
-//                            + auxiliaryTargetId);
-
-                    TextureUtil.prepareImage(texture.format().getNativeImageInternalFormat(),
-                        auxiliaryTargetId, texture.maxLayer(), texture.width(), texture.height());
-                    auxiliaryTexture.GLIDMapping.put(targetId, auxiliaryTargetId);
-                } else {
-                    auxiliaryTargetId = auxiliaryTexture.GLIDMapping.get(targetId);
-
-                    TextureTracker.Texture auxiliaryTrackerTexture = TextureTracker.GLID2Texture.get(
-                        auxiliaryTargetId);
-                    if (texture.width() != auxiliaryTrackerTexture.width()
-                        || texture.height() != auxiliaryTrackerTexture.height()
-                        || texture.format() != auxiliaryTrackerTexture.format()) {
-                        TextureUtil.prepareImage(texture.format().getNativeImageInternalFormat(),
-                            auxiliaryTargetId, texture.maxLayer(), texture.width(),
-                            texture.height());
-                    }
+            boolean isUploadCandidatePath = isUploadCandidatePath(identifierPath);
+            EmissionRecorder.TileUpdate emissionUpdate = null;
+            for (AuxiliaryTextures auxiliaryTexture : AUXILIARY_TEXTURES) {
+                if (Profiler.ENABLED) {
+                    Profiler.enter("java.AuxiliaryTextures.buildUploadRegions." + auxiliaryTexture.name);
                 }
-
-                if (auxiliaryTemplateImage == null && (
-                    identifier.getPath().contains("textures/block") || identifier.getPath()
-                        .contains("textures/item") || identifier.getPath()
-                        .contains("textures/entity"))) {
-                    NativeImage preparedLevelCopy = auxiliaryTexture.copyPreparedImage(identifier,
-                        level);
-                    if (preparedLevelCopy != null) {
-                        auxiliaryTemplateImage = preparedLevelCopy;
-                    } else {
-                        int defaultValue = auxiliaryTexture.defaultValueProvider.get(source);
-                        auxiliaryTemplateImage = source.applyToCopy(i -> defaultValue);
-                    }
-                }
-
-                if (auxiliaryTemplateImage == null) {
-                    continue;
-                }
-
-                NativeImage auxiliaryImage = null;
                 try {
-                    auxiliaryImage = ((com.radiance.mixin_related.extensions.vulkan_render_integration.INativeImageExt) (Object) auxiliaryTemplateImage).radiance$alignTo(
-                        source);
-                    if (auxiliaryTemplateImage != auxiliaryImage) {
-                        auxiliaryTemplateImage.close();
+                    NativeImage auxiliaryImage = null;
+
+                    if (isUploadCandidatePath) {
+                        if (Profiler.ENABLED) {
+                            Profiler.enter("java.AuxiliaryTextures.resolveImage." + auxiliaryTexture.name);
+                        }
+                        try {
+                            auxiliaryImage = auxiliaryTexture.getAlignedImage(identifier, level, source);
+                        } finally {
+                            if (Profiler.ENABLED) {
+                                Profiler.exit();
+                            }
+                        }
                     }
 
-                    ((INativeImageExt) (Object) auxiliaryImage).radiance$setTargetID(
-                        auxiliaryTargetId);
+                    if (level == 0 && auxiliaryTexture == SPECULAR && Options.collectChunkEmission) {
+                        long tileKey = EmissionRecorder.buildTileKey(offsetX, offsetY,
+                            regionWidth, regionHeight);
+                        if (!TextureProxy.hasEmissionUpdate(baseTextureId, tileKey)) {
+                            if (auxiliaryImage == null) {
+                                emissionUpdate = new EmissionRecorder.TileUpdate(baseTextureId, tileKey,
+                                    List.of());
+                            } else {
+                                emissionUpdate = EmissionRecorder.buildTileUpdate(baseTextureId,
+                                    source, auxiliaryImage, offsetX, offsetY, unpackSkipPixels,
+                                    unpackSkipRows, regionWidth, regionHeight);
+                            }
+                            if (emissionUpdate != null) {
+                                if (Profiler.ENABLED) {
+                                    Profiler.enter("java.AuxiliaryTextures.buildEmissionUpdate");
+                                }
+                                try {
+                                    TextureProxy.queueEmissionUpdate(emissionUpdate);
+                                } finally {
+                                    if (Profiler.ENABLED) {
+                                        Profiler.exit();
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (auxiliaryImage == null) {
+                        continue;
+                    }
 
                     if (auxiliaryImage.getWidth() != source.getWidth()
                         || auxiliaryImage.getHeight() != source.getHeight()
-                        || auxiliaryImage.getFormat() != source.getFormat()) {
+                        || auxiliaryImage.format() != source.format()) {
                         throw new RuntimeException(
                             auxiliaryTexture.name + " image size / format mismatch");
                     }
 
-                    if (level == 0 && auxiliaryTexture == SPECULAR) {
-                        long tileKey = EmissionRecorder.buildTileKey(offsetX, offsetY,
-                            regionWidth, regionHeight);
-                        if (TextureProxy.hasEmissionTile(targetId, tileKey)) {
-                            auxiliaryImage.upload(level, offsetX, offsetY, unpackSkipPixels,
-                                unpackSkipRows, regionWidth, regionHeight, blur);
-                            continue;
-                        }
-
-                        TextureProxy.uploadEmissionTile(EmissionRecorder.buildTileUpdate(targetId,
-                            source, auxiliaryImage, offsetX, offsetY, unpackSkipPixels,
-                            unpackSkipRows, regionWidth, regionHeight));
+                    TextureTarget auxiliaryTarget = auxiliaryTexture.ensureTargetTexture(baseTarget, texture);
+                    if (uploadRegions == null) {
+                        uploadRegions = new ArrayList<>(AUXILIARY_TEXTURES.size());
                     }
-
-                    auxiliaryImage.upload(level, offsetX, offsetY, unpackSkipPixels, unpackSkipRows,
-                        regionWidth, regionHeight, blur);
+                    uploadRegions.add(auxiliaryTexture.createUploadRegion(auxiliaryImage, auxiliaryTarget,
+                        level, offsetX,
+                        offsetY, unpackSkipPixels, unpackSkipRows, regionWidth, regionHeight));
                 } finally {
-                    if (auxiliaryImage != null) {
-                        auxiliaryImage.close();
+                    if (Profiler.ENABLED) {
+                        Profiler.exit();
                     }
                 }
             }
+            List<TextureProxy.TextureUploadRegion> uploadRegionsResult =
+                uploadRegions == null ? List.of() : List.copyOf(uploadRegions);
+            uploadRegionsByKey.put(uploadRegionKey, new CachedUploadRegions(uploadRegionsResult, emissionUpdate));
+            return uploadRegionsResult;
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
         }
+    }
+
+    private synchronized TextureTarget ensureTargetTexture(TextureTarget baseTarget,
+        TextureTracker.Texture texture) {
+        int baseTextureId = baseTarget.id();
+        if (texture == null) {
+            throw new IllegalStateException(
+                "Base texture " + baseTextureId + " was not prepared before auxiliary upload");
+        }
+        int auxiliaryTextureId = allocatedTextureIdsByBaseTextureId.computeIfAbsent(baseTextureId,
+            unused -> allocateAuxiliaryTextureId());
+        TextureTracker.Texture auxiliaryTrackerTexture = TextureTracker.GLID2Texture.get(auxiliaryTextureId);
+        boolean mustPrepare = auxiliaryTrackerTexture == null
+            || texture.width() != auxiliaryTrackerTexture.width()
+            || texture.height() != auxiliaryTrackerTexture.height()
+            || texture.format() != auxiliaryTrackerTexture.format()
+            || auxiliaryTrackerTexture.maxLayer() != 0;
+        boolean mustResetContents = !auxiliaryBindingsByBaseTextureId.containsKey(baseTextureId)
+            || preparedBaseGenerationsByBaseTextureId.getOrDefault(baseTextureId, -1L) != texture.generation();
+
+        if (mustPrepare) {
+            TextureProxy.prepareClearedImage(auxiliaryTextureId, 1,
+                texture.width(), texture.height(), texture.format(), defaultClearColor[0],
+                defaultClearColor[1], defaultClearColor[2], defaultClearColor[3], texture.generation());
+        } else if (mustResetContents) {
+            TextureProxy.queueTextureClear(auxiliaryTextureId, defaultClearColor[0],
+                defaultClearColor[1], defaultClearColor[2], defaultClearColor[3], texture.generation());
+        }
+
+        int filter = linearFilter ? VulkanConstants.VkFilter.VK_FILTER_LINEAR.getValue()
+            : VulkanConstants.VkFilter.VK_FILTER_NEAREST.getValue();
+        int mipmapMode = linearFilter
+            ? VulkanConstants.VkSamplerMipmapMode.VK_SAMPLER_MIPMAP_MODE_LINEAR.getValue()
+            : VulkanConstants.VkSamplerMipmapMode.VK_SAMPLER_MIPMAP_MODE_NEAREST.getValue();
+        TextureProxy.setFilter(auxiliaryTextureId, filter, mipmapMode);
+        preparedBaseGenerationsByBaseTextureId.put(baseTextureId, texture.generation());
+        TextureTarget auxiliaryTarget = TextureTracker.captureTarget(auxiliaryTextureId);
+        TextureTracker.bindAuxiliary(auxiliaryBindingsByBaseTextureId, baseTarget, auxiliaryTarget);
+        return auxiliaryTarget;
+    }
+
+    private synchronized void releaseAllocatedTextures() {
+        for (int textureId : allocatedTextureIdsByBaseTextureId.values()) {
+            TextureProxy.releaseTexture(textureId);
+            if (UiBackendBuildConfig.OPENGL_UI) {
+                TextureUtil.releaseTextureId(textureId);
+            }
+        }
+        auxiliaryBindingsByBaseTextureId.clear();
+        allocatedTextureIdsByBaseTextureId.clear();
+        preparedBaseGenerationsByBaseTextureId.clear();
+    }
+
+    private static int allocateAuxiliaryTextureId() {
+        if (UiBackendBuildConfig.OPENGL_UI) {
+            return TextureUtil.generateTextureId();
+        }
+        return TextureProxy.generateTextureId();
+    }
+
+    private TextureProxy.TextureUploadRegion createUploadRegion(NativeImage image, TextureTarget target, int level,
+        int offsetX, int offsetY, int unpackSkipPixels, int unpackSkipRows, int regionWidth,
+        int regionHeight) {
+        long sourcePointer = ((com.radiance.mixin_related.extensions.vulkan_render_integration
+            .INativeImageExt) (Object) image).radiance$getPointer();
+        int sourceSizeBytes = image.getWidth() * image.getHeight() * image.format().components();
+        return new TextureProxy.TextureUploadRegion(sourcePointer, sourceSizeBytes, image.getWidth(), target.id(),
+            unpackSkipPixels, unpackSkipRows, offsetX, offsetY, regionWidth, regionHeight, level,
+            uploadKind, image.format().components(), target.generation());
+    }
+
+    private NativeImage getAlignedImage(ResourceLocation identifier, int level, NativeImage source) {
+        AlignedImageKey key = new AlignedImageKey(this, identifier, level, source.getWidth(),
+            source.getHeight(), source.format());
+        synchronized (decodedImageCacheLock) {
+            NativeImage cached = alignedImagesByKey.get(key);
+            if (cached != null) {
+                return cached;
+            }
+
+            NativeImage decodedLevel = this.getDecodedImageLevels(identifier).getImage(level);
+            if (decodedLevel == null) {
+                return null;
+            }
+
+            NativeImage copiedImage = null;
+            NativeImage alignedImage = null;
+            try {
+                copiedImage = new NativeImage(decodedLevel.format(), decodedLevel.getWidth(),
+                    decodedLevel.getHeight(), false);
+                copiedImage.copyFrom(decodedLevel);
+                alignedImage = ((com.radiance.mixin_related.extensions.vulkan_render_integration
+                    .INativeImageExt) (Object) copiedImage).radiance$alignTo(source);
+                if (copiedImage != alignedImage) {
+                    copiedImage.close();
+                    copiedImage = null;
+                }
+                alignedImagesByKey.put(key, alignedImage);
+                return alignedImage;
+            } catch (RuntimeException | Error e) {
+                if (alignedImage != null && alignedImage != copiedImage) {
+                    alignedImage.close();
+                }
+                if (copiedImage != null) {
+                    copiedImage.close();
+                }
+                throw e;
+            }
+        }
+    }
+
+    private static boolean isUploadCandidatePath(String path) {
+        return path.contains("textures/block")
+            || path.contains("textures/item")
+            || path.contains("textures/entity");
+    }
+
+    private static void closeCachedImages(Map<?, NativeImage> cachedImages) {
+        for (NativeImage image : cachedImages.values()) {
+            image.close();
+        }
+        cachedImages.clear();
     }
 
     private boolean matchesSuffix(String path) {
         return path.endsWith(suffix);
     }
 
-    private Identifier toBaseSpriteId(Identifier spriteId) {
+    private ResourceLocation toBaseSpriteId(ResourceLocation spriteId) {
         String spritePath = spriteId.getPath();
         return spriteId.withPath(spritePath.substring(0, spritePath.length() - suffix.length()));
     }
 
-    private CacheKey toBaseCacheKey(Identifier auxiliaryIdentifier) {
+    private BaseImageKey toBaseImageKey(ResourceLocation auxiliaryIdentifier) {
         String path = auxiliaryIdentifier.getPath();
         if (this == FLAG) {
             path = path.replaceFirst("^textures/flag/", "textures/");
@@ -263,30 +371,16 @@ public enum AuxiliaryTextures {
             throw new IllegalArgumentException("Unexpected auxiliary path: " + auxiliaryIdentifier);
         }
         baseName = baseName.substring(0, baseName.length() - suffix.length());
-        return new CacheKey(this, Identifier.of(auxiliaryIdentifier.getNamespace(),
+        return new BaseImageKey(this, ResourceLocation.tryBuild(auxiliaryIdentifier.getNamespace(),
             baseName + path.substring(dotIndex)));
     }
 
-    private CacheEntry getPreparedEntry(Identifier identifier) {
-        return DECODED_IMAGE_CACHE.getOrDefault(new CacheKey(this, identifier), CacheEntry.MISSING);
+    private DecodedImageLevels getDecodedImageLevels(ResourceLocation identifier) {
+        return decodedImageLevelsByKey.getOrDefault(new BaseImageKey(this, identifier), DecodedImageLevels.MISSING);
     }
 
-    private NativeImage copyPreparedImage(Identifier identifier, int level) {
-        synchronized (DECODED_IMAGE_CACHE_LOCK) {
-            NativeImage preparedLevel = this.getPreparedEntry(identifier).getImage(level);
-            if (preparedLevel == null) {
-                return null;
-            }
-
-            NativeImage copied = new NativeImage(preparedLevel.getFormat(),
-                preparedLevel.getWidth(), preparedLevel.getHeight(), false);
-            copied.copyFrom(preparedLevel);
-            return copied;
-        }
-    }
-
-    private static AuxiliaryTextures classifyAuxiliaryResource(Identifier id) {
-        String path = id.getPath();
+    private static AuxiliaryTextures classifyAuxiliaryResource(ResourceLocation identifier) {
+        String path = identifier.getPath();
         if (!path.endsWith(".png")) {
             return null;
         }
@@ -302,48 +396,47 @@ public enum AuxiliaryTextures {
         return null;
     }
 
-    public static CompletableFuture<PreparedImages> prepareDecodedImagesAsync(
-        ResourceManager resourceManager, Executor prepareExecutor) {
-        List<CompletableFuture<DecodedEntry>> futures = new ArrayList<>();
-        Map<Identifier, Resource> resources = resourceManager.findResources("textures",
-            id -> classifyAuxiliaryResource(id) != null);
+    public static CompletableFuture<DecodedAuxiliaryImages> decodeImagesAsync(
+        ResourceManager resourceManager, Executor decodeExecutor) {
+        List<CompletableFuture<DecodedAuxiliaryImage>> decodeFutures = new ArrayList<>();
+        Map<ResourceLocation, Resource> auxiliaryResources = resourceManager.listResources("textures",
+            identifier -> classifyAuxiliaryResource(identifier) != null);
 
-        for (Map.Entry<Identifier, Resource> entry : resources.entrySet()) {
-            AuxiliaryTextures auxiliaryTexture = classifyAuxiliaryResource(entry.getKey());
+        for (Map.Entry<ResourceLocation, Resource> resourceEntry : auxiliaryResources.entrySet()) {
+            AuxiliaryTextures auxiliaryTexture = classifyAuxiliaryResource(resourceEntry.getKey());
             if (auxiliaryTexture == null) {
                 continue;
             }
-            CacheKey cacheKey = auxiliaryTexture.toBaseCacheKey(entry.getKey());
-            Resource resource = entry.getValue();
-            futures.add(CompletableFuture.supplyAsync(
-                () -> decodePreparedEntry(cacheKey, resource), prepareExecutor));
+            BaseImageKey imageKey = auxiliaryTexture.toBaseImageKey(resourceEntry.getKey());
+            Resource resource = resourceEntry.getValue();
+            decodeFutures.add(CompletableFuture.supplyAsync(
+                () -> decodeAuxiliaryImage(imageKey, resource), decodeExecutor));
         }
 
-        CompletableFuture<Void> allFutures = CompletableFuture.allOf(
-            futures.toArray(CompletableFuture[]::new));
-        return allFutures.thenApply(unused -> {
-            PreparedImages prepared = new PreparedImages();
-            for (CompletableFuture<DecodedEntry> future : futures) {
-                prepared.add(future.join());
+        CompletableFuture<Void> allDecodedImages = CompletableFuture.allOf(
+            decodeFutures.toArray(CompletableFuture[]::new));
+        return allDecodedImages.thenApply(unused -> {
+            DecodedAuxiliaryImages decodedImages = new DecodedAuxiliaryImages();
+            for (CompletableFuture<DecodedAuxiliaryImage> future : decodeFutures) {
+                decodedImages.add(future.join());
             }
-            return prepared;
+            return decodedImages;
         });
     }
 
-    private static DecodedEntry decodePreparedEntry(CacheKey cacheKey, Resource resource) {
-        try (InputStream inputStream = resource.getInputStream()) {
+    private static DecodedAuxiliaryImage decodeAuxiliaryImage(BaseImageKey baseImageKey, Resource resource) {
+        try (InputStream inputStream = resource.open()) {
             NativeImage image = NativeImage.read(inputStream);
-            NativeImage[] levels = MipmapUtil.buildMipmapChain(image);
-            return new DecodedEntry(cacheKey, new CacheEntry(levels));
+            return new DecodedAuxiliaryImage(baseImageKey, new DecodedImageLevels(new NativeImage[] {image}));
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
-    public static void applyPreparedImages(PreparedImages prepared) {
-        synchronized (DECODED_IMAGE_CACHE_LOCK) {
+    public static void applyDecodedImages(DecodedAuxiliaryImages decodedImages) {
+        synchronized (decodedImageCacheLock) {
             clearDecodedImageCache();
-            DECODED_IMAGE_CACHE.putAll(prepared.entries);
+            decodedImageLevelsByKey.putAll(decodedImages.imageLevelsByKey);
         }
     }
 
@@ -359,68 +452,64 @@ public enum AuxiliaryTextures {
             || path.startsWith("textures/flag/entity/");
     }
 
-    private record CacheKey(AuxiliaryTextures texture, Identifier identifier) {}
+    private record BaseImageKey(AuxiliaryTextures auxiliaryTexture, ResourceLocation identifier) {}
 
-    private static final class CacheEntry {
+    private record AlignedImageKey(AuxiliaryTextures auxiliaryTexture, ResourceLocation identifier, int level,
+                                   int width, int height, NativeImage.Format format) {}
 
-        private static final CacheEntry MISSING = new CacheEntry(null);
+    private record UploadRegionKey(int baseTextureId,
+                                   ResourceLocation identifier,
+                                   int level,
+                                   int offsetX,
+                                   int offsetY,
+                                   int unpackSkipPixels,
+                                   int unpackSkipRows,
+                                   int regionWidth,
+                                   int regionHeight,
+                                   int sourceWidth,
+                                   int sourceHeight,
+                                   NativeImage.Format sourceFormat,
+                                   TextureTracker.Texture targetTexture) {}
+
+    private record CachedUploadRegions(List<TextureProxy.TextureUploadRegion> uploadRegions,
+                                       EmissionRecorder.TileUpdate emissionUpdate) {
+        private void replayEmissionUpdate() {
+            if (emissionUpdate == null
+                || TextureProxy.hasEmissionUpdate(emissionUpdate.textureId, emissionUpdate.tileKey)) {
+                return;
+            }
+            TextureProxy.queueEmissionUpdate(emissionUpdate);
+        }
+    }
+
+    private static final class DecodedImageLevels {
+
+        private static final DecodedImageLevels MISSING = new DecodedImageLevels(null);
 
         private final NativeImage[] levels;
 
-        private CacheEntry(NativeImage[] levels) {
+        private DecodedImageLevels(NativeImage[] levels) {
             this.levels = levels;
         }
 
         private NativeImage getImage(int level) {
-            if (levels == null || levels.length == 0) {
+            if (levels == null || level < 0 || level >= levels.length) {
                 return null;
             }
-            return levels[Math.min(level, levels.length - 1)];
+            return levels[level];
         }
     }
 
-    private record DecodedEntry(CacheKey cacheKey, CacheEntry cacheEntry) {}
+    private record DecodedAuxiliaryImage(BaseImageKey baseImageKey, DecodedImageLevels imageLevels) {}
 
-    public static final class PreparedImages {
+    public static final class DecodedAuxiliaryImages {
 
-        private final Map<CacheKey, CacheEntry> entries = new ConcurrentHashMap<>();
+        private final Map<BaseImageKey, DecodedImageLevels> imageLevelsByKey = new ConcurrentHashMap<>();
 
-        private void add(DecodedEntry entry) {
-            this.entries.put(entry.cacheKey(), entry.cacheEntry());
+        private void add(DecodedAuxiliaryImage decodedImage) {
+            this.imageLevelsByKey.put(decodedImage.baseImageKey(), decodedImage.imageLevels());
         }
 
-        private void close() {
-            for (CacheEntry entry : this.entries.values()) {
-                if (entry.levels == null) {
-                    continue;
-                }
-                for (NativeImage level : entry.levels) {
-                    if (level != null) {
-                        level.close();
-                    }
-                }
-            }
-            this.entries.clear();
-        }
     }
 
-    public interface IdentifierCandidateProvider {
-
-        List<Identifier> get(Identifier identifier, NativeImage source);
-    }
-
-    public interface Getter {
-
-        NativeImage get(INativeImageExt nativeImageExt);
-    }
-
-    public interface Setter {
-
-        void set(INativeImageExt nativeImageExt, NativeImage nativeImage);
-    }
-
-    public interface DefaultValueProvider {
-
-        int get(NativeImage source);
-    }
 }

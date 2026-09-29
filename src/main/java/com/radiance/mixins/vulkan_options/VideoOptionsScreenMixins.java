@@ -1,236 +1,235 @@
 package com.radiance.mixins.vulkan_options;
 
-import static net.minecraft.client.option.GameOptions.getGenericValueText;
-import static net.minecraft.client.option.InactivityFpsLimit.AFK;
+import static net.minecraft.client.Options.genericValueLabel;
 
 import com.google.common.collect.ImmutableList;
+import com.mojang.blaze3d.platform.Monitor;
+import com.mojang.blaze3d.platform.VideoMode;
+import com.mojang.blaze3d.platform.Window;
 import com.mojang.serialization.Codec;
 import com.radiance.client.gui.PotentialValuesBasedCallbacksNoValue;
 import com.radiance.client.gui.RenderPipelineScreen;
 import com.radiance.client.option.Options;
 import com.radiance.client.util.CategoryVideoOptionEntry;
-import java.util.Arrays;
+import java.util.List;
 import java.util.Optional;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.screen.option.VideoOptionsScreen;
-import net.minecraft.client.gui.tooltip.Tooltip;
-import net.minecraft.client.option.InactivityFpsLimit;
-import net.minecraft.client.option.SimpleOption;
-import net.minecraft.client.util.Monitor;
-import net.minecraft.client.util.VideoMode;
-import net.minecraft.client.util.Window;
-import net.minecraft.text.Text;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.OptionInstance;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.OptionsList;
+import net.minecraft.client.gui.screens.OptionsSubScreen;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.gui.screens.VideoSettingsScreen;
+import net.minecraft.network.chat.CommonComponents;
+import net.minecraft.network.chat.Component;
 import org.spongepowered.asm.mixin.Mixin;
+import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(VideoOptionsScreen.class)
-public class VideoOptionsScreenMixins extends GameOptionsScreenMixins {
+@Mixin(VideoSettingsScreen.class)
+public abstract class VideoOptionsScreenMixins extends OptionsSubScreen {
 
     @Unique
-    private static final Text INACTIVITY_FPS_LIMIT_MINIMIZED_TOOLTIP = Text.translatable(
-        "options.inactivityFpsLimit.minimized.tooltip");
-    @Unique
-    private static final Text INACTIVITY_FPS_LIMIT_AFK_TOOLTIP = Text.translatable(
-        "options.inactivityFpsLimit.afk.tooltip");
+    private static final PotentialValuesBasedCallbacksNoValue<Boolean> BOOLEAN_NO_KEY =
+        new PotentialValuesBasedCallbacksNoValue<>(ImmutableList.of(Boolean.TRUE, Boolean.FALSE),
+            Codec.BOOL);
 
     @Unique
-    private static final PotentialValuesBasedCallbacksNoValue<Boolean> BOOLEAN_NO_KEY = new PotentialValuesBasedCallbacksNoValue<>(
-        ImmutableList.of(Boolean.TRUE, Boolean.FALSE), Codec.BOOL
-    );
+    private static PotentialValuesBasedCallbacksNoValue<Integer> valuesOf(List<Integer> values) {
+        return new PotentialValuesBasedCallbacksNoValue<>(ImmutableList.copyOf(values), Codec.INT);
+    }
 
-    @Inject(method = "addOptions()V", at = @At(value = "HEAD"), cancellable = true)
-    public void redirectAddOptions(CallbackInfo ci) {
-        SimpleOption<Integer>
-            maxFps =
-            new SimpleOption<>("options.framerateLimit",
-                SimpleOption.emptyTooltip(),
-                (optionText, value) -> value == 260 ?
-                    getGenericValueText(optionText, Text.translatable("options.framerateLimit.max"))
-                    :
-                        getGenericValueText(optionText,
-                            Text.translatable("options.framerate", value)),
-                new SimpleOption.ValidatingIntSliderCallbacks(1, 26).withModifier(
-                    value -> value * 10, value -> value / 10),
-                Codec.intRange(10, 260),
-                Options.maxFps,
-                value -> {
-                    MinecraftClient.getInstance()
-                        .getInactivityFpsLimiter()
-                        .setMaxFps(value);
-                    Options.setMaxFps(value, true);
-                });
+    protected VideoOptionsScreenMixins(Screen parent, net.minecraft.client.Options gameOptions, Component title) {
+        super(parent, gameOptions, title);
+    }
 
-        int i = -1;
-        Window
-            window =
-            MinecraftClient.getInstance()
-                .getWindow();
-        Monitor monitor = window.getMonitor();
-        int j;
+    @Shadow
+    private OptionsList list;
+
+    @Inject(method = "init()V", at = @At("HEAD"), cancellable = true)
+    private void redirectInit(CallbackInfo ci) {
+        Minecraft client = Minecraft.getInstance();
+        Options.sanitizeFrameGenerationOptionsForAvailableHardware(true);
+        List<Integer> frameGenerationModes = Options.getAvailableFrameGenerationModes();
+        int multiplierReferenceMode = Options.getFrameGenerationMultiplierReferenceMode();
+        List<Integer> frameGenerationMultipliers = Options.getAvailableFrameGenerationMultipliers(
+            multiplierReferenceMode);
+
+        this.list = new OptionsList(client, this.width, this.height, 32, this.height - 32,
+            25);
+
+        Window window = client.getWindow();
+        Monitor monitor = window.findBestMonitor();
+        int currentVideoMode;
         if (monitor == null) {
-            j = -1;
+            currentVideoMode = -1;
         } else {
-            Optional<VideoMode> optional = window.getFullscreenVideoMode();
-            j =
-                optional.map(monitor::findClosestVideoModeIndex)
-                    .orElse(-1);
+            Optional<VideoMode> optional = window.getPreferredFullscreenVideoMode();
+            currentVideoMode = optional.map(monitor::getVideoModeIndex).orElse(-1);
         }
 
-        SimpleOption<Integer>
-            fullScreenResolutionOption =
-            new SimpleOption<>("options.fullscreen.resolution", SimpleOption.emptyTooltip(),
-                (optionText, value) -> {
-                    if (monitor == null) {
-                        return Text.translatable("options.fullscreen.unavailable");
-                    } else if (value == -1) {
-                        return getGenericValueText(optionText,
-                            Text.translatable("options.fullscreen.current"));
-                    } else {
-                        VideoMode videoMode = monitor.getVideoMode(value);
-                        return getGenericValueText(optionText,
-                            Text.translatable("options.fullscreen.entry",
-                                videoMode.getWidth(),
-                                videoMode.getHeight(),
-                                videoMode.getRefreshRate(),
-                                videoMode.getRedBits() + videoMode.getGreenBits() +
-                                    videoMode.getBlueBits()));
-                    }
-                }, new SimpleOption.ValidatingIntSliderCallbacks(-1,
-                monitor != null ? monitor.getVideoModeCount() - 1 : -1), j, value -> {
+        OptionInstance<Integer> maxFps = new OptionInstance<>("options.framerateLimit",
+            OptionInstance.noTooltip(),
+            (optionText, value) -> value == 260
+                ? genericValueLabel(optionText,
+                Component.translatable("options.framerateLimit.max"))
+                : genericValueLabel(optionText, Component.translatable("options.framerate", value)),
+            new OptionInstance.IntRange(1, 26).xmap(value -> value * 10,
+                value -> value / 10),
+            Codec.intRange(10, 260), Options.maxFps, value -> Options.setMaxFps(value, true));
+
+        OptionInstance<Integer> fullScreenResolutionOption = new OptionInstance<>(
+            "options.fullscreen.resolution", OptionInstance.noTooltip(),
+            (optionText, value) -> {
+                if (monitor == null) {
+                    return Component.translatable("options.fullscreen.unavailable");
+                }
+                if (value == -1) {
+                    return genericValueLabel(optionText,
+                        Component.translatable("options.fullscreen.current"));
+                }
+                return genericValueLabel(optionText,
+                    Component.literal(monitor.getMode(value).toString()));
+            },
+            new OptionInstance.IntRange(-1,
+                monitor != null ? monitor.getModeCount() - 1 : -1),
+            currentVideoMode, value -> {
                 if (monitor != null) {
-                    window.setFullscreenVideoMode(
-                        value == -1 ? Optional.empty() : Optional.of(monitor.getVideoMode(value)));
+                    window.setPreferredFullscreenVideoMode(
+                        value == -1 ? Optional.empty() : Optional.of(monitor.getMode(value)));
                 }
             });
 
-        SimpleOption<InactivityFpsLimit> inactivityFpsLimit = new SimpleOption<>(
-            "options.inactivityFpsLimit",
-            option -> {
-                return switch (option) {
-                    case MINIMIZED -> Tooltip.of(
-                        INACTIVITY_FPS_LIMIT_MINIMIZED_TOOLTIP);
-                    case AFK -> Tooltip.of(INACTIVITY_FPS_LIMIT_AFK_TOOLTIP);
-                };
-            },
-            SimpleOption.enumValueText(),
-            new SimpleOption.PotentialValuesBasedCallbacks<>(Arrays.asList(
-                InactivityFpsLimit.values()),
-                InactivityFpsLimit.Codec),
-            AFK,
-            inactivityLimit -> {
-                Options.setInactivityFpsLimit(
-                    inactivityLimit == AFK ? 30 : 9, true);
-            });
-
-        SimpleOption<Boolean> enableVsync = SimpleOption.ofBoolean("options.vsync", Options.vsync,
+        OptionInstance<Boolean> enableVsync = OptionInstance.createBoolean("options.vsync", Options.vsync,
             value -> {
-                if (MinecraftClient.getInstance()
-                    .getWindow() != null) {
+                if (client.getWindow() != null) {
                     Options.setVsync(value, true);
                 }
             });
 
-        SimpleOption<Integer>
-            chunkBuildingBatchSize =
-            new SimpleOption<>(Options.CHUNK_BUILDING_BATCH_SIZE_KEY,
-                SimpleOption.emptyTooltip(),
-                (optionText, value) -> getGenericValueText(optionText,
-                    Text.literal(Integer.toString(value))),
-                new SimpleOption.ValidatingIntSliderCallbacks(1, 32),
-                Codec.intRange(1, 32),
-                Options.chunkBuildingBatchSize,
-                value -> {
-                    Options.setChunkBuildingBatchSize(value, true);
-                });
+        OptionInstance<Integer> frameGenerationMethod = new OptionInstance<>(
+            Options.FRAME_GENERATION_METHOD_KEY,
+            OptionInstance.noTooltip(),
+            (optionText, value) -> genericValueLabel(optionText,
+                Component.translatable(Options.frameGenerationModeTranslationKey(value))),
+            valuesOf(frameGenerationModes),
+            Options.frameGenerationMode,
+            value -> {
+                Options.setFrameGenerationMode(value, true);
+                int maxMultiplier = Options.getMaxFrameGenerationMultiplier(value);
+                if (maxMultiplier >= 2 && Options.frameGenerationMultiplier > maxMultiplier) {
+                    Options.setFrameGenerationMultiplier(maxMultiplier, true);
+                }
+            });
 
-        SimpleOption<Integer>
-            chunkBuildingTotalBatches =
-            new SimpleOption<>(Options.CHUNK_BUILDING_TOTAL_BATCHES_KEY,
-                SimpleOption.emptyTooltip(),
-                (optionText, value) -> getGenericValueText(optionText,
-                    Text.literal(Integer.toString(value))),
-                new SimpleOption.ValidatingIntSliderCallbacks(1, 32),
-                Codec.intRange(1, 32),
-                Options.chunkBuildingTotalBatches,
-                value -> {
-                    Options.setChunkBuildingTotalBatches(value, true);
-                });
+        OptionInstance<Integer> frameGenerationMultiplier = frameGenerationMultipliers.isEmpty() ? null :
+            new OptionInstance<>(
+                Options.FRAME_GENERATION_MULTIPLIER_KEY,
+                OptionInstance.noTooltip(),
+                (optionText, value) -> genericValueLabel(optionText, Component.literal(value + "x")),
+                valuesOf(frameGenerationMultipliers),
+                Options.frameGenerationMultiplier,
+                value -> Options.setFrameGenerationMultiplier(value, true));
 
-        SimpleOption<Integer>
-            chunkBuildingThreads =
-            new SimpleOption<>(Options.CHUNK_BUILDING_THREADS_KEY, SimpleOption.emptyTooltip(),
-                (optionText, value) -> getGenericValueText(optionText,
-                    Text.literal(Integer.toString(value))),
-                new SimpleOption.ValidatingIntSliderCallbacks(1,
-                    Options.getMaxChunkBuildingThreads()),
-                Codec.intRange(1, Options.getMaxChunkBuildingThreads()),
-                Options.chunkBuildingThreads,
-                value -> Options.setChunkBuildingThreads(value, true));
+        OptionInstance<Integer> chunkBuildingBatchSize = new OptionInstance<>(
+            Options.CHUNK_BUILDING_BATCH_SIZE_KEY, OptionInstance.noTooltip(),
+            (optionText, value) -> genericValueLabel(optionText,
+                Component.literal(Integer.toString(value))),
+            new OptionInstance.IntRange(Options.CHUNK_BUILDING_BATCH_SIZE_MIN,
+                Options.CHUNK_BUILDING_BATCH_SIZE_MAX), Codec.intRange(
+                Options.CHUNK_BUILDING_BATCH_SIZE_MIN, Options.CHUNK_BUILDING_BATCH_SIZE_MAX),
+            Options.chunkBuildingBatchSize, value -> Options.setChunkBuildingBatchSize(value,
+            true));
 
-        SimpleOption<Boolean> collectChunkEmission = SimpleOption.ofBoolean(
+        OptionInstance<Integer> chunkBuildingTotalBatches = new OptionInstance<>(
+            Options.CHUNK_BUILDING_TOTAL_BATCHES_KEY, OptionInstance.noTooltip(),
+            (optionText, value) -> genericValueLabel(optionText,
+                Component.literal(Integer.toString(value))),
+            new OptionInstance.IntRange(Options.CHUNK_BUILDING_TOTAL_BATCHES_MIN,
+                Options.CHUNK_BUILDING_TOTAL_BATCHES_MAX), Codec.intRange(
+                Options.CHUNK_BUILDING_TOTAL_BATCHES_MIN, Options.CHUNK_BUILDING_TOTAL_BATCHES_MAX),
+            Options.chunkBuildingTotalBatches, value -> Options.setChunkBuildingTotalBatches(
+            value, true));
+
+        OptionInstance<Integer> chunkBuildingThreads = new OptionInstance<>(
+            Options.CHUNK_BUILDING_THREADS_KEY, OptionInstance.noTooltip(),
+            (optionText, value) -> genericValueLabel(optionText,
+                Component.literal(Integer.toString(value))),
+            new OptionInstance.IntRange(Options.CHUNK_BUILDING_THREADS_MIN,
+                Options.getMaxChunkBuildingThreads()),
+            Codec.intRange(Options.CHUNK_BUILDING_THREADS_MIN, Options.getMaxChunkBuildingThreads()),
+            Options.chunkBuildingThreads, value -> Options.setChunkBuildingThreads(
+            value, true));
+
+        OptionInstance<Boolean> collectChunkEmission = OptionInstance.createBoolean(
             Options.COLLECT_CHUNK_EMISSION_KEY,
             Options.collectChunkEmission,
             value -> Options.setCollectChunkEmission(value, true));
 
-        SimpleOption<Boolean> pipelineSettings = new SimpleOption<>(Options.PIPELINE_SETUP_KEY,
-            SimpleOption.emptyTooltip(),
-            (optionText, value) -> optionText,
-            BOOLEAN_NO_KEY,
-            false,
-            value -> {
-                MinecraftClient.getInstance()
-                    .setScreen(new RenderPipelineScreen((VideoOptionsScreen) (Object) this));
-            });
+        OptionInstance<Boolean> pipelineSettings = new OptionInstance<>(Options.PIPELINE_SETUP_KEY,
+            OptionInstance.noTooltip(), (optionText, value) -> optionText, BOOLEAN_NO_KEY, false,
+            value -> client.setScreen(new RenderPipelineScreen((VideoSettingsScreen) (Object) this)));
 
-        // Adding categories and options
-        this.body.addEntry(
-            new CategoryVideoOptionEntry(Text.translatable(Options.CATEGORY_GAMEPLAY), body));
-        SimpleOption[] optionsGameplay = new SimpleOption[]{ //
-            gameOptions.getGraphicsMode(), //
-            gameOptions.getViewDistance(), //
-            gameOptions.getSimulationDistance(), //
-            gameOptions.getGuiScale(), //
-            gameOptions.getAttackIndicator(), //
-            gameOptions.getGamma(), //
-            gameOptions.getCloudRenderMode(), //
-            gameOptions.getParticles(), //
-            gameOptions.getDistortionEffectScale(), //
-            gameOptions.getEntityDistanceScaling(), //
-            gameOptions.getFovEffectScale(), //
-            gameOptions.getShowAutosaveIndicator(), //
-            gameOptions.getGlintSpeed(), //
-            gameOptions.getGlintStrength(), //
-            gameOptions.getMenuBackgroundBlurriness(), //
-            gameOptions.getBobView(), //
-        };
-        this.body.addSingleOptionEntry(gameOptions.getBiomeBlendRadius());
-        this.body.addSingleOptionEntry(gameOptions.getMipmapLevels());
-        this.body.addAll(optionsGameplay);
+        this.list.addEntry(
+            new CategoryVideoOptionEntry(Component.translatable(Options.CATEGORY_GAMEPLAY), this.list));
+        this.list.addBig(this.options.biomeBlendRadius());
+        this.list.addSmall(new OptionInstance[]{
+            this.options.graphicsMode(),
+            this.options.renderDistance(),
+            this.options.simulationDistance(),
+            this.options.ambientOcclusion(),
+            this.options.bobView(),
+            this.options.guiScale(),
+            this.options.attackIndicator(),
+            this.options.gamma(),
+            this.options.cloudStatus(),
+            this.options.particles(),
+            this.options.mipmapLevels(),
+            this.options.entityShadows(),
+            this.options.screenEffectScale(),
+            this.options.entityDistanceScaling(),
+            this.options.fovEffectScale(),
+            this.options.showAutosaveIndicator(),
+            this.options.glintSpeed(),
+            this.options.glintStrength(),
+        });
 
-        this.body.addEntry(
-            new CategoryVideoOptionEntry(Text.translatable(Options.CATEGORY_WINDOW), body));
-        SimpleOption[] optionsWindow = new SimpleOption[]{ //
-            maxFps, //
-            inactivityFpsLimit, //
-            enableVsync, //
-            gameOptions.getFullscreen(), //
-        };
-        this.body.addAll(optionsWindow);
-        this.body.addSingleOptionEntry(fullScreenResolutionOption);
+        this.list.addEntry(
+            new CategoryVideoOptionEntry(Component.translatable(Options.CATEGORY_WINDOW), this.list));
+        this.list.addSmall(new OptionInstance[]{
+            maxFps,
+            enableVsync,
+            this.options.fullscreen(),
+        });
+        this.list.addBig(fullScreenResolutionOption);
 
-        this.body.addEntry(
-            new CategoryVideoOptionEntry(Text.translatable(Options.CATEGORY_TERRAIN), body));
-        this.body.addSingleOptionEntry(chunkBuildingBatchSize);
-        this.body.addSingleOptionEntry(chunkBuildingTotalBatches);
-        this.body.addSingleOptionEntry(chunkBuildingThreads);
-        this.body.addSingleOptionEntry(collectChunkEmission);
+        this.list.addEntry(
+            new CategoryVideoOptionEntry(Component.translatable(Options.CATEGORY_FRAME_GENERATION), this.list));
+        this.list.addBig(frameGenerationMethod);
+        if (frameGenerationMultiplier != null) {
+            this.list.addBig(frameGenerationMultiplier);
+        }
 
-        this.body.addEntry(
-            new CategoryVideoOptionEntry(Text.translatable(Options.CATEGORY_PIPELINE), body));
-        this.body.addSingleOptionEntry(pipelineSettings);
+        this.list.addEntry(
+            new CategoryVideoOptionEntry(Component.translatable(Options.CATEGORY_TERRAIN), this.list));
+        this.list.addBig(chunkBuildingBatchSize);
+        this.list.addBig(chunkBuildingTotalBatches);
+        this.list.addBig(chunkBuildingThreads);
+        this.list.addBig(collectChunkEmission);
+
+        this.list.addEntry(
+            new CategoryVideoOptionEntry(Component.translatable(Options.CATEGORY_PIPELINE), this.list));
+        this.list.addBig(pipelineSettings);
+
+        this.addWidget(this.list);
+        this.addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, button -> {
+            client.options.save();
+            window.changeFullscreenVideoMode();
+            client.setScreen(this.lastScreen);
+        }).bounds(this.width / 2 - 100, this.height - 27, 200, 20).build());
 
         ci.cancel();
     }

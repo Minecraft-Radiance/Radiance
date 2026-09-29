@@ -102,6 +102,7 @@ public class ModuleEntry {
                 throw new RuntimeException("Module not found in resource: " + this.resourcePath);
             }
             Module module = yaml.load(inputStream);
+            Module.initializeAttributeDefaults(module.attributeConfigs);
             for (ImageConfig imageConfig : module.inputImageConfigs) {
                 imageConfig.owner = module;
             }

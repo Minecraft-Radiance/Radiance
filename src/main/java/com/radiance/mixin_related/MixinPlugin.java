@@ -1,5 +1,7 @@
 package com.radiance.mixin_related;
 
+import com.llamalad7.mixinextras.MixinExtrasBootstrap;
+import com.radiance.client.mod_support.ModSupport;
 import java.util.List;
 import java.util.Set;
 import org.objectweb.asm.tree.ClassNode;
@@ -12,10 +14,18 @@ public class MixinPlugin implements IMixinConfigPlugin {
 
     @Override
     public void onLoad(String mixinPackage) {
+        MixinExtrasBootstrap.init();
+        SrgMixinRemapper.install();
     }
 
     @Override
     public boolean shouldApplyMixin(String targetClassName, String mixinClassName) {
+        if (mixinClassName.startsWith("com.radiance.mixins.mod_support.distant_horizons.")) {
+            return ENABLED && ModSupport.DISTANT_HORIZONS;
+        }
+        if (mixinClassName.startsWith("com.radiance.mixins.mod_support.flywheel.")) {
+            return ENABLED && ModSupport.FLYWHEEL;
+        }
         return ENABLED;
     }
 

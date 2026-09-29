@@ -1,29 +1,25 @@
 package com.radiance.client.proxy.vulkan;
 
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import com.mojang.blaze3d.platform.Window;
+import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import com.radiance.client.shader.ShaderDefinition;
 import com.radiance.client.shader.ShaderField;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IGlUniformExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IShaderProgramExt;
-import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.nio.ByteBuffer;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gl.GlUniform;
-import net.minecraft.client.gl.ShaderProgram;
-import net.minecraft.client.render.VertexFormat;
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.client.texture.NativeImageBackedTexture;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.ShaderInstance;
+import net.minecraft.client.renderer.texture.AbstractTexture;
+import org.joml.Matrix3f;
 import org.lwjgl.system.MemoryStack;
 import org.lwjgl.system.MemoryUtil;
 
 public final class ShaderProxy {
-
-    private static final Identifier WHITE_TEXTURE_ID = Identifier.of("radiance",
-        "generated/white");
-    private static Integer whiteTextureId;
 
     private ShaderProxy() {
     }
@@ -41,7 +37,7 @@ public final class ShaderProxy {
             uniformSize);
     }
 
-    public static UniformHandle createUniform(ShaderDefinition shader, ShaderProgram shaderProgram,
+    public static UniformHandle createUniform(ShaderDefinition shader, ShaderInstance shaderProgram,
         MemoryStack stack) {
         ByteBuffer bb = stack.calloc(shader.uniformBufferSize());
         IShaderProgramExt ext = (IShaderProgramExt) (Object) shaderProgram;
@@ -51,16 +47,78 @@ public final class ShaderProxy {
                 bb.putInt(field.offset(), resolveSamplerTextureId(ext, field));
                 continue;
             }
-            GlUniform uniform = ext.radiance$getUniformsValue()
+            Uniform uniform = ext.radiance$getUniformsValue()
                 .get(uniformIndex++);
             putUniform(bb, field, uniform);
         }
         return new UniformHandle(MemoryUtil.memAddress(bb), shader.uniformBufferSize());
     }
 
-    public static void syncState(ShaderProgram shaderProgram, VertexFormat.DrawMode drawMode) {
-        shaderProgram.initializeUniforms(drawMode, RenderSystem.getModelViewMatrix(),
-            RenderSystem.getProjectionMatrix(), MinecraftClient.getInstance().getWindow());
+    public static void syncState(ShaderInstance shaderProgram, VertexFormat.Mode drawMode) {
+        for (int i = 0; i < 12; i++) {
+            shaderProgram.setSampler("Sampler" + i, RenderSystem.getShaderTexture(i));
+        }
+
+        if (shaderProgram.MODEL_VIEW_MATRIX != null) {
+            shaderProgram.MODEL_VIEW_MATRIX.set(RenderSystem.getModelViewMatrix());
+        }
+
+        if (shaderProgram.PROJECTION_MATRIX != null) {
+            shaderProgram.PROJECTION_MATRIX.set(RenderSystem.getProjectionMatrix());
+        }
+
+        if (shaderProgram.INVERSE_VIEW_ROTATION_MATRIX != null) {
+            Matrix3f inverseViewRotationMatrix = RenderSystem.getInverseViewRotationMatrix();
+            shaderProgram.INVERSE_VIEW_ROTATION_MATRIX.set(inverseViewRotationMatrix);
+        }
+
+        if (shaderProgram.COLOR_MODULATOR != null) {
+            shaderProgram.COLOR_MODULATOR.set(RenderSystem.getShaderColor());
+        }
+
+        if (shaderProgram.GLINT_ALPHA != null) {
+            shaderProgram.GLINT_ALPHA.set(RenderSystem.getShaderGlintAlpha());
+        }
+
+        if (shaderProgram.FOG_START != null) {
+            shaderProgram.FOG_START.set(RenderSystem.getShaderFogStart());
+        }
+
+        if (shaderProgram.FOG_END != null) {
+            shaderProgram.FOG_END.set(RenderSystem.getShaderFogEnd());
+        }
+
+        if (shaderProgram.FOG_COLOR != null) {
+            shaderProgram.FOG_COLOR.set(RenderSystem.getShaderFogColor());
+        }
+
+        if (shaderProgram.FOG_SHAPE != null) {
+            shaderProgram.FOG_SHAPE.set(RenderSystem.getShaderFogShape()
+                .getIndex());
+        }
+
+        if (shaderProgram.TEXTURE_MATRIX != null) {
+            shaderProgram.TEXTURE_MATRIX.set(RenderSystem.getTextureMatrix());
+        }
+
+        if (shaderProgram.GAME_TIME != null) {
+            shaderProgram.GAME_TIME.set(RenderSystem.getShaderGameTime());
+        }
+
+        if (shaderProgram.SCREEN_SIZE != null) {
+            Window window = Minecraft.getInstance()
+                .getWindow();
+            shaderProgram.SCREEN_SIZE.set((float) window.getWidth(),
+                (float) window.getHeight());
+        }
+
+        if (shaderProgram.LINE_WIDTH != null
+            && (drawMode == VertexFormat.Mode.LINES
+            || drawMode == VertexFormat.Mode.LINE_STRIP)) {
+            shaderProgram.LINE_WIDTH.set(RenderSystem.getShaderLineWidth());
+        }
+
+        RenderSystem.setupShaderLights(shaderProgram);
     }
 
     public record UniformHandle(long addr, int size) {
@@ -68,50 +126,22 @@ public final class ShaderProxy {
     }
 
     private static int resolveSamplerTextureId(IShaderProgramExt ext, ShaderField field) {
-        Object2IntMap<String> samplerTextures = ext.radiance$getSamplerTexturesValue();
-        if (samplerTextures.containsKey(field.name())) {
-            int textureId = samplerTextures.getInt(field.name());
-            if (textureId != 0) {
-                return textureId;
-            }
+        Object sampler = ext.radiance$getSamplersValue()
+            .get(field.name());
+        if (sampler instanceof RenderTarget framebuffer) {
+            return framebuffer.getColorTextureId();
+        }
+        if (sampler instanceof AbstractTexture texture) {
+            return texture.getId();
+        }
+        if (sampler instanceof Integer textureId) {
+            return textureId;
         }
         Integer fallbackSlot = tryParseSamplerSlot(field.name());
         if (fallbackSlot != null) {
-            int textureId = RenderSystem.getShaderTexture(fallbackSlot);
-            if (textureId != 0) {
-                return textureId;
-            }
+            return RenderSystem.getShaderTexture(fallbackSlot);
         }
-        if (field.samplerSlot() >= 0) {
-            int textureId = RenderSystem.getShaderTexture(field.samplerSlot());
-            if (textureId != 0) {
-                return textureId;
-            }
-        }
-        if ("Sampler2".equals(field.name())) {
-            return getWhiteTextureId();
-        }
-        return 0;
-    }
-
-    public static int getWhiteTextureId() {
-        Integer cached = whiteTextureId;
-        if (cached != null) {
-            return cached;
-        }
-
-        NativeImage image = new NativeImage(16, 16, false);
-        for (int y = 0; y < 16; y++) {
-            for (int x = 0; x < 16; x++) {
-                image.setColorArgb(x, y, 0xFFFFFFFF);
-            }
-        }
-        NativeImageBackedTexture texture = new NativeImageBackedTexture(image);
-        MinecraftClient.getInstance()
-            .getTextureManager()
-            .registerTexture(WHITE_TEXTURE_ID, texture);
-        whiteTextureId = texture.getGlId();
-        return whiteTextureId;
+        return field.samplerSlot() >= 0 ? RenderSystem.getShaderTexture(field.samplerSlot()) : 0;
     }
 
     private static Integer tryParseSamplerSlot(String samplerName) {
@@ -125,11 +155,10 @@ public final class ShaderProxy {
         }
     }
 
-    private static void putUniform(ByteBuffer bb, ShaderField field, GlUniform uniform) {
+    private static void putUniform(ByteBuffer bb, ShaderField field, Uniform uniform) {
         IGlUniformExt ext = (IGlUniformExt) (Object) uniform;
         switch (field.kind()) {
-            case INT -> putInts(bb, field.offset(), ext.radiance$getIntDataValue(),
-                field.componentCount());
+            case INT -> putInts(bb, field.offset(), ext.radiance$getIntDataValue(), field.componentCount());
             case FLOAT -> putFloats(bb, field.offset(), ext.radiance$getFloatDataValue(),
                 field.componentCount());
             case MATRIX -> putMatrix(bb, field.offset(), field.componentCount(), uniform.getName(),

@@ -5,6 +5,11 @@ import org.lwjgl.opengl.GL11;
 
 public class PipelineStateProxy {
 
+    public static void invalidateDynamicStateCache() {
+        ColorBlendState.invalidateCache();
+        DepthStencilState.invalidateCache();
+    }
+
     public static class ViewportState {
 
         public static native void setScissorEnabled(boolean enabled);
@@ -16,20 +21,73 @@ public class PipelineStateProxy {
 
     public static class ColorBlendState {
 
-        // region <common>
-        public native static void setBlendEnable(boolean enable);
+        private static final int UNKNOWN_STATE = -1;
+        private static int blendEnabled = UNKNOWN_STATE;
+        private static int colorLogicOpEnabled = UNKNOWN_STATE;
+        private static int srcColorBlendFactor = Integer.MIN_VALUE;
+        private static int srcAlphaBlendFactor = Integer.MIN_VALUE;
+        private static int dstColorBlendFactor = Integer.MIN_VALUE;
+        private static int dstAlphaBlendFactor = Integer.MIN_VALUE;
+
+        private static void invalidateCache() {
+            blendEnabled = UNKNOWN_STATE;
+            colorLogicOpEnabled = UNKNOWN_STATE;
+            srcColorBlendFactor = Integer.MIN_VALUE;
+            srcAlphaBlendFactor = Integer.MIN_VALUE;
+            dstColorBlendFactor = Integer.MIN_VALUE;
+            dstAlphaBlendFactor = Integer.MIN_VALUE;
+        }
+
+
+        private static native void setBlendEnableNative(boolean enable);
+
+        public static void setBlendEnable(boolean enable) {
+            int state = enable ? 1 : 0;
+            if (blendEnabled == state) {
+                return;
+            }
+            setBlendEnableNative(enable);
+            blendEnabled = state;
+        }
 
         public native static void setColorBlendConstants(float const1, float const2, float const3,
             float const4);
 
-        public native static void setColorLogicOpEnable(boolean enable);
-        // endregion
+        private static native void setColorLogicOpEnableNative(boolean enable);
 
-        // region <vulkan>
-        public native static void vkSetBlendFuncSeparate(int srcColorBlendFactor,
+        public static void setColorLogicOpEnable(boolean enable) {
+            int state = enable ? 1 : 0;
+            if (colorLogicOpEnabled == state) {
+                return;
+            }
+            setColorLogicOpEnableNative(enable);
+            colorLogicOpEnabled = state;
+        }
+
+
+
+        private static native void vkSetBlendFuncSeparateNative(int srcColorBlendFactor,
             int srcAlphaBlendFactor,
             int dstColorBlendFactor,
             int dstAlphaBlendFactor);
+
+        public static void vkSetBlendFuncSeparate(int srcColorBlendFactor,
+            int srcAlphaBlendFactor,
+            int dstColorBlendFactor,
+            int dstAlphaBlendFactor) {
+            if (ColorBlendState.srcColorBlendFactor == srcColorBlendFactor
+                && ColorBlendState.srcAlphaBlendFactor == srcAlphaBlendFactor
+                && ColorBlendState.dstColorBlendFactor == dstColorBlendFactor
+                && ColorBlendState.dstAlphaBlendFactor == dstAlphaBlendFactor) {
+                return;
+            }
+            vkSetBlendFuncSeparateNative(srcColorBlendFactor, srcAlphaBlendFactor,
+                dstColorBlendFactor, dstAlphaBlendFactor);
+            ColorBlendState.srcColorBlendFactor = srcColorBlendFactor;
+            ColorBlendState.srcAlphaBlendFactor = srcAlphaBlendFactor;
+            ColorBlendState.dstColorBlendFactor = dstColorBlendFactor;
+            ColorBlendState.dstAlphaBlendFactor = dstAlphaBlendFactor;
+        }
 
         public static void vkSetBlendFuncCombined(int srcBlendFactor, int dstBlendFactor) {
             vkSetBlendFuncSeparate(srcBlendFactor, srcBlendFactor, dstBlendFactor, dstBlendFactor);
@@ -44,9 +102,9 @@ public class PipelineStateProxy {
         public native static void vkSetColorWriteMask(int colorWriteMask);
 
         public native static void vkSetColorLogicOp(int colorLogicOp);
-        // endregion
 
-        // region <openGL>
+
+
         public static void glSetBlendFuncSeparate(int srcColorBlendFactor,
             int srcAlphaBlendFactor,
             int dstColorBlendFactor,
@@ -91,21 +149,47 @@ public class PipelineStateProxy {
         public static void glSetColorLogicOp(int colorLogicOp) {
             vkSetColorLogicOp(VulkanConstants.VkLogicOp.ofGL(colorLogicOp));
         }
-        // endregion
+
     }
 
     public static class DepthStencilState {
 
-        // region <common>
-        public static native void setDepthTestEnable(boolean enable);
+        private static final int UNKNOWN_STATE = -1;
+        private static int depthTestEnabled = UNKNOWN_STATE;
+        private static int depthCompareOp = Integer.MIN_VALUE;
+
+        private static void invalidateCache() {
+            depthTestEnabled = UNKNOWN_STATE;
+            depthCompareOp = Integer.MIN_VALUE;
+        }
+
+
+        private static native void setDepthTestEnableNative(boolean enable);
+
+        public static void setDepthTestEnable(boolean enable) {
+            int state = enable ? 1 : 0;
+            if (depthTestEnabled == state) {
+                return;
+            }
+            setDepthTestEnableNative(enable);
+            depthTestEnabled = state;
+        }
 
         public static native void setDepthWriteEnable(boolean enable);
 
         public static native void setStencilTestEnable(boolean enable);
-        // endregion
 
-        // region <vulkan>
-        public static native void vkSetDepthCompareOp(int depthCompareOp);
+
+
+        private static native void vkSetDepthCompareOpNative(int depthCompareOp);
+
+        public static void vkSetDepthCompareOp(int depthCompareOp) {
+            if (DepthStencilState.depthCompareOp == depthCompareOp) {
+                return;
+            }
+            vkSetDepthCompareOpNative(depthCompareOp);
+            DepthStencilState.depthCompareOp = depthCompareOp;
+        }
 
         public static native void vkSetStencilFrontFunc(int compareOp, int reference,
             int compareMask);
@@ -135,9 +219,9 @@ public class PipelineStateProxy {
             vkSetStencilFrontWriteMask(writeMask);
             vkSetStencilBackWriteMask(writeMask);
         }
-        // endregion
 
-        // region <openGL>
+
+
         public static void glSetDepthCompareOp(int depthCompareOp) {
             vkSetDepthCompareOp(VulkanConstants.VkCompareOp.ofGL(depthCompareOp));
         }
@@ -172,16 +256,16 @@ public class PipelineStateProxy {
                 VulkanConstants.VkStencilOp.ofGL(depthFailOp),
                 VulkanConstants.VkStencilOp.ofGL(passOp));
         }
-        // endregion
+
     }
 
     public static class RasterizationState {
 
-        // region <common>
-        public static native void setLineWidth(float lineWidth);
-        // endregion
 
-        // region <vulkan>
+        public static native void setLineWidth(float lineWidth);
+
+
+
         public static native void vkSetPolygonMode(int polygonMode);
 
         public static native void vkSetCullMode(int cullMode);
@@ -192,9 +276,9 @@ public class PipelineStateProxy {
 
         public static native void vkSetDepthBias(float depthBiasSlopeFactor,
             float depthBiasConstantFactor);
-        // endregion
 
-        // region <openGL>
+
+
         public static void glSetPolygonMode(int polygonMode) {
             vkSetPolygonMode(VulkanConstants.VkPolygonMode.ofGL(polygonMode));
         }
@@ -214,7 +298,7 @@ public class PipelineStateProxy {
         public static void glSetPolygonOffset(float factor, float units) {
             vkSetDepthBias(factor, units);
         }
-        // region
+
     }
 
     public static class ClearState {

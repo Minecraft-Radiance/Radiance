@@ -1,12 +1,12 @@
 package com.radiance;
 
-import net.fabricmc.api.ModInitializer;
+import net.minecraftforge.fml.common.Mod;
 
-public class Radiance implements ModInitializer {
+@Mod(Radiance.MOD_ID)
+public final class Radiance {
 
     public static final String MOD_ID = "radiance";
 
-    @Override
-    public void onInitialize() {
+    public Radiance() {
     }
 }
