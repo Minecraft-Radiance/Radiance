@@ -1,11 +1,11 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.mojang.blaze3d.shaders.CompiledShader;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.ICompiledShaderExt;
 import java.lang.reflect.Constructor;
 import java.util.concurrent.atomic.AtomicInteger;
-import net.minecraft.client.gl.CompiledShader;
-import net.minecraft.client.gl.ShaderLoader;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.renderer.ShaderManager;
+import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -23,14 +23,14 @@ public abstract class CompiledShaderMixins implements ICompiledShaderExt {
     private static final Constructor<CompiledShader> CONSTRUCTOR = createConstructor();
 
     @Shadow
-    private int handle;
+    private int shaderId;
 
     @Unique
     private String radiance$resolvedSource;
 
-    @Inject(method = "compile", at = @At("HEAD"), cancellable = true)
-    private static void compileWithoutOpenGL(Identifier id, CompiledShader.Type type, String source,
-        CallbackInfoReturnable<CompiledShader> cir) throws ShaderLoader.LoadException {
+    @Inject(method = "Lcom/mojang/blaze3d/shaders/CompiledShader;compile(Lnet/minecraft/resources/ResourceLocation;Lcom/mojang/blaze3d/shaders/CompiledShader$Type;Ljava/lang/String;)Lcom/mojang/blaze3d/shaders/CompiledShader;", at = @At("HEAD"), cancellable = true)
+    private static void compileWithoutOpenGL(ResourceLocation id, CompiledShader.Type type, String source,
+        CallbackInfoReturnable<CompiledShader> cir) throws ShaderManager.CompilationException {
         try {
             CompiledShader shader = CONSTRUCTOR.newInstance(NEXT_VIRTUAL_SHADER_ID.getAndIncrement(),
                 id);
@@ -38,17 +38,17 @@ public abstract class CompiledShaderMixins implements ICompiledShaderExt {
             ext.radiance$setResolvedSource(source);
             cir.setReturnValue(shader);
         } catch (ReflectiveOperationException e) {
-            throw new ShaderLoader.LoadException(
+            throw new ShaderManager.CompilationException(
                 "Failed to create virtual compiled shader: " + id);
         }
     }
 
-    @Inject(method = "close", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "Lcom/mojang/blaze3d/shaders/CompiledShader;close()V", at = @At("HEAD"), cancellable = true)
     private void closeWithoutOpenGL(CallbackInfo ci) {
-        if (this.handle == -1) {
+        if (this.shaderId == -1) {
             throw new IllegalStateException("Already closed");
         }
-        this.handle = -1;
+        this.shaderId = -1;
         ci.cancel();
     }
 
@@ -66,7 +66,7 @@ public abstract class CompiledShaderMixins implements ICompiledShaderExt {
     private static Constructor<CompiledShader> createConstructor() {
         try {
             Constructor<CompiledShader> constructor = CompiledShader.class.getDeclaredConstructor(
-                int.class, Identifier.class);
+                int.class, ResourceLocation.class);
             constructor.setAccessible(true);
             return constructor;
         } catch (ReflectiveOperationException e) {

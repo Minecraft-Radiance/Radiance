@@ -1,5 +1,8 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.mojang.blaze3d.shaders.CompiledShader;
+import com.mojang.blaze3d.shaders.Uniform;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.ICompiledShaderExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IShaderProgramExt;
 import it.unimi.dsi.fastutil.ints.IntList;
@@ -9,12 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
-import net.minecraft.client.gl.CompiledShader;
-import net.minecraft.client.gl.GlUniform;
-import net.minecraft.client.gl.ShaderLoader;
-import net.minecraft.client.gl.ShaderProgram;
-import net.minecraft.client.gl.ShaderProgramDefinition;
-import net.minecraft.client.render.VertexFormat;
+import net.minecraft.client.renderer.CompiledShaderProgram;
+import net.minecraft.client.renderer.ShaderManager;
+import net.minecraft.client.renderer.ShaderProgramConfig;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -24,17 +24,17 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(ShaderProgram.class)
+@Mixin(CompiledShaderProgram.class)
 public abstract class ShaderProgramMixins implements IShaderProgramExt {
 
     @Unique
     private static final AtomicInteger NEXT_VIRTUAL_PROGRAM_ID = new AtomicInteger(1);
     @Unique
-    private static final Constructor<ShaderProgram> CONSTRUCTOR = createConstructor();
+    private static final Constructor<CompiledShaderProgram> CONSTRUCTOR = createConstructor();
 
     @Shadow
     @Final
-    private List<ShaderProgramDefinition.Sampler> samplers;
+    private List<ShaderProgramConfig.Sampler> samplers;
 
     @Shadow
     @Final
@@ -46,63 +46,63 @@ public abstract class ShaderProgramMixins implements IShaderProgramExt {
 
     @Shadow
     @Final
-    private List<GlUniform> uniforms;
+    private List<Uniform> uniforms;
 
     @Shadow
     @Final
-    private Map<String, GlUniform> uniformsByName;
+    private Map<String, Uniform> uniformsByName;
 
     @Shadow
     @Final
-    private Map<String, ShaderProgramDefinition.Uniform> uniformDefinitionsByName;
+    private Map<String, ShaderProgramConfig.Uniform> uniformConfigs;
 
     @Shadow
-    public GlUniform modelViewMat;
+    public Uniform MODEL_VIEW_MATRIX;
 
     @Shadow
-    public GlUniform projectionMat;
+    public Uniform PROJECTION_MATRIX;
 
     @Shadow
-    public GlUniform textureMat;
+    public Uniform TEXTURE_MATRIX;
 
     @Shadow
-    public GlUniform screenSize;
+    public Uniform SCREEN_SIZE;
 
     @Shadow
-    public GlUniform colorModulator;
+    public Uniform COLOR_MODULATOR;
 
     @Shadow
-    public GlUniform light0Direction;
+    public Uniform LIGHT0_DIRECTION;
 
     @Shadow
-    public GlUniform light1Direction;
+    public Uniform LIGHT1_DIRECTION;
 
     @Shadow
-    public GlUniform glintAlpha;
+    public Uniform GLINT_ALPHA;
 
     @Shadow
-    public GlUniform fogStart;
+    public Uniform FOG_START;
 
     @Shadow
-    public GlUniform fogEnd;
+    public Uniform FOG_END;
 
     @Shadow
-    public GlUniform fogColor;
+    public Uniform FOG_COLOR;
 
     @Shadow
-    public GlUniform fogShape;
+    public Uniform FOG_SHAPE;
 
     @Shadow
-    public GlUniform lineWidth;
+    public Uniform LINE_WIDTH;
 
     @Shadow
-    public GlUniform gameTime;
+    public Uniform GAME_TIME;
 
     @Shadow
-    public GlUniform modelOffset;
+    public Uniform MODEL_OFFSET;
 
     @Shadow
-    private GlUniform createGlUniform(ShaderProgramDefinition.Uniform uniform) {
+    private Uniform parseUniformNode(ShaderProgramConfig.Uniform uniform) {
         throw new AssertionError();
     }
 
@@ -117,12 +117,12 @@ public abstract class ShaderProgramMixins implements IShaderProgramExt {
     @Unique
     private List<String> radiance$samplerNames = List.of();
 
-    @Inject(method = "create", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "Lnet/minecraft/client/renderer/CompiledShaderProgram;link(Lcom/mojang/blaze3d/shaders/CompiledShader;Lcom/mojang/blaze3d/shaders/CompiledShader;Lcom/mojang/blaze3d/vertex/VertexFormat;)Lnet/minecraft/client/renderer/CompiledShaderProgram;", at = @At("HEAD"), cancellable = true)
     private static void createWithoutOpenGL(CompiledShader vertexShader,
         CompiledShader fragmentShader, VertexFormat format,
-        CallbackInfoReturnable<ShaderProgram> cir) throws ShaderLoader.LoadException {
+        CallbackInfoReturnable<CompiledShaderProgram> cir) throws ShaderManager.CompilationException {
         try {
-            ShaderProgram shaderProgram = CONSTRUCTOR.newInstance(
+            CompiledShaderProgram shaderProgram = CONSTRUCTOR.newInstance(
                 NEXT_VIRTUAL_PROGRAM_ID.getAndIncrement());
             IShaderProgramExt ext = (IShaderProgramExt) (Object) shaderProgram;
             ext.radiance$setVertexFormat(format);
@@ -132,69 +132,69 @@ public abstract class ShaderProgramMixins implements IShaderProgramExt {
                 ((ICompiledShaderExt) (Object) fragmentShader).radiance$getResolvedSource());
             cir.setReturnValue(shaderProgram);
         } catch (ReflectiveOperationException e) {
-            throw new ShaderLoader.LoadException("Could not create virtual shader program");
+            throw new ShaderManager.CompilationException("Could not create virtual shader program");
         }
     }
 
-    @Inject(method = "set", at = @At("HEAD"), cancellable = true)
-    private void setWithoutOpenGL(List<ShaderProgramDefinition.Uniform> uniforms,
-        List<ShaderProgramDefinition.Sampler> samplers, CallbackInfo ci) {
+    @Inject(method = "Lnet/minecraft/client/renderer/CompiledShaderProgram;setupUniforms(Ljava/util/List;Ljava/util/List;)V", at = @At("HEAD"), cancellable = true)
+    private void setWithoutOpenGL(List<ShaderProgramConfig.Uniform> uniforms,
+        List<ShaderProgramConfig.Sampler> samplers, CallbackInfo ci) {
         this.uniforms.clear();
         this.uniformsByName.clear();
-        this.uniformDefinitionsByName.clear();
+        this.uniformConfigs.clear();
         this.samplers.clear();
         this.samplerLocations.clear();
         this.samplerTextures.clear();
 
-        for (ShaderProgramDefinition.Uniform uniform : uniforms) {
-            GlUniform glUniform = this.createGlUniform(uniform);
+        for (ShaderProgramConfig.Uniform uniform : uniforms) {
+            Uniform glUniform = this.parseUniformNode(uniform);
             glUniform.setLocation(this.uniforms.size());
             this.uniforms.add(glUniform);
             this.uniformsByName.put(uniform.name(), glUniform);
-            this.uniformDefinitionsByName.put(uniform.name(), uniform);
+            this.uniformConfigs.put(uniform.name(), uniform);
         }
 
         ArrayList<String> samplerNames = new ArrayList<>(samplers.size());
         for (int i = 0; i < samplers.size(); i++) {
-            ShaderProgramDefinition.Sampler sampler = samplers.get(i);
+            ShaderProgramConfig.Sampler sampler = samplers.get(i);
             this.samplers.add(sampler);
             this.samplerLocations.add(i);
             samplerNames.add(sampler.name());
         }
         this.radiance$samplerNames = List.copyOf(samplerNames);
 
-        this.modelViewMat = this.uniformsByName.get("ModelViewMat");
-        this.projectionMat = this.uniformsByName.get("ProjMat");
-        this.textureMat = this.uniformsByName.get("TextureMat");
-        this.screenSize = this.uniformsByName.get("ScreenSize");
-        this.colorModulator = this.uniformsByName.get("ColorModulator");
-        this.light0Direction = this.uniformsByName.get("Light0_Direction");
-        this.light1Direction = this.uniformsByName.get("Light1_Direction");
-        this.glintAlpha = this.uniformsByName.get("GlintAlpha");
-        this.fogStart = this.uniformsByName.get("FogStart");
-        this.fogEnd = this.uniformsByName.get("FogEnd");
-        this.fogColor = this.uniformsByName.get("FogColor");
-        this.fogShape = this.uniformsByName.get("FogShape");
-        this.lineWidth = this.uniformsByName.get("LineWidth");
-        this.gameTime = this.uniformsByName.get("GameTime");
-        this.modelOffset = this.uniformsByName.get("ModelOffset");
+        this.MODEL_VIEW_MATRIX = this.uniformsByName.get("ModelViewMat");
+        this.PROJECTION_MATRIX = this.uniformsByName.get("ProjMat");
+        this.TEXTURE_MATRIX = this.uniformsByName.get("TextureMat");
+        this.SCREEN_SIZE = this.uniformsByName.get("ScreenSize");
+        this.COLOR_MODULATOR = this.uniformsByName.get("ColorModulator");
+        this.LIGHT0_DIRECTION = this.uniformsByName.get("Light0_Direction");
+        this.LIGHT1_DIRECTION = this.uniformsByName.get("Light1_Direction");
+        this.GLINT_ALPHA = this.uniformsByName.get("GlintAlpha");
+        this.FOG_START = this.uniformsByName.get("FogStart");
+        this.FOG_END = this.uniformsByName.get("FogEnd");
+        this.FOG_COLOR = this.uniformsByName.get("FogColor");
+        this.FOG_SHAPE = this.uniformsByName.get("FogShape");
+        this.LINE_WIDTH = this.uniformsByName.get("LineWidth");
+        this.GAME_TIME = this.uniformsByName.get("GameTime");
+        this.MODEL_OFFSET = this.uniformsByName.get("ModelOffset");
 
         ci.cancel();
     }
 
-    @Inject(method = "bind", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "Lnet/minecraft/client/renderer/CompiledShaderProgram;apply()V", at = @At("HEAD"), cancellable = true)
     private void bindWithoutOpenGL(CallbackInfo ci) {
         ci.cancel();
     }
 
-    @Inject(method = "unbind", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "Lnet/minecraft/client/renderer/CompiledShaderProgram;clear()V", at = @At("HEAD"), cancellable = true)
     private void unbindWithoutOpenGL(CallbackInfo ci) {
         ci.cancel();
     }
 
-    @Inject(method = "close", at = @At("HEAD"), cancellable = true)
+    @Inject(method = "Lnet/minecraft/client/renderer/CompiledShaderProgram;close()V", at = @At("HEAD"), cancellable = true)
     private void closeWithoutOpenGL(CallbackInfo ci) {
-        this.uniforms.forEach(GlUniform::close);
+        this.uniforms.forEach(Uniform::close);
         ci.cancel();
     }
 
@@ -244,7 +244,7 @@ public abstract class ShaderProgramMixins implements IShaderProgramExt {
     }
 
     @Override
-    public List<GlUniform> radiance$getUniformsValue() {
+    public List<Uniform> radiance$getUniformsValue() {
         return this.uniforms;
     }
 
@@ -254,9 +254,9 @@ public abstract class ShaderProgramMixins implements IShaderProgramExt {
     }
 
     @Unique
-    private static Constructor<ShaderProgram> createConstructor() {
+    private static Constructor<CompiledShaderProgram> createConstructor() {
         try {
-            Constructor<ShaderProgram> constructor = ShaderProgram.class.getDeclaredConstructor(
+            Constructor<CompiledShaderProgram> constructor = CompiledShaderProgram.class.getDeclaredConstructor(
                 int.class);
             constructor.setAccessible(true);
             return constructor;

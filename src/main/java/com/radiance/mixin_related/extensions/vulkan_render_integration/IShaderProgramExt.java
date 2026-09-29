@@ -1,9 +1,9 @@
 package com.radiance.mixin_related.extensions.vulkan_render_integration;
 
+import com.mojang.blaze3d.shaders.Uniform;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import it.unimi.dsi.fastutil.objects.Object2IntMap;
 import java.util.List;
-import net.minecraft.client.gl.GlUniform;
-import net.minecraft.client.render.VertexFormat;
 
 public interface IShaderProgramExt {
 
@@ -25,7 +25,7 @@ public interface IShaderProgramExt {
 
     List<String> radiance$getSamplerNamesValue();
 
-    List<GlUniform> radiance$getUniformsValue();
+    List<Uniform> radiance$getUniformsValue();
 
     Object2IntMap<String> radiance$getSamplerTexturesValue();
 }

@@ -2,48 +2,48 @@ package com.radiance.mixins.vanilla_resource_tracker;
 
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.IGlyphAtlasTextureExt;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.IRenderableGlyphExt;
-import net.minecraft.client.font.BakedGlyph;
-import net.minecraft.client.font.GlyphAtlasTexture;
-import net.minecraft.client.font.TextRenderLayerSet;
+import net.minecraft.client.gui.font.FontTexture;
+import net.minecraft.client.gui.font.GlyphRenderTypes;
+import net.minecraft.client.gui.font.glyphs.BakedGlyph;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
-@Mixin(GlyphAtlasTexture.class)
+@Mixin(FontTexture.class)
 public abstract class GlyphAtlasTextureMixins extends AbstractTextureMixins implements
     IGlyphAtlasTextureExt {
 
     @Final
     @Shadow
-    private TextRenderLayerSet textRenderLayers;
+    private GlyphRenderTypes renderTypes;
     @Final
     @Shadow
-    private boolean hasColor;
+    private boolean colored;
     @Final
     @Shadow
-    private GlyphAtlasTexture.Slot rootSlot;
+    private FontTexture.Node root;
 
     @Override
     public BakedGlyph radiance$bake(IRenderableGlyphExt glyph) {
-        if (glyph.hasColor() != this.hasColor) {
+        if (glyph.isColored() != this.colored) {
             return null;
         }
-        GlyphAtlasTexture.Slot slot = this.rootSlot.findSlotFor(glyph);
+        FontTexture.Node slot = this.root.insert(glyph);
         if (slot != null) {
-            this.bindTexture();
-            glyph.upload(this.getGlId(), slot.x, slot.y);
+            this.bind();
+            glyph.upload(this.getId(), slot.x, slot.y);
             float f = 256.0f;
             float g = 256.0f;
             float h = 0.01f;
-            return new BakedGlyph(this.textRenderLayers,
+            return new BakedGlyph(this.renderTypes,
                 ((float) slot.x + 0.01f) / 256.0f,
-                ((float) slot.x - 0.01f + (float) glyph.getWidth()) / 256.0f,
+                ((float) slot.x - 0.01f + (float) glyph.getPixelWidth()) / 256.0f,
                 ((float) slot.y + 0.01f) / 256.0f,
-                ((float) slot.y - 0.01f + (float) glyph.getHeight()) / 256.0f,
-                glyph.getXMin(),
-                glyph.getXMax(),
-                glyph.getYMin(),
-                glyph.getYMax());
+                ((float) slot.y - 0.01f + (float) glyph.getPixelHeight()) / 256.0f,
+                glyph.getLeft(),
+                glyph.getRight(),
+                glyph.getTop(),
+                glyph.getBottom());
         }
         return null;
     }

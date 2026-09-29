@@ -2,19 +2,19 @@ package com.radiance.client.texture;
 
 import java.io.IOException;
 import java.io.InputStream;
-import net.minecraft.util.Identifier;
+import net.minecraft.resources.ResourceLocation;
 
 public class IdentifierInputStream extends InputStream {
 
-    private final Identifier resourceId;
+    private final ResourceLocation resourceId;
     private final InputStream originalStream;
 
-    public IdentifierInputStream(InputStream originalStream, Identifier id) {
+    public IdentifierInputStream(InputStream originalStream, ResourceLocation id) {
         this.resourceId = id;
         this.originalStream = originalStream;
     }
 
-    public Identifier getResourceId() {
+    public ResourceLocation getResourceId() {
         return this.resourceId;
     }
 

@@ -1,0 +1,28 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="GPL-3.0"
+clientSideOnly=true
+accessTransformers=["META-INF/accesstransformer.cfg"]
+
+[[mods]]
+modId="radiance"
+version="${version}"
+displayName="Radiance"
+displayURL="https://www.minecraft-radiance.com/"
+logoFile="assets/radiance/icon.png"
+authors="LJIONG, Interstellarss"
+description='''A Minecraft mod that uses modern Vulkan C++ as backend renderer.'''
+
+[[dependencies.radiance]]
+modId="forge"
+mandatory=true
+versionRange="${forge_version_range}"
+ordering="NONE"
+side="CLIENT"
+
+[[dependencies.radiance]]
+modId="minecraft"
+mandatory=true
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="CLIENT"

@@ -1,20 +1,20 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.mojang.blaze3d.buffers.BufferUsage;
+import com.mojang.blaze3d.vertex.MeshData;
+import com.mojang.blaze3d.vertex.VertexBuffer;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.radiance.client.UnsafeManager;
 import com.radiance.client.constant.Constants;
 import com.radiance.client.proxy.world.EntityProxy;
 import com.radiance.client.vertex.PBRVertexConsumer;
 import com.radiance.client.vertex.StorageVertexConsumerProvider;
-import net.minecraft.client.gl.GlUsage;
-import net.minecraft.client.gl.VertexBuffer;
-import net.minecraft.client.option.CloudRenderMode;
-import net.minecraft.client.render.BuiltBuffer;
-import net.minecraft.client.render.CloudRenderer;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.util.math.ColorHelper;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
+import net.minecraft.client.CloudStatus;
+import net.minecraft.client.renderer.CloudRenderer;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.util.ARGB;
+import net.minecraft.util.Mth;
+import net.minecraft.world.phys.Vec3;
 import org.joml.Matrix4f;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -28,25 +28,25 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class CloudRendererMixins {
 
     @Shadow
-    private boolean field_53052;
+    private boolean needsRebuild;
 
     @Shadow
-    private int centerX;
+    private int prevCellX;
 
     @Shadow
-    private int centerZ;
+    private int prevCellZ;
 
     @Shadow
-    private CloudRenderer.ViewMode viewMode;
+    private CloudRenderer.RelativeCameraPos prevRelativeCameraPos;
 
     @Shadow
-    private CloudRenderMode renderMode;
+    private CloudStatus prevType;
 
     @Shadow
-    private CloudRenderer.CloudCells cells;
+    private CloudRenderer.TextureData texture;
 
     @Shadow
-    private boolean renderClouds;
+    private boolean vertexBufferEmpty;
 
     @Unique
     private StorageVertexConsumerProvider storageVertexConsumerProvider = null;
@@ -79,60 +79,60 @@ public class CloudRendererMixins {
         return (packed >> 0 & 1L) != 0L;
     }
 
-    @Redirect(method = "<init>", at = @At(value = "NEW", target = "net/minecraft/client/gl/VertexBuffer"))
-    private VertexBuffer cancelBufferInit(GlUsage usage) {
+    @Redirect(method = "Lnet/minecraft/client/renderer/CloudRenderer;<init>()V", at = @At(value = "NEW", target = "com/mojang/blaze3d/vertex/VertexBuffer"))
+    private VertexBuffer cancelBufferInit(BufferUsage usage) {
         return UnsafeManager.INSTANCE.allocateInstance(VertexBuffer.class);
     }
 
     @Inject(method =
-        "renderClouds(ILnet/minecraft/client/option/CloudRenderMode;FLorg/joml/Matrix4f;Lorg/joml/Matrix4f;"
+        "render(ILnet/minecraft/client/CloudStatus;FLorg/joml/Matrix4f;Lorg/joml/Matrix4f;"
             +
-            "Lnet/minecraft/util/math/Vec3d;F)V", at = @At(value = "HEAD"), cancellable = true)
+            "Lnet/minecraft/world/phys/Vec3;F)V", at = @At(value = "HEAD"), cancellable = true)
     public void redirectCloudRendering(int color,
-        CloudRenderMode cloudRenderMode,
+        CloudStatus cloudRenderMode,
         float cloudHeight,
         Matrix4f positionMatrix,
         Matrix4f projectionMatrix,
-        Vec3d cameraPos,
+        Vec3 cameraPos,
         float ticks,
         CallbackInfo ci) {
-        if (this.cells != null) {
+        if (this.texture != null) {
             float f = (float) (cloudHeight - cameraPos.y);
             float g = f + 4.0F;
-            CloudRenderer.ViewMode viewMode;
+            CloudRenderer.RelativeCameraPos prevRelativeCameraPos;
             if (g < 0.0F) {
-                viewMode = CloudRenderer.ViewMode.ABOVE_CLOUDS;
+                prevRelativeCameraPos = CloudRenderer.RelativeCameraPos.ABOVE_CLOUDS;
             } else if (f > 0.0F) {
-                viewMode = CloudRenderer.ViewMode.BELOW_CLOUDS;
+                prevRelativeCameraPos = CloudRenderer.RelativeCameraPos.BELOW_CLOUDS;
             } else {
-                viewMode = CloudRenderer.ViewMode.INSIDE_CLOUDS;
+                prevRelativeCameraPos = CloudRenderer.RelativeCameraPos.INSIDE_CLOUDS;
             }
 
             double d = cameraPos.x + ticks * 0.030000001F;
             double e = cameraPos.z + 3.96F;
-            double h = this.cells.width() * 12.0;
-            double i = this.cells.height() * 12.0;
-            d -= MathHelper.floor(d / h) * h;
-            e -= MathHelper.floor(e / i) * i;
-            int j = MathHelper.floor(d / 12.0);
-            int k = MathHelper.floor(e / 12.0);
+            double h = this.texture.width() * 12.0;
+            double i = this.texture.height() * 12.0;
+            d -= Mth.floor(d / h) * h;
+            e -= Mth.floor(e / i) * i;
+            int j = Mth.floor(d / 12.0);
+            int k = Mth.floor(e / 12.0);
             float l = (float) (d - j * 12.0F);
             float m = (float) (e - k * 12.0F);
-            RenderLayer
+            RenderType
                 renderLayer =
-                cloudRenderMode == CloudRenderMode.FANCY ? RenderLayer.getFastClouds()
-                    : RenderLayer.getNoCullingClouds();
+                cloudRenderMode == CloudStatus.FANCY ? RenderType.clouds()
+                    : RenderType.flatClouds();
 
-            if (this.field_53052 || j != this.centerX || k != this.centerZ
-                || viewMode != this.viewMode ||
-                cloudRenderMode != this.renderMode) {
-                this.field_53052 = false;
-                this.centerX = j;
-                this.centerZ = k;
-                this.viewMode = viewMode;
-                this.renderMode = cloudRenderMode;
+            if (this.needsRebuild || j != this.prevCellX || k != this.prevCellZ
+                || prevRelativeCameraPos != this.prevRelativeCameraPos ||
+                cloudRenderMode != this.prevType) {
+                this.needsRebuild = false;
+                this.prevCellX = j;
+                this.prevCellZ = k;
+                this.prevRelativeCameraPos = prevRelativeCameraPos;
+                this.prevType = cloudRenderMode;
 
-                this.tessellateClouds(color, j, k, cloudRenderMode, viewMode, renderLayer);
+                this.tessellateClouds(color, j, k, cloudRenderMode, prevRelativeCameraPos, renderLayer);
             }
 
             if (storageVertexConsumerProvider != null) {
@@ -151,20 +151,20 @@ public class CloudRendererMixins {
     }
 
     @Unique
-    private void tessellateClouds(int color, int x, int z, CloudRenderMode renderMode,
-        CloudRenderer.ViewMode viewMode, RenderLayer layer) {
-        float red = ColorHelper.getRedFloat(color);
-        float green = ColorHelper.getGreenFloat(color);
-        float blue = ColorHelper.getBlueFloat(color);
-        int i = ColorHelper.fromFloats(0.8F, red, green, blue);
-        int j = ColorHelper.fromFloats(0.8F, 0.9F * red, 0.9F * green, 0.9F * blue);
-        int k = ColorHelper.fromFloats(0.8F, 0.7F * red, 0.7F * green, 0.7F * blue);
-        int l = ColorHelper.fromFloats(0.8F, 0.8F * red, 0.8F * green, 0.8F * blue);
+    private void tessellateClouds(int color, int x, int z, CloudStatus prevType,
+        CloudRenderer.RelativeCameraPos prevRelativeCameraPos, RenderType layer) {
+        float red = ARGB.redFloat(color);
+        float green = ARGB.greenFloat(color);
+        float blue = ARGB.blueFloat(color);
+        int i = ARGB.colorFromFloat(0.8F, red, green, blue);
+        int j = ARGB.colorFromFloat(0.8F, 0.9F * red, 0.9F * green, 0.9F * blue);
+        int k = ARGB.colorFromFloat(0.8F, 0.7F * red, 0.7F * green, 0.7F * blue);
+        int l = ARGB.colorFromFloat(0.8F, 0.8F * red, 0.8F * green, 0.8F * blue);
 
         if (storageVertexConsumerProvider != null) {
             for (EntityProxy.EntityRenderData entityRenderData : entityRenderDataList) {
                 for (EntityProxy.EntityRenderLayer entityRenderLayer : entityRenderData) {
-                    BuiltBuffer vertexBuffer = entityRenderLayer.builtBuffer();
+                    MeshData vertexBuffer = entityRenderLayer.builtBuffer();
                     vertexBuffer.close();
                 }
             }
@@ -177,8 +177,8 @@ public class CloudRendererMixins {
 
         VertexConsumer vertexConsumer = storageVertexConsumerProvider.getBuffer(layer);
         if (vertexConsumer instanceof PBRVertexConsumer pbrVertexConsumer) {
-            this.buildCloudCells(viewMode, pbrVertexConsumer, x, z, k, i, j, l,
-                renderMode == CloudRenderMode.FANCY);
+            this.buildCloudCells(prevRelativeCameraPos, pbrVertexConsumer, x, z, k, i, j, l,
+                prevType == CloudStatus.FANCY);
         } else {
             throw new RuntimeException("CloudRenderer only supports PBRVertexConsumer");
         }
@@ -194,7 +194,7 @@ public class CloudRendererMixins {
     }
 
     @Unique
-    private void buildCloudCells(CloudRenderer.ViewMode viewMode,
+    private void buildCloudCells(CloudRenderer.RelativeCameraPos prevRelativeCameraPos,
         VertexConsumer builder,
         int x,
         int z,
@@ -203,11 +203,11 @@ public class CloudRendererMixins {
         int northSouthColor,
         int eastWestColor,
         boolean fancy) {
-        if (this.cells != null) {
+        if (this.texture != null) {
             int i = 32;
-            long[] ls = this.cells.cells();
-            int j = this.cells.width();
-            int k = this.cells.height();
+            long[] ls = this.texture.cells();
+            int j = this.texture.width();
+            int k = this.texture.height();
 
             for (int l = -32; l <= 32; l++) {
                 for (int m = -32; m <= 32; m++) {
@@ -217,17 +217,17 @@ public class CloudRendererMixins {
                     if (p != 0L) {
                         int q = unpackColor(p);
                         if (fancy) {
-                            this.buildCloudCellFancy(viewMode,
+                            this.buildCloudCellFancy(prevRelativeCameraPos,
                                 builder,
-                                ColorHelper.mix(bottomColor, q),
-                                ColorHelper.mix(topColor, q),
-                                ColorHelper.mix(northSouthColor, q),
-                                ColorHelper.mix(eastWestColor, q),
+                                ARGB.multiply(bottomColor, q),
+                                ARGB.multiply(topColor, q),
+                                ARGB.multiply(northSouthColor, q),
+                                ARGB.multiply(eastWestColor, q),
                                 m,
                                 l,
                                 p);
                         } else {
-                            this.buildCloudCellFast(builder, ColorHelper.mix(topColor, q), m, l);
+                            this.buildCloudCellFast(builder, ARGB.multiply(topColor, q), m, l);
                         }
                     }
                 }
@@ -242,22 +242,22 @@ public class CloudRendererMixins {
         float h = z * 12.0F;
         float i = h + 12.0F;
 
-        builder.vertex(f, 0.0F, h)
-            .normal(0.0F, 1.0F, 0.0F)
-            .color(color);
-        builder.vertex(f, 0.0F, i)
-            .normal(0.0F, 1.0F, 0.0F)
-            .color(color);
-        builder.vertex(g, 0.0F, i)
-            .normal(0.0F, 1.0F, 0.0F)
-            .color(color);
-        builder.vertex(g, 0.0F, h)
-            .normal(0.0F, 1.0F, 0.0F)
-            .color(color);
+        builder.addVertex(f, 0.0F, h)
+            .setNormal(0.0F, 1.0F, 0.0F)
+            .setColor(color);
+        builder.addVertex(f, 0.0F, i)
+            .setNormal(0.0F, 1.0F, 0.0F)
+            .setColor(color);
+        builder.addVertex(g, 0.0F, i)
+            .setNormal(0.0F, 1.0F, 0.0F)
+            .setColor(color);
+        builder.addVertex(g, 0.0F, h)
+            .setNormal(0.0F, 1.0F, 0.0F)
+            .setColor(color);
     }
 
     @Unique
-    private void buildCloudCellFancy(CloudRenderer.ViewMode viewMode,
+    private void buildCloudCellFancy(CloudRenderer.RelativeCameraPos prevRelativeCameraPos,
         VertexConsumer builder,
         int bottomColor,
         int topColor,
@@ -273,179 +273,179 @@ public class CloudRendererMixins {
         float j = z * 12.0F;
         float k = j + 12.0F;
 
-        if (viewMode != CloudRenderer.ViewMode.BELOW_CLOUDS) {
-            builder.vertex(f, 4.0F, j)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(topColor);
-            builder.vertex(f, 4.0F, k)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(topColor);
-            builder.vertex(g, 4.0F, k)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(topColor);
-            builder.vertex(g, 4.0F, j)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(topColor);
+        if (prevRelativeCameraPos != CloudRenderer.RelativeCameraPos.BELOW_CLOUDS) {
+            builder.addVertex(f, 4.0F, j)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(topColor);
+            builder.addVertex(f, 4.0F, k)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(topColor);
+            builder.addVertex(g, 4.0F, k)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(topColor);
+            builder.addVertex(g, 4.0F, j)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(topColor);
         }
 
-        if (viewMode != CloudRenderer.ViewMode.ABOVE_CLOUDS) {
-            builder.vertex(g, 0.0F, j)
-                .normal(0.0F, -1.0F, 0.0F)
-                .color(bottomColor);
-            builder.vertex(g, 0.0F, k)
-                .normal(0.0F, -1.0F, 0.0F)
-                .color(bottomColor);
-            builder.vertex(f, 0.0F, k)
-                .normal(0.0F, -1.0F, 0.0F)
-                .color(bottomColor);
-            builder.vertex(f, 0.0F, j)
-                .normal(0.0F, -1.0F, 0.0F)
-                .color(bottomColor);
+        if (prevRelativeCameraPos != CloudRenderer.RelativeCameraPos.ABOVE_CLOUDS) {
+            builder.addVertex(g, 0.0F, j)
+                .setNormal(0.0F, -1.0F, 0.0F)
+                .setColor(bottomColor);
+            builder.addVertex(g, 0.0F, k)
+                .setNormal(0.0F, -1.0F, 0.0F)
+                .setColor(bottomColor);
+            builder.addVertex(f, 0.0F, k)
+                .setNormal(0.0F, -1.0F, 0.0F)
+                .setColor(bottomColor);
+            builder.addVertex(f, 0.0F, j)
+                .setNormal(0.0F, -1.0F, 0.0F)
+                .setColor(bottomColor);
         }
 
         if (hasBorderNorth(cell) && z > 0) {
-            builder.vertex(f, 0.0F, j)
-                .normal(0.0F, 0.0F, -1.0F)
-                .color(eastWestColor);
-            builder.vertex(f, 4.0F, j)
-                .normal(0.0F, 0.0F, -1.0F)
-                .color(eastWestColor);
-            builder.vertex(g, 4.0F, j)
-                .normal(0.0F, 0.0F, -1.0F)
-                .color(eastWestColor);
-            builder.vertex(g, 0.0F, j)
-                .normal(0.0F, 0.0F, -1.0F)
-                .color(eastWestColor);
+            builder.addVertex(f, 0.0F, j)
+                .setNormal(0.0F, 0.0F, -1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(f, 4.0F, j)
+                .setNormal(0.0F, 0.0F, -1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(g, 4.0F, j)
+                .setNormal(0.0F, 0.0F, -1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(g, 0.0F, j)
+                .setNormal(0.0F, 0.0F, -1.0F)
+                .setColor(eastWestColor);
         }
 
         if (hasBorderSouth(cell) && z < 0) {
-            builder.vertex(g, 0.0F, k)
-                .normal(0.0F, 0.0F, 1.0F)
-                .color(eastWestColor);
-            builder.vertex(g, 4.0F, k)
-                .normal(0.0F, 0.0F, 1.0F)
-                .color(eastWestColor);
-            builder.vertex(f, 4.0F, k)
-                .normal(0.0F, 0.0F, 1.0F)
-                .color(eastWestColor);
-            builder.vertex(f, 0.0F, k)
-                .normal(0.0F, 0.0F, 1.0F)
-                .color(eastWestColor);
+            builder.addVertex(g, 0.0F, k)
+                .setNormal(0.0F, 0.0F, 1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(g, 4.0F, k)
+                .setNormal(0.0F, 0.0F, 1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(f, 4.0F, k)
+                .setNormal(0.0F, 0.0F, 1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(f, 0.0F, k)
+                .setNormal(0.0F, 0.0F, 1.0F)
+                .setColor(eastWestColor);
         }
 
         if (hasBorderWest(cell) && x > 0) {
-            builder.vertex(f, 0.0F, k)
-                .normal(-1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(f, 4.0F, k)
-                .normal(-1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(f, 4.0F, j)
-                .normal(-1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(f, 0.0F, j)
-                .normal(-1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
+            builder.addVertex(f, 0.0F, k)
+                .setNormal(-1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(f, 4.0F, k)
+                .setNormal(-1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(f, 4.0F, j)
+                .setNormal(-1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(f, 0.0F, j)
+                .setNormal(-1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
         }
 
         if (hasBorderEast(cell) && x < 0) {
-            builder.vertex(g, 0.0F, j)
-                .normal(1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(g, 4.0F, j)
-                .normal(1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(g, 4.0F, k)
-                .normal(1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(g, 0.0F, k)
-                .normal(1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
+            builder.addVertex(g, 0.0F, j)
+                .setNormal(1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(g, 4.0F, j)
+                .setNormal(1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(g, 4.0F, k)
+                .setNormal(1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(g, 0.0F, k)
+                .setNormal(1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
         }
 
         boolean bl = Math.abs(x) <= 1 && Math.abs(z) <= 1;
         if (bl) {
-            builder.vertex(g, 4.0F, j)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(topColor);
-            builder.vertex(g, 4.0F, k)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(topColor);
-            builder.vertex(f, 4.0F, k)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(topColor);
-            builder.vertex(f, 4.0F, j)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(topColor);
+            builder.addVertex(g, 4.0F, j)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(topColor);
+            builder.addVertex(g, 4.0F, k)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(topColor);
+            builder.addVertex(f, 4.0F, k)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(topColor);
+            builder.addVertex(f, 4.0F, j)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(topColor);
 
-            builder.vertex(f, 0.0F, j)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(bottomColor);
-            builder.vertex(f, 0.0F, k)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(bottomColor);
-            builder.vertex(g, 0.0F, k)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(bottomColor);
-            builder.vertex(g, 0.0F, j)
-                .normal(0.0F, 1.0F, 0.0F)
-                .color(bottomColor);
+            builder.addVertex(f, 0.0F, j)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(bottomColor);
+            builder.addVertex(f, 0.0F, k)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(bottomColor);
+            builder.addVertex(g, 0.0F, k)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(bottomColor);
+            builder.addVertex(g, 0.0F, j)
+                .setNormal(0.0F, 1.0F, 0.0F)
+                .setColor(bottomColor);
 
-            builder.vertex(g, 0.0F, j)
-                .normal(0.0F, 0.0F, 1.0F)
-                .color(eastWestColor);
-            builder.vertex(g, 4.0F, j)
-                .normal(0.0F, 0.0F, 1.0F)
-                .color(eastWestColor);
-            builder.vertex(f, 4.0F, j)
-                .normal(0.0F, 0.0F, 1.0F)
-                .color(eastWestColor);
-            builder.vertex(f, 0.0F, j)
-                .normal(0.0F, 0.0F, 1.0F)
-                .color(eastWestColor);
+            builder.addVertex(g, 0.0F, j)
+                .setNormal(0.0F, 0.0F, 1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(g, 4.0F, j)
+                .setNormal(0.0F, 0.0F, 1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(f, 4.0F, j)
+                .setNormal(0.0F, 0.0F, 1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(f, 0.0F, j)
+                .setNormal(0.0F, 0.0F, 1.0F)
+                .setColor(eastWestColor);
 
-            builder.vertex(f, 0.0F, k)
-                .normal(0.0F, 0.0F, -1.0F)
-                .color(eastWestColor);
-            builder.vertex(f, 4.0F, k)
-                .normal(0.0F, 0.0F, -1.0F)
-                .color(eastWestColor);
-            builder.vertex(g, 4.0F, k)
-                .normal(0.0F, 0.0F, -1.0F)
-                .color(eastWestColor);
-            builder.vertex(g, 0.0F, k)
-                .normal(0.0F, 0.0F, -1.0F)
-                .color(eastWestColor);
+            builder.addVertex(f, 0.0F, k)
+                .setNormal(0.0F, 0.0F, -1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(f, 4.0F, k)
+                .setNormal(0.0F, 0.0F, -1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(g, 4.0F, k)
+                .setNormal(0.0F, 0.0F, -1.0F)
+                .setColor(eastWestColor);
+            builder.addVertex(g, 0.0F, k)
+                .setNormal(0.0F, 0.0F, -1.0F)
+                .setColor(eastWestColor);
 
-            builder.vertex(f, 0.0F, j)
-                .normal(1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(f, 4.0F, j)
-                .normal(1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(f, 4.0F, k)
-                .normal(1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(f, 0.0F, k)
-                .normal(1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
+            builder.addVertex(f, 0.0F, j)
+                .setNormal(1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(f, 4.0F, j)
+                .setNormal(1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(f, 4.0F, k)
+                .setNormal(1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(f, 0.0F, k)
+                .setNormal(1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
 
-            builder.vertex(g, 0.0F, k)
-                .normal(-1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(g, 4.0F, k)
-                .normal(-1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(g, 4.0F, j)
-                .normal(-1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
-            builder.vertex(g, 0.0F, j)
-                .normal(-1.0F, 0.0F, 0.0F)
-                .color(northSouthColor);
+            builder.addVertex(g, 0.0F, k)
+                .setNormal(-1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(g, 4.0F, k)
+                .setNormal(-1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(g, 4.0F, j)
+                .setNormal(-1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
+            builder.addVertex(g, 0.0F, j)
+                .setNormal(-1.0F, 0.0F, 0.0F)
+                .setColor(northSouthColor);
         }
     }
 
-    @Inject(method = "close()V", at = @At(value = "HEAD"), cancellable = true)
+    @Inject(method = "Lnet/minecraft/client/renderer/CloudRenderer;close()V", at = @At(value = "HEAD"), cancellable = true)
     public void cancelBufferClose(CallbackInfo ci) {
         ci.cancel();
     }

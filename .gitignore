@@ -125,3 +125,7 @@ libnvidia-ngx-dlss*
 include/
 shaders/
 libxess*
+
+# Docs / Markdown
+*.md
+*.markdown

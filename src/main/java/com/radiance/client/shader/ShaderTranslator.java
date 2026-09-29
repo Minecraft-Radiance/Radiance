@@ -1,12 +1,12 @@
 package com.radiance.client.shader;
 
+import com.mojang.blaze3d.vertex.VertexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import net.minecraft.client.render.VertexFormat;
 
 public final class ShaderTranslator {
 
@@ -31,7 +31,7 @@ public final class ShaderTranslator {
             .collect(java.util.stream.Collectors.toSet());
 
         LinkedHashMap<String, Integer> attributeLocations = new LinkedHashMap<>();
-        List<String> attributeNames = vertexFormat.getAttributeNames();
+        List<String> attributeNames = vertexFormat.getElementAttributeNames();
         for (int i = 0; i < attributeNames.size(); i++) {
             attributeLocations.put(attributeNames.get(i), i);
         }

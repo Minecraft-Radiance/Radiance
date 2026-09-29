@@ -1,10 +1,10 @@
 package com.radiance.mixins.vulkan_render_integration;
 
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.RenderPhase;
-import net.minecraft.client.render.VertexFormat;
-import net.minecraft.client.render.VertexFormats;
-import net.minecraft.util.Identifier;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormat;
+import net.minecraft.client.renderer.RenderStateShard;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.TriState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -14,32 +14,32 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(RenderLayer.class)
+@Mixin(RenderType.class)
 public class RenderLayerMixins {
 
     @Shadow
     @Final
     @Mutable
-    private static RenderLayer LIGHTNING;
+    private static RenderType LIGHTNING;
 
-    @Inject(method = "<clinit>", at = @At("TAIL"))
+    @Inject(method = "Lnet/minecraft/client/renderer/RenderType;<clinit>()V", at = @At("TAIL"))
     private static void replaceLightning(CallbackInfo ci) {
         LIGHTNING =
-            RenderLayer.of("lightning",
-                VertexFormats.POSITION_TEXTURE_COLOR,
-                VertexFormat.DrawMode.QUADS,
+            RenderType.create("lightning",
+                DefaultVertexFormat.POSITION_TEX_COLOR,
+                VertexFormat.Mode.QUADS,
                 1536,
                 false,
                 true,
-                RenderLayer.MultiPhaseParameters.builder()
-                    .program(RenderLayer.LIGHTNING_PROGRAM)
-                    .writeMaskState(RenderLayer.ALL_MASK)
-                    .transparency(RenderLayer.LIGHTNING_TRANSPARENCY)
-                    .target(RenderLayer.WEATHER_TARGET)
-                    .texture(new RenderPhase.Texture(
-                        Identifier.ofVanilla("textures/block/lightning.png"),
+                RenderType.CompositeState.builder()
+                    .setShaderState(RenderType.RENDERTYPE_LIGHTNING_SHADER)
+                    .setWriteMaskState(RenderType.COLOR_DEPTH_WRITE)
+                    .setTransparencyState(RenderType.LIGHTNING_TRANSPARENCY)
+                    .setOutputState(RenderType.WEATHER_TARGET)
+                    .setTextureState(new RenderStateShard.TextureStateShard(
+                        ResourceLocation.withDefaultNamespace("textures/block/lightning.png"),
                         TriState.FALSE,
                         false))
-                    .build(false));
+                    .createCompositeState(false));
     }
 }

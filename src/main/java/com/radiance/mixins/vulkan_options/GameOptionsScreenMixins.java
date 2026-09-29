@@ -1,19 +1,19 @@
 package com.radiance.mixins.vulkan_options;
 
-import net.minecraft.client.gui.screen.option.GameOptionsScreen;
-import net.minecraft.client.gui.widget.OptionListWidget;
-import net.minecraft.client.option.GameOptions;
+import net.minecraft.client.Options;
+import net.minecraft.client.gui.components.OptionsList;
+import net.minecraft.client.gui.screens.options.OptionsSubScreen;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
-@Mixin(GameOptionsScreen.class)
+@Mixin(OptionsSubScreen.class)
 public abstract class GameOptionsScreenMixins {
 
     @Shadow
-    protected OptionListWidget body;
+    protected OptionsList list;
 
     @Final
     @Shadow
-    protected GameOptions gameOptions;
+    protected Options options;
 }

@@ -1,4 +1,4 @@
-name: "render_pipeline.module.dlss.name"
+name: "render_pipeline.module.dlss_rr.name"
 inputImageConfigs:
   - name: "radiance"
     format: "R16G16B16A16_SFLOAT"
@@ -26,6 +26,8 @@ outputImageConfigs:
   - name: "upscaled_normal_roughness"
     format: "R16G16B16A16_SFLOAT"
 attributeConfigs:
-  - name: "render_pipeline.module.dlss.attribute.mode"
-    type: "enum:render_pipeline.module.dlss.attribute.mode.performance-render_pipeline.module.dlss.attribute.mode.balanced-render_pipeline.module.dlss.attribute.mode.quality-render_pipeline.module.dlss.attribute.mode.dlaa"
-    value: "render_pipeline.module.dlss.attribute.mode.balanced"
+  - name: "render_pipeline.module.dlss_rr.attribute.mode"
+    group: "settings.group.upscaling"
+    performanceImpact: "high"
+    type: "enum:render_pipeline.module.dlss_rr.attribute.mode.performance-render_pipeline.module.dlss_rr.attribute.mode.balanced-render_pipeline.module.dlss_rr.attribute.mode.quality-render_pipeline.module.dlss_rr.attribute.mode.dlaa"
+    value: "render_pipeline.module.dlss_rr.attribute.mode.balanced"

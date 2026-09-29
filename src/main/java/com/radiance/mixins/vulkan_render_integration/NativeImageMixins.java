@@ -1,12 +1,15 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.radiance.client.profiler.Profiler;
 import com.radiance.client.proxy.vulkan.RendererProxy;
 import com.radiance.client.proxy.vulkan.TextureProxy;
 import com.radiance.client.texture.AuxiliaryTextures;
+import com.radiance.client.texture.TextureTracker.TextureTarget;
 import com.radiance.mixin_related.extensions.vanilla_resource_tracker.INativeImageExt;
+import java.util.List;
 import java.util.function.IntUnaryOperator;
-import net.minecraft.client.texture.NativeImage;
 import org.lwjgl.system.MemoryUtil;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
@@ -20,11 +23,11 @@ public abstract class NativeImageMixins implements
     com.radiance.mixin_related.extensions.vulkan_render_integration.INativeImageExt {
 
     @Shadow
-    private long pointer;
+    private long pixels;
 
     @Final
     @Shadow
-    private long sizeBytes;
+    private long size;
 
     @Final
     @Shadow
@@ -39,37 +42,76 @@ public abstract class NativeImageMixins implements
     private int height;
 
     @Shadow
-    public abstract NativeImage applyToCopy(IntUnaryOperator operator);
+    public abstract NativeImage mappedCopy(IntUnaryOperator operator);
 
     @Shadow
-    public abstract NativeImage.Format getFormat();
+    public abstract NativeImage.Format format();
 
-    @Inject(method = "uploadInternal(IIIIIIIZ)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/texture/NativeImage;checkAllocated()V", shift = At.Shift.AFTER), cancellable = true)
+    @Inject(method = "Lcom/mojang/blaze3d/platform/NativeImage;_upload(IIIIIIIZ)V",
+        at = @At(value = "INVOKE",
+            target = "Lcom/mojang/blaze3d/platform/NativeImage;checkAllocated()V",
+            shift = At.Shift.AFTER),
+        cancellable = true)
     public void redirectUploadInternal(int level, int offsetX, int offsetY, int unpackSkipPixels,
-        int unpackSkipRows, int regionWidth, int regionHeight, boolean blur, CallbackInfo ci) {
+        int unpackSkipRows, int regionWidth, int regionHeight, boolean close, CallbackInfo ci) {
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.NativeImage.uploadInternal");
+        }
         try {
-            INativeImageExt self = (INativeImageExt) this;
-            int targetId = self.radiance$getTargetID();
+            try {
+                INativeImageExt nativeImageExt = (INativeImageExt) this;
+                TextureTarget target = nativeImageExt.radiance$getTarget();
+                if (target == null) {
+                    throw new IllegalStateException("Native image upload has no target texture");
+                }
 
-            AuxiliaryTextures.loadAndUpload((NativeImage) (Object) this, self, level, offsetX,
-                offsetY, unpackSkipPixels, unpackSkipRows, regionWidth, regionHeight, blur);
+                List<TextureProxy.TextureUploadRegion> auxiliaryRegions =
+                    AuxiliaryTextures.buildUploadRegions((NativeImage) (Object) this, nativeImageExt, level,
+                        offsetX, offsetY, unpackSkipPixels, unpackSkipRows, regionWidth, regionHeight);
 
-            TextureProxy.queueUpload(pointer, (int) sizeBytes, width, targetId, unpackSkipPixels,
-                unpackSkipRows, offsetX, offsetY, regionWidth, regionHeight, level);
+                if (Profiler.ENABLED) {
+                    Profiler.enter("java.NativeImage.queueTextureUpload");
+                }
+                try {
+                    TextureProxy.TextureUploadRegion mainRegion =
+                        new TextureProxy.TextureUploadRegion(pixels, (int) size, width,
+                            target.id(), unpackSkipPixels, unpackSkipRows, offsetX, offsetY,
+                            regionWidth, regionHeight, level, TextureProxy.UPLOAD_KIND_MAIN, format.components(),
+                            target.generation());
+                    if (auxiliaryRegions.isEmpty()) {
+                        TextureProxy.queueUploadRegion(mainRegion);
+                    } else {
+                        TextureProxy.queueUploads(mainRegion, auxiliaryRegions);
+                    }
+                } finally {
+                    if (Profiler.ENABLED) {
+                        Profiler.exit();
+                    }
+                }
+            } finally {
+                if (close) {
+                    try {
+                        TextureProxy.flushUploadBatch();
+                    } finally {
+                        this.close();
+                    }
+                }
+            }
+            ci.cancel();
         } finally {
-            if (blur) {
-                this.close();
+            if (Profiler.ENABLED) {
+                Profiler.exit();
             }
         }
-        ci.cancel();
     }
 
-    @Inject(method = "close()V", at = @At(value = "HEAD"))
+    @Inject(method = "Lcom/mojang/blaze3d/platform/NativeImage;close()V", at = @At(value = "HEAD"))
     public void closeImage(CallbackInfo ci) {
-        INativeImageExt self = (INativeImageExt) this;
-        NativeImage specularImage = self.radiance$getSpecularNativeImage();
-        NativeImage normalImage = self.radiance$getNormalNativeImage();
-        NativeImage flagImage = self.radiance$getFlagNativeImage();
+        TextureProxy.flushUploadBatch();
+        INativeImageExt nativeImageExt = (INativeImageExt) this;
+        NativeImage specularImage = nativeImageExt.radiance$getSpecularNativeImage();
+        NativeImage normalImage = nativeImageExt.radiance$getNormalNativeImage();
+        NativeImage flagImage = nativeImageExt.radiance$getFlagNativeImage();
         if (specularImage != null) {
             specularImage.close();
         }
@@ -85,47 +127,48 @@ public abstract class NativeImageMixins implements
     public NativeImage radiance$alignTo(NativeImage source) {
         int targetWidth = source.getWidth();
         int targetHeight = source.getHeight();
-        NativeImage.Format targetFormat = source.getFormat();
+        NativeImage.Format targetFormat = source.format();
 
         if (width == targetWidth && height == targetHeight && format == targetFormat) {
             return (NativeImage) (Object) this;
         }
 
-        NativeImage dest = new NativeImage(targetFormat, targetWidth, targetHeight, false);
+        NativeImage destinationImage = new NativeImage(targetFormat, targetWidth, targetHeight, false);
 
-        int srcChannels = this.format.getChannelCount();
-        int destChannels = targetFormat.getChannelCount();
-        int commonChannels = Math.min(srcChannels, destChannels);
+        int sourceChannelCount = this.format.components();
+        int destinationChannelCount = targetFormat.components();
+        int sharedChannelCount = Math.min(sourceChannelCount, destinationChannelCount);
 
         for (int y = 0; y < targetHeight; y++) {
             for (int x = 0; x < targetWidth; x++) {
                 int sampleX = (x < this.width) ? x : (x % this.width);
                 int sampleY = (y < this.height) ? y : (y % this.height);
 
-                long srcPixelPtr =
-                    this.pointer + (sampleX + (long) sampleY * this.width) * srcChannels;
-                long destPixelPtr =
-                    ((com.radiance.mixin_related.extensions.vulkan_render_integration.INativeImageExt) (Object) dest).radiance$getPointer()
-                        + (long) (x + (long) y * targetWidth) * destChannels;
+                long sourcePixelPointer =
+                    this.pixels + (sampleX + (long) sampleY * this.width) * sourceChannelCount;
+                long destinationPixelPointer = ((com.radiance.mixin_related.extensions
+                    .vulkan_render_integration.INativeImageExt) (Object) destinationImage).radiance$getPointer()
+                    + (long) (x + (long) y * targetWidth) * destinationChannelCount;
 
-                for (int c = 0; c < commonChannels; c++) {
-                    byte val = MemoryUtil.memGetByte(srcPixelPtr + c);
-                    MemoryUtil.memPutByte(destPixelPtr + c, val);
+                for (int channelIndex = 0; channelIndex < sharedChannelCount; channelIndex++) {
+                    byte channelValue = MemoryUtil.memGetByte(sourcePixelPointer + channelIndex);
+                    MemoryUtil.memPutByte(destinationPixelPointer + channelIndex, channelValue);
                 }
 
-                if (destChannels > srcChannels) {
-                    for (int c = srcChannels; c < destChannels; c++) {
-                        MemoryUtil.memPutByte(destPixelPtr + c, (byte) 0);
+                if (destinationChannelCount > sourceChannelCount) {
+                    for (int channelIndex = sourceChannelCount; channelIndex < destinationChannelCount;
+                        channelIndex++) {
+                        MemoryUtil.memPutByte(destinationPixelPointer + channelIndex, (byte) 0);
                     }
                 }
             }
         }
-        return dest;
+        return destinationImage;
     }
 
     @Override
     public long radiance$getPointer() {
-        return pointer;
+        return pixels;
     }
 
     @Shadow
@@ -138,24 +181,25 @@ public abstract class NativeImageMixins implements
     public abstract int getHeight();
 
     @Shadow
-    protected abstract int getColor(int x, int y);
+    protected abstract int getPixelABGR(int x, int y);
 
     @Shadow
-    protected abstract void setColor(int x, int y, int color);
+    protected abstract void setPixelABGR(int x, int y, int color);
 
     @Shadow
     public abstract void close();
 
-    @Inject(method = "loadFromTextureImage(IZ)V", at = @At(value = "HEAD"), cancellable = true)
+    @Inject(method = "Lcom/mojang/blaze3d/platform/NativeImage;downloadTexture(IZ)V", at = @At(value = "HEAD"), cancellable = true)
     public void redirectLoadFromTextureImage(int level, boolean removeAlpha, CallbackInfo ci) {
         RenderSystem.assertOnRenderThread();
         this.checkAllocated();
-        RendererProxy.takeScreenshot(true, this.width, this.height, this.format.getChannelCount(),
-            this.pointer);
+        RendererProxy.takeScreenshot(true, this.width, this.height, this.format.components(),
+            this.pixels);
         if (removeAlpha && this.format.hasAlpha()) {
-            for (int i = 0; i < this.getHeight(); i++) {
-                for (int j = 0; j < this.getWidth(); j++) {
-                    this.setColor(j, i, this.getColor(j, i) | 255 << this.format.getAlphaOffset());
+            for (int row = 0; row < this.getHeight(); row++) {
+                for (int column = 0; column < this.getWidth(); column++) {
+                    this.setPixelABGR(column, row,
+                        this.getPixelABGR(column, row) | 255 << this.format.alphaOffset());
                 }
             }
         }
@@ -166,12 +210,13 @@ public abstract class NativeImageMixins implements
     public void radiance$loadFromTextureImageWithoutUI(int level, boolean removeAlpha) {
         RenderSystem.assertOnRenderThread();
         this.checkAllocated();
-        RendererProxy.takeScreenshot(false, this.width, this.height, this.format.getChannelCount(),
-            this.pointer);
+        RendererProxy.takeScreenshot(false, this.width, this.height, this.format.components(),
+            this.pixels);
         if (removeAlpha && this.format.hasAlpha()) {
-            for (int i = 0; i < this.getHeight(); i++) {
-                for (int j = 0; j < this.getWidth(); j++) {
-                    this.setColor(j, i, this.getColor(j, i) | 255 << this.format.getAlphaOffset());
+            for (int row = 0; row < this.getHeight(); row++) {
+                for (int column = 0; column < this.getWidth(); column++) {
+                    this.setPixelABGR(column, row,
+                        this.getPixelABGR(column, row) | 255 << this.format.alphaOffset());
                 }
             }
         }

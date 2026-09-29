@@ -1,10 +1,10 @@
 package com.radiance.client.constant;
 
+import com.mojang.blaze3d.platform.NativeImage;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Map;
 import java.util.stream.Collectors;
-import net.minecraft.client.texture.NativeImage;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL33;
@@ -37,6 +37,15 @@ public class VulkanConstants {
             this.name = name;
         }
 
+        public static VkFormat fromValue(int value) {
+            for (VkFormat format : values()) {
+                if (format.value == value) {
+                    return format;
+                }
+            }
+            throw new IllegalArgumentException("Unsupported Vulkan format value: " + value);
+        }
+
         public static int getVkFormatByName(String name) {
             if (BY_NAME.containsKey(name)) {
                 return BY_NAME.get(name);
@@ -53,12 +62,12 @@ public class VulkanConstants {
             return name;
         }
 
-        public NativeImage.InternalFormat getNativeImageInternalFormat() {
+        public NativeImage.InternalGlFormat getNativeImageInternalFormat() {
             return switch (this) {
-                case VK_FORMAT_R8_UNORM -> NativeImage.InternalFormat.RED;
-                case VK_FORMAT_R8G8_UNORM -> NativeImage.InternalFormat.RG;
-                case VK_FORMAT_R8G8B8_UNORM -> NativeImage.InternalFormat.RGB;
-                case VK_FORMAT_R8G8B8A8_UNORM -> NativeImage.InternalFormat.RGBA;
+                case VK_FORMAT_R8_UNORM -> NativeImage.InternalGlFormat.RED;
+                case VK_FORMAT_R8G8_UNORM -> NativeImage.InternalGlFormat.RG;
+                case VK_FORMAT_R8G8B8_UNORM -> NativeImage.InternalGlFormat.RGB;
+                case VK_FORMAT_R8G8B8A8_UNORM -> NativeImage.InternalGlFormat.RGBA;
                 default -> throw new IllegalStateException("Unexpected value: " + this.value);
             };
         }
