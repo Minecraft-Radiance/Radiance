@@ -1,24 +1,51 @@
 package com.radiance.client.proxy.world;
 
-import static net.minecraft.client.render.VertexFormat.DrawMode.LINES;
-import static net.minecraft.client.render.VertexFormat.DrawMode.LINE_STRIP;
-import static net.minecraft.client.render.VertexFormat.DrawMode.QUADS;
-import static net.minecraft.client.render.VertexFormat.DrawMode.TRIANGLE_STRIP;
+import com.radiance.client.mod_support.flywheel.FlywheelSupport;
+import com.radiance.client.mod_support.ModSupport;
+import org.joml.Vector2f;
+import org.joml.Vector4f;
+import org.joml.Matrix4f;
+import org.joml.Matrix4d;
+import org.joml.Vector3d;
+import java.util.LinkedHashSet;
+import java.util.concurrent.atomic.AtomicLong;
+import net.minecraft.core.SectionPos;
+import net.minecraft.client.renderer.chunk.RenderRegionCache;
+import net.minecraft.client.renderer.chunk.SectionCompiler;
+import net.minecraft.client.renderer.texture.OverlayTexture;
+import com.mojang.blaze3d.vertex.VertexSorting;
+import com.radiance.mixin_related.extensions.vulkan_render_integration.IChunkBuilderExt;
+import static com.mojang.blaze3d.vertex.VertexFormat.Mode.LINES;
+import static com.mojang.blaze3d.vertex.VertexFormat.Mode.LINE_STRIP;
+import static com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS;
+import static com.mojang.blaze3d.vertex.VertexFormat.Mode.TRIANGLE_STRIP;
 import static org.lwjgl.system.MemoryUtil.memAddress;
 
+import com.mojang.blaze3d.vertex.BufferBuilder;
+import com.mojang.blaze3d.vertex.MeshData;
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.SheetedDecalTextureGenerator;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.VertexMultiConsumer;
 import com.radiance.client.RadianceClient;
 import com.radiance.client.constant.Constants;
 import com.radiance.client.constant.Constants.PostRenderFlags;
 import com.radiance.client.constant.Constants.RayTracingFlags;
+import com.radiance.client.profiler.Profiler;
 import com.radiance.client.proxy.vulkan.BufferProxy;
+import com.radiance.client.render.CustomParticleRenderer;
 import com.radiance.client.vertex.PBRVertexConsumer;
 import com.radiance.client.vertex.StorageVertexConsumerProvider;
+import com.radiance.client.vertex.TransferredBuildBuffer;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IHeldItemRendererExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IParticleExt;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IParticleManagerExt;
 import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,91 +58,358 @@ import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.stream.Stream;
-import net.minecraft.block.BlockState;
-import net.minecraft.block.ShapeContext;
-import net.minecraft.block.entity.BlockEntity;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.CrashReport;
+import net.minecraft.CrashReportCategory;
+import net.minecraft.ReportedException;
+import net.minecraft.client.Camera;
+import net.minecraft.client.DeltaTracker;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.particle.Particle;
-import net.minecraft.client.particle.ParticleManager;
-import net.minecraft.client.particle.ParticleTextureSheet;
-import net.minecraft.client.render.BufferBuilder;
-import net.minecraft.client.render.BufferBuilderStorage;
-import net.minecraft.client.render.BuiltBuffer;
-import net.minecraft.client.render.BuiltChunkStorage;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.Frustum;
-import net.minecraft.client.render.OverlayVertexConsumer;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.client.render.RenderTickCounter;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.VertexConsumers;
-import net.minecraft.client.render.VertexRendering;
-import net.minecraft.client.render.WeatherRendering;
-import net.minecraft.client.render.WorldBorderRendering;
-import net.minecraft.client.render.block.BlockRenderManager;
-import net.minecraft.client.render.block.entity.BlockEntityRenderDispatcher;
-import net.minecraft.client.render.chunk.ChunkBuilder;
-import net.minecraft.client.render.entity.EntityRenderDispatcher;
-import net.minecraft.client.render.item.HeldItemRenderer;
-import net.minecraft.client.render.model.ModelBaker;
-import net.minecraft.client.texture.MissingSprite;
-import net.minecraft.client.texture.TextureManager;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.client.world.ClientWorld;
-import net.minecraft.entity.Entity;
-import net.minecraft.entity.LivingEntity;
-import net.minecraft.entity.decoration.DisplayEntity;
-import net.minecraft.entity.player.BlockBreakingInfo;
-import net.minecraft.entity.projectile.FishingBobberEntity;
-import net.minecraft.util.Colors;
-import net.minecraft.util.Identifier;
-import net.minecraft.util.Pair;
-import net.minecraft.util.crash.CrashException;
-import net.minecraft.util.crash.CrashReport;
-import net.minecraft.util.crash.CrashReportSection;
-import net.minecraft.util.hit.BlockHitResult;
-import net.minecraft.util.hit.HitResult;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.util.math.ColorHelper;
-import net.minecraft.util.math.MathHelper;
-import net.minecraft.util.math.Vec3d;
-import net.minecraft.world.GameMode;
-import net.minecraft.world.tick.TickManager;
+import net.minecraft.client.particle.ParticleEngine;
+import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.ItemInHandRenderer;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.RenderBuffers;
+import net.minecraft.client.renderer.RenderStateShard;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.ViewArea;
+import net.minecraft.client.renderer.block.BlockRenderDispatcher;
+import net.minecraft.client.renderer.blockentity.BlockEntityRenderDispatcher;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
+import net.minecraft.client.renderer.culling.Frustum;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
+import net.minecraft.client.renderer.texture.TextureManager;
+import net.minecraft.client.resources.model.ModelBakery;
+import net.minecraft.core.BlockPos;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.level.BlockDestructionProgress;
+import net.minecraft.util.CommonColors;
+import net.minecraft.util.FastColor;
+import net.minecraft.util.Mth;
+import net.minecraft.util.Tuple;
+import net.minecraft.world.TickRateManager;
+import net.minecraft.world.entity.Display;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.projectile.FishingHook;
+import net.minecraft.world.inventory.InventoryMenu;
+import net.minecraft.world.level.GameType;
+import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
+import net.minecraft.world.phys.Vec3;
+import net.minecraft.world.phys.shapes.CollisionContext;
 import org.lwjgl.system.MemoryUtil;
 
 public class EntityProxy {
 
     public static final ConcurrentMap<Class<? extends Particle>, AtomicInteger> PARTICLE_COUNTERS = new ConcurrentHashMap<>();
-    public static VertexConsumerProvider postTextVertexConsumerProvider;
+    public static MultiBufferSource postTextVertexConsumerProvider;
 
-    private static final Identifier SUN_TEXTURE = Identifier.ofVanilla(
+    private static final ResourceLocation SUN_TEXTURE = ResourceLocation.withDefaultNamespace(
         "textures/environment/sun.png");
-    private static final Identifier MOON_PHASES_TEXTURE = Identifier.ofVanilla(
+    private static final ResourceLocation MOON_PHASES_TEXTURE = ResourceLocation.withDefaultNamespace(
         "textures/environment/moon_phases.png");
-    private static final Identifier WEATHER_RAIN_TEXTURE = Identifier.ofVanilla(
-        "textures/environment/rain.png");
-    private static final Identifier WEATHER_SNOW_TEXTURE = Identifier.ofVanilla(
-        "textures/environment/snow.png");
+    private static final ResourceLocation PARTICLE_ATLAS_TEXTURE = ResourceLocation.withDefaultNamespace(
+        "textures/atlas/particles.png");
+    private static final float VILLAGER_LAYER_OFFSET_UNIT = 0.001f / 16.0f;
+    private static final String VILLAGER_TEXTURE_PREFIX = "textures/entity/villager/";
+    private static final String ZOMBIE_VILLAGER_TEXTURE_PREFIX = "textures/entity/zombie_villager/";
+    private static final RenderStateShard.ShaderStateShard PARTICLE_PROGRAM = new RenderStateShard.ShaderStateShard(
+        GameRenderer::getParticleShader);
+    private static final RenderType TERRAIN_PARTICLE_LAYER = createTranslucentParticleLayer(
+        InventoryMenu.BLOCK_ATLAS);
+    private static final RenderType OPAQUE_PARTICLE_LAYER = createOpaqueParticleLayer(
+        PARTICLE_ATLAS_TEXTURE);
+    private static final RenderType TRANSLUCENT_PARTICLE_LAYER = createTranslucentParticleLayer(
+        PARTICLE_ATLAS_TEXTURE);
     private static final String WEATHER_DEFAULT_CONTENT = "/weather/default";
-    private static final String WEATHER_RAIN_CONTENT = "/weather/rain";
-    private static final String WEATHER_SNOW_CONTENT = "/weather/snow";
     private static final String PARTICLE_DEFAULT_CONTENT = "/particle/default";
     private static final String TEXT_DEFAULT_CONTENT = "/text/default";
     private static final String NAME_TAG_DEFAULT_CONTENT = "/name_tag/default";
-    private static final Set<String> LOGGED_POST_CONTENT_KEYS = ConcurrentHashMap.newKeySet();
+    private static final ConcurrentMap<String, ByteBuffer> UTF8_NAME_BUFFERS =
+        new ConcurrentHashMap<>();
+    private static final long ENTITY_KEY_PAYLOAD_MASK = 0x0fffffffffffffffL;
+    private static final long NORMAL_ENTITY_KEY_PREFIX = 0x1000000000000000L;
+    private static final long BLOCK_ENTITY_KEY_PREFIX = 0x2000000000000000L;
+    private static final long BLOCK_ENTITY_CRUMBLING_KEY_PREFIX = 0x3000000000000000L;
+    private static final long BLOCK_DAMAGE_KEY_PREFIX = 0x4000000000000000L;
+    private static final long STATIC_ENTITY_KEY_PREFIX = 0x5000000000000000L;
+    private static final long TARGET_BLOCK_OUTLINE_KEY_PREFIX = 0x6000000000000000L;
+
+    private static boolean entityNativeTransferEnabled = true;
+    private static final Set<BlockGeometrySource> blockSources = new LinkedHashSet<>();
+    private static final AtomicLong nextSourceKey = new AtomicLong(0x7000000000000000L);
+
+    public abstract static class BlockGeometrySource implements AutoCloseable {
+        protected final ClientLevel level;
+        protected final Matrix4d localToWorld = new Matrix4d();
+        private final Map<Long, SourceSection> sections = new LinkedHashMap<>();
+        private final Set<Long> dirty = new LinkedHashSet<>();
+        private boolean closed;
+
+        protected BlockGeometrySource(ClientLevel level) {
+            this.level = level;
+            blockSources.add(this);
+        }
+
+        protected abstract boolean ready();
+        protected abstract void updateTransform(float partialTick);
+
+        protected final void setBounds(BlockPos min, BlockPos max) {
+            Set<Long> remaining = new LinkedHashSet<>(sections.keySet());
+            if (min != null && max != null) {
+                for (SectionPos pos : SectionPos.betweenClosedStream(min.getX() >> 4, min.getY() >> 4, min.getZ() >> 4,
+                    max.getX() >> 4, max.getY() >> 4, max.getZ() >> 4).toList()) {
+                    long key = pos.asLong();
+                    remaining.remove(key);
+                    if (!sections.containsKey(key)) {
+                        sections.put(key, new SourceSection(pos));
+                        dirty.add(key);
+                    }
+                }
+            }
+            for (long key : remaining) {
+                sections.remove(key).close();
+                dirty.remove(key);
+            }
+        }
+
+        public final Matrix4f transform(BlockPos origin, net.minecraft.core.Vec3i renderOrigin) {
+            Vector3d position = localToWorld.transformPosition(origin.getX(), origin.getY(), origin.getZ(), new Vector3d());
+            return new Matrix4f(localToWorld).setTranslation((float) (position.x - renderOrigin.getX()),
+                (float) (position.y - renderOrigin.getY()), (float) (position.z - renderOrigin.getZ()));
+        }
+
+        public final void rebuild() { dirty.addAll(sections.keySet()); }
+
+        public final void setDirty(int x, int y, int z, boolean playerChanged) {
+            long key = SectionPos.asLong(x, y, z);
+            if (sections.containsKey(key)) dirty.add(key);
+        }
+
+        public final boolean isSectionCompiled(int x, int y, int z) {
+            SourceSection section = sections.get(SectionPos.asLong(x, y, z));
+            return section != null && section.compiled;
+        }
+
+        public final int getVisibleSectionCount() { return sections.size(); }
+
+        protected final void compileSections(int budget) {
+            if (closed || !ready() || dirty.isEmpty()) return;
+            var dispatcher = Minecraft.getInstance().levelRenderer.getSectionRenderDispatcher();
+            var compiler = ((IChunkBuilderExt) dispatcher).radiance$getSectionBuilder();
+            var buffers = ((IChunkBuilderExt) dispatcher).radiance$getBuffers();
+            var regionCache = new RenderRegionCache();
+            var iterator = dirty.iterator();
+            while (iterator.hasNext() && budget-- > 0) {
+                SourceSection section = sections.get(iterator.next());
+                iterator.remove();
+                var region = regionCache.createRegion(level, section.pos);
+                SectionCompiler.Results results = region == null ? new SectionCompiler.Results() :
+                    compiler.compile(section.pos, region, VertexSorting.byDistance(0, 0, 0), buffers);
+                try {
+                    List<ByteBuffer> meshes = new ArrayList<>();
+                    List<Integer> types = new ArrayList<>();
+                    for (RenderType layer : RenderType.chunkBufferLayers()) {
+                        MeshData mesh = results.renderedLayers.get(layer);
+                        if (mesh == null) continue;
+                        meshes.add(mesh.vertexBuffer().slice());
+                        types.add(Constants.GeometryTypes.getGeometryType(layer, true).getValue());
+                    }
+                    section.geometry = updatePrebuiltGeometryNative(section.geometry,
+                        Constants.VertexFormats.CHUNK_PBR_TRIANGLE.getValue(),
+                        types.stream().mapToInt(Integer::intValue).toArray(), meshes.toArray(ByteBuffer[]::new));
+                    section.blocks.keySet().removeIf(block -> block.isRemoved() ||
+                        level.getBlockEntity(block.getBlockPos()) != block);
+                    var chunk = level.getChunk(section.pos.x(), section.pos.z());
+                    for (BlockEntity block : chunk.getBlockEntities().values()) {
+                        if (SectionPos.blockToSectionCoord(block.getBlockPos().getY()) == section.pos.y()) {
+                            section.blocks.computeIfAbsent(block, key -> nextSourceKey.getAndIncrement());
+                            if (ModSupport.FLYWHEEL) FlywheelSupport.blockReady(block);
+                        }
+                    }
+                    section.compiled = true;
+                    if (Profiler.ENABLED) Profiler.metric("entity_source.sections_compiled", 1);
+                } finally {
+                    results.release();
+                    buffers.clearAll();
+                }
+            }
+        }
+
+        private void submit(float partialTick, BlockEntityRenderDispatcher dispatcher,
+            EntityRenderDataList output, List<StorageVertexConsumerProvider> providers) {
+            if (closed || !ready()) return;
+            if (!localToWorld.isFinite() || Math.abs(localToWorld.determinant3x3()) < 1e-12) return;
+            Matrix4f linear = new Matrix4f(localToWorld).setTranslation(0, 0, 0);
+            Vector3d position = new Vector3d();
+            for (SourceSection section : sections.values()) {
+                if (section.geometry >= 0) {
+                    BlockPos origin = section.pos.origin();
+                    localToWorld.transformPosition(origin.getX(), origin.getY(), origin.getZ(), position);
+                    var data = new EntityRenderData(section.key, position.x, position.y, position.z,
+                        RayTracingFlags.WORLD.getValue(), 0, section.geometry, false);
+                    data.transform.set(linear);
+                    output.add(data);
+                }
+                for (var entry : section.blocks.entrySet()) {
+                    BlockEntity block = entry.getKey();
+                    if (block.isRemoved() || block.getLevel() != level) continue;
+                    if (ModSupport.FLYWHEEL && FlywheelSupport.skip(block)) continue;
+                    var renderer = dispatcher.getRenderer(block);
+                    if (renderer == null) continue;
+                    BlockPos pos = block.getBlockPos();
+                    localToWorld.transformPosition(pos.getX(), pos.getY(), pos.getZ(), position);
+                    var vertices = new StorageVertexConsumerProvider(32768);
+                    vertices.setEntityBuildContext(Constants.Coordinates.WORLD.getValue(), false, 0, 0, 0);
+                    providers.add(vertices);
+                    PoseStack matrices = new PoseStack();
+                    matrices.mulPose(linear);
+                    if (ModSupport.FLYWHEEL) FlywheelSupport.enterVanilla();
+                    try {
+                        renderer.render(block, partialTick, matrices, vertices,
+                            LevelRenderer.getLightColor(level, pos), OverlayTexture.NO_OVERLAY);
+                    } finally {
+                        if (ModSupport.FLYWHEEL) FlywheelSupport.exitVanilla();
+                    }
+                    processWorldEntityRenderData(vertices, entry.getValue(), position.x, position.y, position.z,
+                        RayTracingFlags.WORLD, true, output);
+                }
+            }
+        }
+
+        @Override
+        public final void close() {
+            if (closed) return;
+            closed = true;
+            sections.values().forEach(SourceSection::close);
+            sections.clear();
+            dirty.clear();
+            blockSources.remove(this);
+        }
+    }
+
+    private static final class SourceSection implements AutoCloseable {
+        final long key = nextSourceKey.getAndIncrement();
+        final SectionPos pos;
+        final Map<BlockEntity, Long> blocks = new java.util.IdentityHashMap<>();
+        int geometry = -1;
+        boolean compiled;
+        SourceSection(SectionPos pos) { this.pos = pos; }
+        public void close() {
+            if (geometry >= 0) releasePrebuiltGeometryNative(geometry);
+            geometry = -1;
+            blocks.clear();
+        }
+    }
+
+    public static void setSourceWorld(ClientLevel level) {
+        for (var source : List.copyOf(blockSources)) if (source.level != level) source.close();
+    }
+
+    public static void invalidateSources() { blockSources.forEach(BlockGeometrySource::rebuild); }
+
+    public static void sourceSectionChanged(SectionPos pos) {
+        for (var source : blockSources) source.setDirty(pos.x(), pos.y(), pos.z(), false);
+    }
+
+    public static BlockGeometrySource blockSource(BlockEntity block) {
+        for (var source : blockSources) {
+            if (source.level != block.getLevel()) continue;
+            var section = source.sections.get(SectionPos.of(block.getBlockPos()).asLong());
+            if (section != null) return source;
+        }
+        return null;
+    }
+
+    public static void prepareSources(float partialTick) {
+        if (!isEntityNativeTransferEnabled()) return;
+        for (var source : blockSources) {
+            source.updateTransform(partialTick);
+            source.compileSections(8);
+        }
+    }
+
+    public static void queueSources(float partialTick, BlockEntityRenderDispatcher dispatcher) {
+        if (!isEntityNativeTransferEnabled() || blockSources.isEmpty()) return;
+        var output = new EntityRenderDataList();
+        List<StorageVertexConsumerProvider> providers = new ArrayList<>();
+        for (var source : blockSources) source.submit(partialTick, dispatcher, output, providers);
+        queueBuild(providers, output);
+    }
+
+    public static boolean isEntityNativeTransferEnabled() {
+        return entityNativeTransferEnabled;
+    }
+
+    private static long normalEntityKey(Entity entity) {
+        return NORMAL_ENTITY_KEY_PREFIX |
+            (mix64(System.identityHashCode(entity)) & ENTITY_KEY_PAYLOAD_MASK);
+    }
+
+    private static long waterMaskEntityKey(long entityKey) {
+        long payload = entityKey & ENTITY_KEY_PAYLOAD_MASK;
+        return NORMAL_ENTITY_KEY_PREFIX | (mix64(payload ^ 0x6d2b79f5d1f123bbL) & ENTITY_KEY_PAYLOAD_MASK);
+    }
+
+    private static long blockEntityKey(BlockEntity blockEntity) {
+        return BLOCK_ENTITY_KEY_PREFIX | (mix64(blockEntity.getBlockPos()
+            .asLong()) & ENTITY_KEY_PAYLOAD_MASK);
+    }
+
+    private static long blockEntityCrumblingKey(BlockEntity blockEntity) {
+        return BLOCK_ENTITY_CRUMBLING_KEY_PREFIX | (mix64(blockEntity.getBlockPos()
+            .asLong()) & ENTITY_KEY_PAYLOAD_MASK);
+    }
+
+    private static long blockDamageKey(BlockPos blockPos) {
+        return BLOCK_DAMAGE_KEY_PREFIX | (mix64(blockPos.asLong()) & ENTITY_KEY_PAYLOAD_MASK);
+    }
+
+    private static long targetBlockOutlineKey(BlockPos blockPos) {
+        return TARGET_BLOCK_OUTLINE_KEY_PREFIX | (mix64(blockPos.asLong()) & ENTITY_KEY_PAYLOAD_MASK);
+    }
+
+    private static long staticEntityKey(long value) {
+        return STATIC_ENTITY_KEY_PREFIX | (mix64(value) & ENTITY_KEY_PAYLOAD_MASK);
+    }
+
+    private static long mix64(long value) {
+        value ^= value >>> 33;
+        value *= 0xff51afd7ed558ccdL;
+        value ^= value >>> 33;
+        value *= 0xc4ceb9fe1a85ec53L;
+        value ^= value >>> 33;
+        return value;
+    }
+
+    private static ByteBuffer getUtf8NameBuffer(String name) {
+        String normalizedName = name == null ? "" : name;
+        return UTF8_NAME_BUFFERS.computeIfAbsent(normalizedName,
+            value -> MemoryUtil.memUTF8(value, true));
+    }
 
     public static void processWorldEntityRenderData(
         StorageVertexConsumerProvider storageVertexConsumerProvider,
-        int hashCode,
+        long entityKey,
         double entityPosX,
         double entityPosY,
         double entityPosZ,
         Constants.RayTracingFlags rayTracingFlag,
         boolean reflect,
         EntityRenderDataList entityRenderDataList) {
+        if (!isEntityNativeTransferEnabled()) {
+            return;
+        }
+
         processEntityRenderData(storageVertexConsumerProvider,
-            hashCode,
+            entityKey,
             entityPosX,
             entityPosY,
             entityPosZ,
@@ -130,14 +424,18 @@ public class EntityProxy {
 
     public static void processPostEntityRenderData(
         StorageVertexConsumerProvider storageVertexConsumerProvider,
-        int hashCode,
+        long entityKey,
         double entityPosX,
         double entityPosY,
         double entityPosZ,
         Constants.PostRenderFlags postRenderFlag,
         EntityRenderDataList entityRenderDataList) {
+        if (!isEntityNativeTransferEnabled()) {
+            return;
+        }
+
         processEntityRenderData(storageVertexConsumerProvider,
-            hashCode,
+            entityKey,
             entityPosX,
             entityPosY,
             entityPosZ,
@@ -152,15 +450,19 @@ public class EntityProxy {
 
     public static void processPostEntityRenderData(
         StorageVertexConsumerProvider storageVertexConsumerProvider,
-        int hashCode,
+        long entityKey,
         double entityPosX,
         double entityPosY,
         double entityPosZ,
         Constants.PostRenderFlags postRenderFlag,
         String contentName,
         EntityRenderDataList entityRenderDataList) {
+        if (!isEntityNativeTransferEnabled()) {
+            return;
+        }
+
         processEntityRenderData(storageVertexConsumerProvider,
-            hashCode,
+            entityKey,
             entityPosX,
             entityPosY,
             entityPosZ,
@@ -175,15 +477,19 @@ public class EntityProxy {
 
     public static void processPostEntityRenderData(
         StorageVertexConsumerProvider storageVertexConsumerProvider,
-        int hashCode,
+        long entityKey,
         double entityPosX,
         double entityPosY,
         double entityPosZ,
         Constants.PostRenderFlags postRenderFlag,
-        Function<RenderLayer, String> contentNameResolver,
+        Function<RenderType, String> contentNameResolver,
         EntityRenderDataList entityRenderDataList) {
+        if (!isEntityNativeTransferEnabled()) {
+            return;
+        }
+
         processEntityRenderData(storageVertexConsumerProvider,
-            hashCode,
+            entityKey,
             entityPosX,
             entityPosY,
             entityPosZ,
@@ -198,7 +504,7 @@ public class EntityProxy {
 
     private static void processEntityRenderData(
         StorageVertexConsumerProvider storageVertexConsumerProvider,
-        int hashCode,
+        long entityKey,
         double entityPosX,
         double entityPosY,
         double entityPosZ,
@@ -206,184 +512,345 @@ public class EntityProxy {
         int postRenderFlag,
         int prebuiltBLAS,
         boolean reflect,
-        Function<RenderLayer, String> contentNameResolver,
-        boolean post,
+        Function<RenderType, String> contentNameResolver,
+        boolean isPostRender,
         EntityRenderDataList entityRenderDataList) {
-        Map<RenderLayer, VertexConsumer> layerBuffers = storageVertexConsumerProvider.getLayers();
-        EntityRenderData
-            entityRenderData =
-            new EntityRenderData(hashCode, entityPosX, entityPosY,
-                entityPosZ,
-                rayTracingFlag, postRenderFlag, prebuiltBLAS, post);
-        EntityRenderData
-            waterMaskRenderData =
-            new EntityRenderData(hashCode, entityPosX, entityPosY,
-                entityPosZ,
-                RayTracingFlags.BOAT_WATER_MASK.getValue(), 0, prebuiltBLAS, post);
-        for (Map.Entry<RenderLayer, VertexConsumer> layerBuffer : layerBuffers.entrySet()) {
-            RenderLayer layer = layerBuffer.getKey();
-            BuiltBuffer buffer = null;
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.EntityProxy.processEntityRenderData");
+        }
+        try {
+            Map<RenderType, VertexConsumer> layerBuffers = storageVertexConsumerProvider.getLayers();
+            EntityRenderData
+                entityRenderData =
+                new EntityRenderData(entityKey, entityPosX, entityPosY,
+                    entityPosZ,
+                    rayTracingFlag, postRenderFlag, prebuiltBLAS, isPostRender);
+            EntityRenderData
+                waterMaskRenderData =
+                new EntityRenderData(waterMaskEntityKey(entityKey), entityPosX, entityPosY,
+                    entityPosZ,
+                    RayTracingFlags.BOAT_WATER_MASK.getValue(), 0, prebuiltBLAS, isPostRender);
+            for (Map.Entry<RenderType, VertexConsumer> layerBuffer : layerBuffers.entrySet()) {
+                RenderType layer = layerBuffer.getKey();
+                MeshData buffer = null;
 
-            VertexConsumer vertexConsumer = layerBuffer.getValue();
-            if (vertexConsumer instanceof BufferBuilder bufferBuilder) {
-                buffer = bufferBuilder.endNullable();
-            } else if (vertexConsumer instanceof PBRVertexConsumer pbrVertexConsumer) {
-                buffer = pbrVertexConsumer.endNullable();
+                VertexConsumer vertexConsumer = layerBuffer.getValue();
+                if (vertexConsumer instanceof BufferBuilder bufferBuilder) {
+                    buffer = bufferBuilder.build();
+                } else if (vertexConsumer instanceof PBRVertexConsumer pbrVertexConsumer) {
+                    buffer = pbrVertexConsumer.endNullable();
+                }
+
+                if (layer.mode() != QUADS && layer.mode() != TRIANGLE_STRIP
+                    && layer.mode() != LINE_STRIP &&
+                    layer.mode() != LINES) {
+                    continue;
+                }
+                if (buffer == null) {
+                    continue;
+                }
+
+                String contentName = contentNameResolver == null
+                    ? ""
+                    : Objects.requireNonNullElse(contentNameResolver.apply(layer), "");
+                if (layer.name.contains("water_mask")) {
+                    waterMaskRenderData.add(
+                        new EntityRenderLayer(layer, buffer, storageVertexConsumerProvider, reflect, contentName));
+                } else {
+                    entityRenderData.add(
+                        new EntityRenderLayer(layer, buffer, storageVertexConsumerProvider, reflect, contentName));
+                }
             }
 
-            if (layer.getDrawMode() != QUADS && layer.getDrawMode() != TRIANGLE_STRIP
-                && layer.getDrawMode() != LINE_STRIP &&
-                layer.getDrawMode() != LINES) {
-                continue;
+            if (!entityRenderData.isEmpty()) {
+                entityRenderDataList.add(entityRenderData);
             }
-            if (buffer == null) {
-                continue;
+            if (!waterMaskRenderData.isEmpty()) {
+                entityRenderDataList.add(waterMaskRenderData);
             }
-
-            String contentName = contentNameResolver == null
-                ? ""
-                : Objects.requireNonNullElse(contentNameResolver.apply(layer), "");
-            if (layer.name.contains("water_mask")) {
-                waterMaskRenderData.add(new EntityRenderLayer(layer, buffer, reflect, contentName));
-            } else {
-                entityRenderData.add(new EntityRenderLayer(layer, buffer, reflect, contentName));
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
             }
         }
-
-        if (!entityRenderData.isEmpty()) {
-            entityRenderDataList.add(entityRenderData);
-        }
-        if (!waterMaskRenderData.isEmpty()) {
-            entityRenderDataList.add(waterMaskRenderData);
-        }
-
     }
 
     public static void queueEntitiesBuild(Camera camera,
         List<Entity> renderedEntities,
         EntityRenderDispatcher entityRenderDispatcher,
-        RenderTickCounter tickCounter,
+        DeltaTracker tickCounter,
         boolean canDrawEntityOutlines) {
-        MatrixStack matrixStack = new MatrixStack();
+        if (!isEntityNativeTransferEnabled()) {
+            return;
+        }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        TickManager
-            tickManager =
-            Objects.requireNonNull(client.world)
-                .getTickManager();
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.EntityProxy.queueEntitiesBuild");
+        }
+        try {
+            PoseStack matrixStack = new PoseStack();
+            Minecraft client = Minecraft.getInstance();
+            TickRateManager tickManager = Objects.requireNonNull(client.level)
+                .tickRateManager();
+            List<StorageVertexConsumerProvider> entityStorageVertexConsumerProviders = new ArrayList<>();
+            EntityRenderDataList entityRenderDataList = new EntityRenderDataList();
 
-        List<StorageVertexConsumerProvider> entityStorageVertexConsumerProviders = new ArrayList<>();
-        EntityRenderDataList entityRenderDataList = new EntityRenderDataList();
-        for (Entity entity : renderedEntities) {
+            for (Entity entity : renderedEntities) {
+                long entityKey = normalEntityKey(entity);
 
-            if (entity.age == 0) {
-                entity.lastRenderX = entity.getX();
-                entity.lastRenderY = entity.getY();
-                entity.lastRenderZ = entity.getZ();
-            }
+                if (entity.tickCount == 0) {
+                    entity.xOld = entity.getX();
+                    entity.yOld = entity.getY();
+                    entity.zOld = entity.getZ();
+                }
 
-            StorageVertexConsumerProvider entityStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
-                786432);
-            entityStorageVertexConsumerProviders.add(entityStorageVertexConsumerProvider);
+                float tickDelta = tickCounter.getGameTimeDeltaPartialTick(!tickManager.isEntityFrozen(entity));
+                double entityPosX = Mth.lerp(tickDelta, entity.xOld,
+                    entity.getX());
+                double entityPosY = Mth.lerp(tickDelta, entity.yOld,
+                    entity.getY());
+                double entityPosZ = Mth.lerp(tickDelta, entity.zOld,
+                    entity.getZ());
+                float yaw = Mth.lerp(tickDelta, entity.yRotO, entity.getYRot());
+                int light = entityRenderDispatcher.getPackedLightCoords(entity, tickDelta);
+                Constants.RayTracingFlags rayTracingFlag = Constants.RayTracingFlags.WORLD;
+                if (entity.equals(camera.getEntity())) {
+                    rayTracingFlag = Constants.RayTracingFlags.PLAYER;
+                } else if (entity instanceof FishingHook) {
+                    rayTracingFlag = Constants.RayTracingFlags.FISHING_BOBBER;
+                }
 
-            VertexConsumerProvider vertexConsumerProvider;
-            if (canDrawEntityOutlines && client.hasOutline(entity)) {
-//                 TODO: add outline
-//                StorageOutlineVertexConsumerProvider
-//                    outlineVertexConsumerProvider =
-//                    new StorageOutlineVertexConsumerProvider(entityStorageVertexConsumerProvider);
-//                vertexConsumerProvider = outlineVertexConsumerProvider;
-//                int color = entity.getTeamColorValue();
-//                outlineVertexConsumerProvider.setColor(ColorHelper.getRed(color),
-//                                                       ColorHelper.getGreen(color),
-//                                                       ColorHelper.getBlue(color),
-//                                                       255);
-                vertexConsumerProvider = entityStorageVertexConsumerProvider;
-            } else {
-                vertexConsumerProvider = entityStorageVertexConsumerProvider;
-            }
-
-            float tickDelta = tickCounter.getTickDelta(!tickManager.shouldSkipTick(entity));
-            double entityPosX = MathHelper.lerp(tickDelta, entity.lastRenderX,
-                entity.getX());
-            double entityPosY = MathHelper.lerp(tickDelta, entity.lastRenderY,
-                entity.getY());
-            double entityPosZ = MathHelper.lerp(tickDelta, entity.lastRenderZ,
-                entity.getZ());
-            int light = entityRenderDispatcher.getLight(entity, tickDelta);
-
-            if (entity instanceof DisplayEntity.TextDisplayEntity) {
-                StorageVertexConsumerProvider postTextStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
+                StorageVertexConsumerProvider entityStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
                     786432);
-                entityStorageVertexConsumerProviders.add(postTextStorageVertexConsumerProvider);
-                entityRenderDispatcher.render(entity,
-                    0,
-                    0,
-                    0,
-                    tickDelta,
-                    matrixStack,
-                    postTextStorageVertexConsumerProvider,
-                    light);
-                processPostEntityRenderData(postTextStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
+                entityStorageVertexConsumerProvider.setEntityBuildContext(
+                    Constants.Coordinates.WORLD.getValue(), false, 0, 0, 0);
+                entityStorageVertexConsumerProviders.add(entityStorageVertexConsumerProvider);
+                MultiBufferSource vertexConsumerProvider = entityStorageVertexConsumerProvider;
+
+                if (entity instanceof Display.TextDisplay) {
+                    entityStorageVertexConsumerProvider.setEntityBuildContext(
+                        Constants.Coordinates.WORLD.getValue(), false,
+                        entityPosX, entityPosY, entityPosZ);
+                    entityRenderDispatcher.render(entity,
+                        0,
+                        0,
+                        0,
+                        yaw,
+                        tickDelta,
+                        matrixStack,
+                        entityStorageVertexConsumerProvider,
+                        light);
+                    processPostEntityRenderData(entityStorageVertexConsumerProvider,
+                        entityKey,
+                        entityPosX,
+                        entityPosY,
+                        entityPosZ,
+                        PostRenderFlags.TEXT,
+                        entityRenderDataList);
+                    continue;
+                }
+
+                StorageVertexConsumerProvider postTextStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
+                    16384);
+                postTextStorageVertexConsumerProvider.setEntityBuildContext(
+                    Constants.Coordinates.WORLD.getValue(), false,
+                    entityPosX, entityPosY, entityPosZ);
+                postTextVertexConsumerProvider = postTextStorageVertexConsumerProvider;
+                boolean captureVanilla = ModSupport.FLYWHEEL && !FlywheelSupport.rendered(entity);
+                if (captureVanilla) FlywheelSupport.enterVanilla();
+                try {
+                    entityRenderDispatcher.render(entity,
+                        0,
+                        0,
+                        0,
+                        yaw,
+                        tickDelta,
+                        matrixStack,
+                        vertexConsumerProvider,
+                        light);
+                } finally {
+                    if (captureVanilla) FlywheelSupport.exitVanilla();
+                    postTextVertexConsumerProvider = null;
+                }
+
+                boolean hasPostText = !postTextStorageVertexConsumerProvider.getLayers()
+                    .isEmpty();
+                if (hasPostText) {
+                    entityStorageVertexConsumerProviders.add(postTextStorageVertexConsumerProvider);
+                    processPostEntityRenderData(postTextStorageVertexConsumerProvider,
+                        entityKey,
+                        entityPosX,
+                        entityPosY,
+                        entityPosZ,
+                        PostRenderFlags.NAME_TAG,
+                        entityRenderDataList);
+                } else {
+                    postTextStorageVertexConsumerProvider.close();
+                }
+
+                processWorldEntityRenderData(entityStorageVertexConsumerProvider,
+                    entityKey,
                     entityPosX,
                     entityPosY,
                     entityPosZ,
-                    PostRenderFlags.TEXT,
+                    rayTracingFlag,
+                    true,
                     entityRenderDataList);
-                continue;
             }
 
-            StorageVertexConsumerProvider postTextStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
-                16384);
-            postTextVertexConsumerProvider = postTextStorageVertexConsumerProvider;
+            queueBuild(entityStorageVertexConsumerProviders, entityRenderDataList);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
+        }
+    }
+
+    private static void renderBlockEntity(BlockEntityRenderDispatcher dispatcher, BlockEntity blockEntity,
+        float tickDelta, PoseStack matrices, MultiBufferSource vertices) {
+        if (!ModSupport.FLYWHEEL) {
+            dispatcher.render(blockEntity, tickDelta, matrices, vertices);
+            return;
+        }
+        if (FlywheelSupport.skip(blockEntity)) return;
+        boolean captureVanilla = !FlywheelSupport.rendered(blockEntity) || FlywheelSupport.breaking(blockEntity);
+        if (captureVanilla) FlywheelSupport.enterVanilla();
+        try {
+            dispatcher.render(blockEntity, tickDelta, matrices, vertices);
+        } finally {
+            if (captureVanilla) FlywheelSupport.exitVanilla();
+        }
+    }
+
+    public static synchronized Tuple<List<StorageVertexConsumerProvider>, EntityRenderDataList> queueBlockEntitiesRebuild(
+        ViewArea chunks,
+        Set<BlockEntity> noCullingBlockEntities,
+        Long2ObjectMap<SortedSet<BlockDestructionProgress>> blockBreakingProgressions,
+        BlockEntityRenderDispatcher blockEntityRenderDispatcher,
+        float tickDelta) {
+        if (!isEntityNativeTransferEnabled()) {
+            return new Tuple<>(List.of(), new EntityRenderDataList());
+        }
+
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.EntityProxy.queueBlockEntitiesRebuild");
+        }
+        try {
+            PoseStack matrixStack = new PoseStack();
+            List<StorageVertexConsumerProvider> entityStorageVertexConsumerProviders = new ArrayList<>();
+            EntityRenderDataList entityRenderDataList = new EntityRenderDataList();
+            List<StorageVertexConsumerProvider> crumblingStorageVertexConsumerProviders = new ArrayList<>();
+            EntityRenderDataList crumblingRenderDataList = new EntityRenderDataList();
+            LongSet queuedBlockEntityKeys = new LongOpenHashSet();
+
+            SectionRenderDispatcher.RenderSection[] blockEntitySections;
+            if (Profiler.ENABLED) Profiler.enter("java.EntityProxy.blockEntitySections");
             try {
-                entityRenderDispatcher.render(entity,
-                    0,
-                    0,
-                    0,
-                    tickDelta,
-                    matrixStack,
-                    vertexConsumerProvider,
-                    light);
+                blockEntitySections = BlockEntitySectionCache.sections(chunks);
             } finally {
-                postTextVertexConsumerProvider = null;
+                if (Profiler.ENABLED) Profiler.exit();
+            }
+            for (SectionRenderDispatcher.RenderSection builtChunk : blockEntitySections) {
+                List<BlockEntity> chunkBlockEntities = builtChunk.getCompiled()
+                    .getRenderableBlockEntities();
+                if (!chunkBlockEntities.isEmpty()) {
+                    for (BlockEntity blockEntity : chunkBlockEntities) {
+                        if (ModSupport.FLYWHEEL && FlywheelSupport.skip(blockEntity)) continue;
+                        long entityKey = blockEntityKey(blockEntity);
+                        if (!queuedBlockEntityKeys.add(entityKey)) {
+                            continue;
+                        }
+
+                        BlockPos blockPos = blockEntity.getBlockPos();
+                        double entityPosX = blockPos.getX();
+                        double entityPosY = blockPos.getY();
+                        double entityPosZ = blockPos.getZ();
+                        SortedSet<BlockDestructionProgress> breakingInfos = blockBreakingProgressions.get(
+                            blockPos.asLong());
+                        boolean hasCrumbling = breakingInfos != null && !breakingInfos.isEmpty() &&
+                            breakingInfos.last()
+                                .getProgress() >= 0;
+
+                        StorageVertexConsumerProvider entityStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
+                            786432);
+                        entityStorageVertexConsumerProvider.setEntityBuildContext(
+                            Constants.Coordinates.WORLD.getValue(), false, 0, 0, 0);
+                        entityStorageVertexConsumerProviders.add(entityStorageVertexConsumerProvider);
+                        StorageVertexConsumerProvider crumblingStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
+                            0);
+                        crumblingStorageVertexConsumerProvider.setEntityBuildContext(
+                            Constants.Coordinates.WORLD.getValue(), true, 0, 0, 0);
+                        crumblingStorageVertexConsumerProviders.add(
+                            crumblingStorageVertexConsumerProvider);
+                        MultiBufferSource vertexConsumerProvider = entityStorageVertexConsumerProvider;
+
+                        matrixStack.pushPose();
+                        if (hasCrumbling) {
+                            int stage = breakingInfos.last()
+                                .getProgress();
+                            PoseStack.Pose entry = matrixStack.last();
+                            VertexConsumer vertexConsumer = new SheetedDecalTextureGenerator(
+                                crumblingStorageVertexConsumerProvider.getBuffer(
+                                    ModelBakery.DESTROY_TYPES.get(stage)), entry,
+                                1.0F);
+                            vertexConsumerProvider = renderLayer -> {
+                                VertexConsumer vertexConsumer2 = entityStorageVertexConsumerProvider.getBuffer(
+                                    renderLayer);
+                                return renderLayer.affectsCrumbling() ?
+                                    VertexMultiConsumer.create(vertexConsumer, vertexConsumer2) :
+                                    vertexConsumer2;
+                            };
+                        }
+
+                        renderBlockEntity(blockEntityRenderDispatcher, blockEntity, tickDelta, matrixStack,
+                            vertexConsumerProvider);
+                        matrixStack.popPose();
+
+                        processWorldEntityRenderData(entityStorageVertexConsumerProvider,
+                            entityKey,
+                            entityPosX,
+                            entityPosY,
+                            entityPosZ,
+                            Constants.RayTracingFlags.WORLD,
+                            true,
+                            entityRenderDataList);
+                        processWorldEntityRenderData(crumblingStorageVertexConsumerProvider,
+                            blockEntityCrumblingKey(blockEntity),
+                            entityPosX,
+                            entityPosY,
+                            entityPosZ,
+                            Constants.RayTracingFlags.WORLD,
+                            true,
+                            crumblingRenderDataList);
+                    }
+                }
             }
 
-            if (!postTextStorageVertexConsumerProvider.getLayers().isEmpty()) {
-                entityStorageVertexConsumerProviders.add(postTextStorageVertexConsumerProvider);
-                processPostEntityRenderData(postTextStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
-                    entityPosX,
-                    entityPosY,
-                    entityPosZ,
-                    PostRenderFlags.NAME_TAG,
-                    entityRenderDataList);
-            } else {
-                postTextStorageVertexConsumerProvider.close();
-            }
+            for (BlockEntity blockEntity : noCullingBlockEntities) {
+                if (ModSupport.FLYWHEEL && FlywheelSupport.skip(blockEntity)) continue;
+                long entityKey = blockEntityKey(blockEntity);
+                if (!queuedBlockEntityKeys.add(entityKey)) {
+                    continue;
+                }
 
-            if (entity.equals(camera.getFocusedEntity())) {
+                BlockPos blockPos = blockEntity.getBlockPos();
+                double entityPosX = blockPos.getX();
+                double entityPosY = blockPos.getY();
+                double entityPosZ = blockPos.getZ();
+
+                StorageVertexConsumerProvider entityStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
+                    786432);
+                entityStorageVertexConsumerProvider.setEntityBuildContext(
+                    Constants.Coordinates.WORLD.getValue(), false, 0, 0, 0);
+                entityStorageVertexConsumerProviders.add(entityStorageVertexConsumerProvider);
+
+                matrixStack.pushPose();
+                renderBlockEntity(blockEntityRenderDispatcher, blockEntity, tickDelta, matrixStack,
+                    entityStorageVertexConsumerProvider);
+                matrixStack.popPose();
+
                 processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
-                    entityPosX,
-                    entityPosY,
-                    entityPosZ,
-                    Constants.RayTracingFlags.PLAYER,
-                    true,
-                    entityRenderDataList);
-            } else if (entity instanceof FishingBobberEntity) {
-                processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
-                    entityPosX,
-                    entityPosY,
-                    entityPosZ,
-                    Constants.RayTracingFlags.FISHING_BOBBER,
-                    true,
-                    entityRenderDataList);
-            } else {
-                processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                    System.identityHashCode(entity),
+                    entityKey,
                     entityPosX,
                     entityPosY,
                     entityPosZ,
@@ -391,261 +858,202 @@ public class EntityProxy {
                     true,
                     entityRenderDataList);
             }
-        }
 
-        queueBuild(entityStorageVertexConsumerProviders, entityRenderDataList);
-    }
-
-    public static synchronized Pair<List<StorageVertexConsumerProvider>, EntityRenderDataList> queueBlockEntitiesRebuild(
-        BuiltChunkStorage chunks,
-        Set<BlockEntity> noCullingBlockEntities,
-        Long2ObjectMap<SortedSet<BlockBreakingInfo>> blockBreakingProgressions,
-        BlockEntityRenderDispatcher blockEntityRenderDispatcher,
-        float tickDelta) {
-        MatrixStack matrixStack = new MatrixStack();
-        List<StorageVertexConsumerProvider> entityStorageVertexConsumerProviders = new ArrayList<>();
-        EntityRenderDataList entityRenderDataList = new EntityRenderDataList();
-
-        List<StorageVertexConsumerProvider> crumblingStorageVertexConsumerProviders = new ArrayList<>();
-        EntityRenderDataList crumblingRenderDataList = new EntityRenderDataList();
-        for (ChunkBuilder.BuiltChunk builtChunk : chunks.chunks) {
-            List<BlockEntity>
-                list =
-                builtChunk.getData()
-                    .getBlockEntities();
-            if (!list.isEmpty()) {
-                for (BlockEntity blockEntity : list) {
-                    StorageVertexConsumerProvider entityStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
-                        786432);
-                    entityStorageVertexConsumerProviders.add(entityStorageVertexConsumerProvider);
-                    StorageVertexConsumerProvider crumblingStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
-                        0);
-                    crumblingStorageVertexConsumerProviders.add(
-                        crumblingStorageVertexConsumerProvider);
-
-                    VertexConsumerProvider vertexConsumerProvider = entityStorageVertexConsumerProvider;
-
-                    BlockPos blockPos = blockEntity.getPos();
-                    double entityPosX = blockPos.getX();
-                    double entityPosY = blockPos.getY();
-                    double entityPosZ = blockPos.getZ();
-
-                    matrixStack.push();
-                    SortedSet<BlockBreakingInfo> sortedSet = blockBreakingProgressions.get(
-                        blockPos.asLong());
-                    if (sortedSet != null && !sortedSet.isEmpty()) {
-                        int
-                            stage =
-                            sortedSet.last()
-                                .getStage();
-                        if (stage >= 0) {
-                            MatrixStack.Entry entry = matrixStack.peek();
-                            VertexConsumer
-                                vertexConsumer =
-                                new OverlayVertexConsumer(
-                                    crumblingStorageVertexConsumerProvider.getBuffer(
-                                        ModelBaker.BLOCK_DESTRUCTION_RENDER_LAYERS.get(
-                                            stage)), entry, 1.0F);
-                            vertexConsumerProvider = renderLayer -> {
-                                VertexConsumer vertexConsumer2 = entityStorageVertexConsumerProvider.getBuffer(
-                                    renderLayer);
-                                return renderLayer.hasCrumbling() ? VertexConsumers.union(
-                                    vertexConsumer,
-                                    vertexConsumer2) :
-                                    vertexConsumer2;
-                            };
-                        }
-                    }
-
-                    blockEntityRenderDispatcher.render(blockEntity, tickDelta, matrixStack,
-                        vertexConsumerProvider);
-                    matrixStack.pop();
-
-                    processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                        System.identityHashCode(blockEntity),
-                        entityPosX,
-                        entityPosY,
-                        entityPosZ,
-                        Constants.RayTracingFlags.WORLD,
-                        true,
-                        entityRenderDataList);
-                    processWorldEntityRenderData(crumblingStorageVertexConsumerProvider,
-                        System.identityHashCode(blockEntity) + 1,
-                        entityPosX,
-                        entityPosY,
-                        entityPosZ,
-                        Constants.RayTracingFlags.WORLD,
-                        true,
-                        crumblingRenderDataList);
-                }
+            queueBuild(entityStorageVertexConsumerProviders, entityRenderDataList);
+            return new Tuple<>(crumblingStorageVertexConsumerProviders, crumblingRenderDataList);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
             }
         }
-
-        for (BlockEntity blockEntity : noCullingBlockEntities) {
-            StorageVertexConsumerProvider entityStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
-                786432);
-            entityStorageVertexConsumerProviders.add(entityStorageVertexConsumerProvider);
-
-            BlockPos blockPos = blockEntity.getPos();
-            double entityPosX = blockPos.getX();
-            double entityPosY = blockPos.getY();
-            double entityPosZ = blockPos.getZ();
-
-            matrixStack.push();
-            blockEntityRenderDispatcher.render(blockEntity, tickDelta, matrixStack,
-                entityStorageVertexConsumerProvider);
-            matrixStack.pop();
-
-            processWorldEntityRenderData(entityStorageVertexConsumerProvider,
-                System.identityHashCode(blockEntity),
-                entityPosX,
-                entityPosY,
-                entityPosZ,
-                Constants.RayTracingFlags.WORLD,
-                true,
-                entityRenderDataList);
-        }
-
-        queueBuild(entityStorageVertexConsumerProviders, entityRenderDataList);
-
-        return new Pair<>(crumblingStorageVertexConsumerProviders, crumblingRenderDataList);
     }
 
     public static void queueCrumblingRebuild(Camera camera,
-        Long2ObjectMap<SortedSet<BlockBreakingInfo>> blockBreakingProgressions,
-        BlockRenderManager blockRenderManager,
-        ClientWorld world,
+        Long2ObjectMap<SortedSet<BlockDestructionProgress>> blockBreakingProgressions,
+        BlockRenderDispatcher blockRenderManager,
+        ClientLevel world,
         List<StorageVertexConsumerProvider> crumblingStorageVertexConsumerProviders,
         EntityRenderDataList crumblingRenderDataList) {
-        MatrixStack matrixStack = new MatrixStack();
-        List<StorageVertexConsumerProvider> blockCrumblingStorageVertexConsumerProviders = new ArrayList<>();
-        EntityRenderDataList blockCrumblingRenderDataList = new EntityRenderDataList();
-
-        Vec3d vec3d = camera.getPos();
-        double d = vec3d.getX();
-        double e = vec3d.getY();
-        double f = vec3d.getZ();
-
-        for (Long2ObjectMap.Entry<SortedSet<BlockBreakingInfo>> blockBreakingProgression :
-            blockBreakingProgressions.long2ObjectEntrySet()) {
-            BlockPos blockPos = BlockPos.fromLong(blockBreakingProgression.getLongKey());
-            double entityPosX = blockPos.getX();
-            double entityPosY = blockPos.getY();
-            double entityPosZ = blockPos.getZ();
-
-            if (!(blockPos.getSquaredDistanceFromCenter(d, e, f) > 1024.0)) {
-                SortedSet<BlockBreakingInfo> sortedSet = blockBreakingProgression.getValue();
-                if (sortedSet != null && !sortedSet.isEmpty()) {
-                    int
-                        stage =
-                        sortedSet.last()
-                            .getStage();
-
-                    StorageVertexConsumerProvider blockCrumblingStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
-                        786432);
-                    blockCrumblingStorageVertexConsumerProviders.add(
-                        blockCrumblingStorageVertexConsumerProvider);
-
-                    matrixStack.push();
-                    MatrixStack.Entry entry = matrixStack.peek();
-                    VertexConsumer
-                        vertexConsumer =
-                        new OverlayVertexConsumer(
-                            blockCrumblingStorageVertexConsumerProvider.getBuffer(
-                                ModelBaker.BLOCK_DESTRUCTION_RENDER_LAYERS.get(
-                                    stage)), entry, 1.0F);
-                    blockRenderManager.renderDamage(world.getBlockState(blockPos), blockPos, world,
-                        matrixStack, vertexConsumer);
-                    matrixStack.pop();
-
-                    processWorldEntityRenderData(blockCrumblingStorageVertexConsumerProvider,
-                        0,
-                        entityPosX,
-                        entityPosY,
-                        entityPosZ,
-                        Constants.RayTracingFlags.WORLD,
-                        true,
-                        blockCrumblingRenderDataList);
-                }
-            }
+        if (!isEntityNativeTransferEnabled()) {
+            return;
         }
 
-        List<StorageVertexConsumerProvider>
-            storageVertexConsumerProviders =
-            Stream.concat(crumblingStorageVertexConsumerProviders.stream(),
-                    blockCrumblingStorageVertexConsumerProviders.stream())
-                .toList();
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.EntityProxy.queueCrumblingRebuild");
+        }
+        try {
+            PoseStack matrixStack = new PoseStack();
+            List<StorageVertexConsumerProvider> blockCrumblingStorageVertexConsumerProviders = new ArrayList<>();
+            EntityRenderDataList blockCrumblingRenderDataList = new EntityRenderDataList();
 
-        EntityRenderDataList
-            renderDataList =
-            Stream.concat(crumblingRenderDataList.stream(), blockCrumblingRenderDataList.stream())
-                .collect(EntityRenderDataList::new, EntityRenderDataList::add,
-                    EntityRenderDataList::addAll);
+            Vec3 cameraPos = camera.getPosition();
+            double cameraX = cameraPos.x();
+            double cameraY = cameraPos.y();
+            double cameraZ = cameraPos.z();
 
-        queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,
-            Constants.Coordinates.WORLD,
-            true);
+            for (Long2ObjectMap.Entry<SortedSet<BlockDestructionProgress>> blockBreakingProgression :
+                blockBreakingProgressions.long2ObjectEntrySet()) {
+                BlockPos blockPos = BlockPos.of(blockBreakingProgression.getLongKey());
+                double entityPosX = blockPos.getX();
+                double entityPosY = blockPos.getY();
+                double entityPosZ = blockPos.getZ();
+
+                if (!(blockPos.distToCenterSqr(cameraX, cameraY, cameraZ) > 1024.0)) {
+                    SortedSet<BlockDestructionProgress> breakingInfos = blockBreakingProgression.getValue();
+                    if (breakingInfos != null && !breakingInfos.isEmpty()) {
+                        int
+                            stage =
+                            breakingInfos.last()
+                                .getProgress();
+
+                        StorageVertexConsumerProvider blockCrumblingStorageVertexConsumerProvider = new StorageVertexConsumerProvider(
+                            786432);
+                        blockCrumblingStorageVertexConsumerProvider.setEntityBuildContext(
+                            Constants.Coordinates.WORLD.getValue(), true, 0, 0, 0);
+                        blockCrumblingStorageVertexConsumerProviders.add(
+                            blockCrumblingStorageVertexConsumerProvider);
+
+                        matrixStack.pushPose();
+                        PoseStack.Pose entry = matrixStack.last();
+                        VertexConsumer
+                            vertexConsumer =
+                            new SheetedDecalTextureGenerator(
+                                blockCrumblingStorageVertexConsumerProvider.getBuffer(
+                                    ModelBakery.DESTROY_TYPES.get(
+                                        stage)), entry, 1.0F);
+                        blockRenderManager.renderBreakingTexture(world.getBlockState(blockPos), blockPos, world,
+                            matrixStack, vertexConsumer);
+                        matrixStack.popPose();
+
+                        processWorldEntityRenderData(blockCrumblingStorageVertexConsumerProvider,
+                            blockDamageKey(blockPos),
+                            entityPosX,
+                            entityPosY,
+                            entityPosZ,
+                            Constants.RayTracingFlags.WORLD,
+                            true,
+                            blockCrumblingRenderDataList);
+                    }
+                }
+            }
+
+            List<StorageVertexConsumerProvider>
+                combinedStorageVertexConsumerProviders =
+                Stream.concat(crumblingStorageVertexConsumerProviders.stream(),
+                        blockCrumblingStorageVertexConsumerProviders.stream())
+                    .toList();
+
+            EntityRenderDataList
+                combinedRenderDataList =
+                Stream.concat(crumblingRenderDataList.stream(), blockCrumblingRenderDataList.stream())
+                    .collect(EntityRenderDataList::new, EntityRenderDataList::add,
+                        EntityRenderDataList::addAll);
+
+            queueBuild(combinedStorageVertexConsumerProviders, combinedRenderDataList, 0.0f,
+                Constants.Coordinates.WORLD,
+                true);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
+        }
     }
 
-    public static void queueHandRebuild(BufferBuilderStorage buffers, float tickDelta,
-        HeldItemRenderer firstPersonRenderer, float handProjectionScale) {
-        MinecraftClient client = MinecraftClient.getInstance();
-        MatrixStack matrixStack = new MatrixStack();
+    public static void queueHandRebuild(RenderBuffers buffers, float tickDelta,
+        ItemInHandRenderer firstPersonRenderer, float handProjectionScale) {
+        if (!isEntityNativeTransferEnabled()) {
+            return;
+        }
+
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.EntityProxy.queueHandRebuild");
+        }
+        try {
+            Minecraft client = Minecraft.getInstance();
+        PoseStack matrixStack = new PoseStack();
         List<StorageVertexConsumerProvider> storageVertexConsumerProviders = new ArrayList<>();
         EntityRenderDataList renderDataList = new EntityRenderDataList();
 
         StorageVertexConsumerProvider storageVertexConsumerProvider = new StorageVertexConsumerProvider(
             8192);
+        storageVertexConsumerProvider.setEntityBuildContext(
+            Constants.Coordinates.CAMERA.getValue(), false, 0, 0, 0);
         storageVertexConsumerProviders.add(storageVertexConsumerProvider);
 
-        matrixStack.push();
+        matrixStack.pushPose();
 
-        boolean bl = client.getCameraEntity() instanceof LivingEntity
+        boolean isCameraEntitySleeping = client.getCameraEntity() instanceof LivingEntity
             && ((LivingEntity) client.getCameraEntity()).isSleeping();
-        if (client.options.getPerspective()
-            .isFirstPerson() && !bl && !client.options.hudHidden &&
-            client.interactionManager.getCurrentGameMode() != GameMode.SPECTATOR) {
+        if (client.options.getCameraType()
+            .isFirstPerson() && !isCameraEntitySleeping && !client.options.hideGui &&
+            client.gameMode.getPlayerMode() != GameType.SPECTATOR) {
             matrixStack.scale(handProjectionScale, handProjectionScale, 1.0F);
             ((IHeldItemRendererExt) firstPersonRenderer).radiance$renderItem(tickDelta,
                 matrixStack,
                 storageVertexConsumerProvider,
                 client.player,
                 client.getEntityRenderDispatcher()
-                    .getLight(client.player, tickDelta));
+                    .getPackedLightCoords(client.player, tickDelta));
         }
 
-        matrixStack.pop();
+        matrixStack.popPose();
 
-        if (client.options.getPerspective()
-            .isFirstPerson() && !bl && !client.options.hudHidden &&
-            client.interactionManager.getCurrentGameMode() != GameMode.SPECTATOR) {
+        if (client.options.getCameraType()
+            .isFirstPerson() && !isCameraEntitySleeping && !client.options.hideGui &&
+            client.gameMode.getPlayerMode() != GameType.SPECTATOR) {
             processWorldEntityRenderData(storageVertexConsumerProvider,
-                System.identityHashCode(Constants.RayTracingFlags.HAND),
+                staticEntityKey(Constants.RayTracingFlags.HAND.getValue()),
                 0,
                 0,
                 0,
                 Constants.RayTracingFlags.HAND,
                 true,
                 renderDataList);
-            queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,
-                Constants.Coordinates.CAMERA,
-                false);
+                queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,
+                    Constants.Coordinates.CAMERA,
+                    false);
+            }
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
         }
     }
 
     public static void queueParticleRebuild(Camera camera, float tickDelta, Frustum frustum) {
-        List<StorageVertexConsumerProvider> storageVertexConsumerProviders = new ArrayList<>();
-        EntityRenderDataList renderDataList = new EntityRenderDataList();
+        if (!isEntityNativeTransferEnabled()) {
+            return;
+        }
 
-        Map<String, StorageVertexConsumerProvider> postStorageVertexConsumerProviders = new LinkedHashMap<>();
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.EntityProxy.queueParticleRebuild");
+        }
+        try {
+            List<StorageVertexConsumerProvider> storageVertexConsumerProviders = new ArrayList<>();
+            EntityRenderDataList renderDataList = new EntityRenderDataList();
 
-        ParticleManager particleManager = MinecraftClient.getInstance().particleManager;
-        IParticleManagerExt particleManagerExt = (IParticleManagerExt) particleManager;
-        Map<ParticleTextureSheet, Queue<Particle>> particles = particleManagerExt.radiance$getParticles();
+            Map<String, StorageVertexConsumerProvider> postStorageVertexConsumerProviders = new LinkedHashMap<>();
 
-        for (ParticleTextureSheet particleTextureSheet : particleManagerExt.radiance$getTextureSheets()) {
-            Queue<Particle> particleQueue = particles.get(particleTextureSheet);
-            if (particleQueue != null && !particleQueue.isEmpty()) {
+            ParticleEngine particleManager = Minecraft.getInstance().particleEngine;
+            IParticleManagerExt particleManagerExt = (IParticleManagerExt) particleManager;
+            Map<ParticleRenderType, Queue<Particle>> particles = particleManagerExt.radiance$getParticles();
+
+            for (ParticleRenderType particleTextureSheet : particleManagerExt.radiance$getTextureSheets()) {
+                if (particleTextureSheet == ParticleRenderType.CUSTOM
+                    || particleTextureSheet == ParticleRenderType.NO_RENDER) {
+                    continue;
+                }
+
+                Queue<Particle> particleQueue = particles.get(particleTextureSheet);
+                if (particleQueue == null || particleQueue.isEmpty()) {
+                    continue;
+                }
+
+                RenderType renderLayer = getParticleRenderLayer(particleTextureSheet);
+                if (renderLayer == null) {
+                    continue;
+                }
+
                 for (Particle particle : particleQueue) {
                     String contentName = normalizeParticleContentName(
                         ((IParticleExt) particle).radiance$getContentName());
@@ -653,6 +1061,8 @@ public class EntityProxy {
                         postStorageVertexConsumerProviders.computeIfAbsent(contentName, key -> {
                             StorageVertexConsumerProvider provider = new StorageVertexConsumerProvider(
                                 0);
+                            provider.setEntityBuildContext(
+                                Constants.Coordinates.CAMERA_SHIFT.getValue(), false, 0, 0, 0);
                             storageVertexConsumerProviders.add(provider);
                             return provider;
                         });
@@ -660,151 +1070,225 @@ public class EntityProxy {
                     VertexConsumer
                         vertexConsumer =
                         postStorageVertexConsumerProvider.getBuffer(
-                            Objects.requireNonNull(
-                                particleTextureSheet.renderType()));
+                            renderLayer);
 
                     try {
                         particle.render(vertexConsumer, camera, tickDelta);
-                    } catch (Throwable var11) {
-                        CrashReport crashReport = CrashReport.create(var11, "Rendering Particle");
-                        CrashReportSection crashReportSection = crashReport.addElement(
+                    } catch (Throwable particleRenderError) {
+                        CrashReport crashReport = CrashReport.forThrowable(particleRenderError, "Rendering Particle");
+                        CrashReportCategory crashReportSection = crashReport.addCategory(
                             "Particle being rendered");
-                        crashReportSection.add("Particle", particle);
-                        crashReportSection.add("Particle Type", particleTextureSheet);
-                        throw new CrashException(crashReport);
+                        crashReportSection.setDetail("Particle", particle);
+                        crashReportSection.setDetail("Particle Type", particleTextureSheet);
+                        throw new ReportedException(crashReport);
                     }
                 }
             }
-        }
 
-        for (Map.Entry<String, StorageVertexConsumerProvider> entry : postStorageVertexConsumerProviders.entrySet()) {
-            processPostEntityRenderData(entry.getValue(), 0, 0, 0, 0,
-                PostRenderFlags.PARTICLE, entry.getKey(), renderDataList);
-        }
+            for (Map.Entry<String, StorageVertexConsumerProvider> entry : postStorageVertexConsumerProviders.entrySet()) {
+                processPostEntityRenderData(entry.getValue(), staticEntityKey(entry.getKey()
+                    .hashCode() + 3L), 0, 0, 0,
+                    PostRenderFlags.PARTICLE, entry.getKey(), renderDataList);
+            }
 
-        StorageVertexConsumerProvider storageVertexConsumerProvider = new StorageVertexConsumerProvider(
-            0);
-        storageVertexConsumerProviders.add(storageVertexConsumerProvider);
+            StorageVertexConsumerProvider storageVertexConsumerProvider = new StorageVertexConsumerProvider(
+                0);
+            storageVertexConsumerProvider.setEntityBuildContext(
+                Constants.Coordinates.CAMERA_SHIFT.getValue(), false, 0, 0, 0);
+            storageVertexConsumerProviders.add(storageVertexConsumerProvider);
 
-        Queue<Particle> customParticleQueue = particles.get(ParticleTextureSheet.CUSTOM);
-        if (customParticleQueue != null && !customParticleQueue.isEmpty()) {
-            for (Particle particle : customParticleQueue) {
-
-                MatrixStack matrixStack = new MatrixStack();
-
+            Queue<Particle> customParticleQueue = particles.get(ParticleRenderType.CUSTOM);
+            if (customParticleQueue != null && !customParticleQueue.isEmpty()) {
+                CustomParticleRenderer.begin(storageVertexConsumerProvider,
+                    TRANSLUCENT_PARTICLE_LAYER);
                 try {
-                    particle.renderCustom(matrixStack, storageVertexConsumerProvider, camera,
-                        tickDelta);
-                } catch (Throwable var10) {
-                    CrashReport crashReport = CrashReport.create(var10, "Rendering Particle");
-                    CrashReportSection crashReportSection = crashReport.addElement(
-                        "Particle being rendered");
-                    crashReportSection.add("Particle", particle::toString);
-                    crashReportSection.add("Particle Type", "Custom");
-                    throw new CrashException(crashReport);
-                }
-            }
-        }
-
-        processWorldEntityRenderData(storageVertexConsumerProvider, 0, 0, 0, 0,
-            Constants.RayTracingFlags.PARTICLE, true, renderDataList);
-
-        queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,
-            Constants.Coordinates.CAMERA_SHIFT, false);
-    }
-
-    public static void queueTargetBlockOutlineRebuild(Camera camera, ClientWorld world) {
-        List<StorageVertexConsumerProvider> storageVertexConsumerProviders = new ArrayList<>();
-        EntityRenderDataList renderDataList = new EntityRenderDataList();
-
-        MinecraftClient client = MinecraftClient.getInstance();
-        MatrixStack matrixStack = new MatrixStack();
-
-        StorageVertexConsumerProvider storageVertexConsumerProvider = new StorageVertexConsumerProvider(
-            0);
-        storageVertexConsumerProviders.add(storageVertexConsumerProvider);
-
-        if (client.crosshairTarget instanceof BlockHitResult blockHitResult) {
-            if (blockHitResult.getType() != HitResult.Type.MISS) {
-                BlockPos blockPos = blockHitResult.getBlockPos();
-                BlockState blockState = world.getBlockState(blockPos);
-                if (!blockState.isAir() && world.getWorldBorder()
-                    .contains(blockPos)) {
-                    Boolean
-                        isHighContrastBlockOutline =
-                        client.options.getHighContrastBlockOutline()
-                            .getValue();
-                    if (isHighContrastBlockOutline) {
-                        VertexConsumer vertexConsumer = storageVertexConsumerProvider.getBuffer(
-                            RenderLayer.getSecondaryBlockOutline());
-                        VertexRendering.drawOutline(matrixStack,
-                            vertexConsumer,
-                            blockState.getOutlineShape(world, blockPos,
-                                ShapeContext.of(camera.getFocusedEntity())),
-                            0,
-                            0,
-                            0,
-                            -16777216);
+                    VertexConsumer fallbackVertexConsumer = CustomParticleRenderer.getFallbackVertexConsumer();
+                    for (Particle particle : customParticleQueue) {
+                        try {
+                            particle.render(fallbackVertexConsumer, camera, tickDelta);
+                        } catch (Throwable particleRenderError) {
+                            CrashReport crashReport = CrashReport.forThrowable(particleRenderError,
+                                "Rendering Particle");
+                            CrashReportCategory crashReportSection = crashReport.addCategory(
+                                "Particle being rendered");
+                            crashReportSection.setDetail("Particle", particle::toString);
+                            crashReportSection.setDetail("Particle Type", "Custom");
+                            throw new ReportedException(crashReport);
+                        }
                     }
-
-                    VertexConsumer vertexConsumer = storageVertexConsumerProvider.getBuffer(
-                        RenderLayer.getLines());
-                    int color =
-                        isHighContrastBlockOutline ? Colors.CYAN
-                            : ColorHelper.withAlpha(102, Colors.BLACK);
-                    VertexRendering.drawOutline(matrixStack,
-                        vertexConsumer,
-                        blockState.getOutlineShape(world, blockPos,
-                            ShapeContext.of(camera.getFocusedEntity())),
-                        0,
-                        0,
-                        0,
-                        color);
-
-                    processWorldEntityRenderData(storageVertexConsumerProvider,
-                        0,
-                        blockPos.getX(),
-                        blockPos.getY(),
-                        blockPos.getZ(),
-                        Constants.RayTracingFlags.FISHING_BOBBER,
-                        false,
-                        renderDataList);
+                } finally {
+                    List<EntityRenderLayer> capturedLayers = CustomParticleRenderer.end();
+                    if (!capturedLayers.isEmpty()) {
+                        EntityRenderData entityRenderData = new EntityRenderData(staticEntityKey(2),
+                            0, 0, 0, Constants.RayTracingFlags.PARTICLE.getValue(), 0, -1, false);
+                        entityRenderData.addAll(capturedLayers);
+                        renderDataList.add(entityRenderData);
+                    }
                 }
             }
-        }
 
-        queueBuild(storageVertexConsumerProviders, renderDataList, 0.0075f,
-            Constants.Coordinates.WORLD,
-            false);
+            processWorldEntityRenderData(storageVertexConsumerProvider, staticEntityKey(1), 0, 0, 0,
+                Constants.RayTracingFlags.PARTICLE, true, renderDataList);
+
+            queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,
+                Constants.Coordinates.CAMERA_SHIFT, false);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
+        }
     }
 
-    public static void queueWeatherBuild(WeatherRendering weatherRendering,
-        WorldBorderRendering worldBorderRendering,
-        ClientWorld world,
-        Camera camera,
-        int ticks,
-        float tickDelta) {
-        List<StorageVertexConsumerProvider> storageVertexConsumerProviders = new ArrayList<>();
-        EntityRenderDataList renderDataList = new EntityRenderDataList();
+    private static RenderType getParticleRenderLayer(ParticleRenderType particleTextureSheet) {
+        if (particleTextureSheet == ParticleRenderType.TERRAIN_SHEET) {
+            return TERRAIN_PARTICLE_LAYER;
+        }
+        if (particleTextureSheet == ParticleRenderType.PARTICLE_SHEET_TRANSLUCENT) {
+            return TRANSLUCENT_PARTICLE_LAYER;
+        }
+        if (particleTextureSheet == ParticleRenderType.PARTICLE_SHEET_OPAQUE
+            || particleTextureSheet == ParticleRenderType.PARTICLE_SHEET_LIT) {
+            return OPAQUE_PARTICLE_LAYER;
+        }
+        return null;
+    }
 
-        StorageVertexConsumerProvider storageVertexConsumerProvider = new StorageVertexConsumerProvider(
-            0);
-        storageVertexConsumerProviders.add(storageVertexConsumerProvider);
+    private static RenderType createOpaqueParticleLayer(ResourceLocation texture) {
+        return RenderType.create("opaque_particle",
+            com.mojang.blaze3d.vertex.DefaultVertexFormat.PARTICLE,
+            QUADS,
+            1536,
+            false,
+            false,
+            RenderType.CompositeState.builder()
+                .setShaderState(PARTICLE_PROGRAM)
+                .setTextureState(new RenderStateShard.TextureStateShard(texture, false, false))
+                .setLightmapState(RenderType.LIGHTMAP)
+                .setWriteMaskState(RenderType.COLOR_DEPTH_WRITE)
+                .createCompositeState(false));
+    }
 
-        weatherRendering.renderPrecipitation(world, storageVertexConsumerProvider, ticks, tickDelta,
-            camera.getPos());
+    private static RenderType createTranslucentParticleLayer(ResourceLocation texture) {
+        return RenderType.create("translucent_particle",
+            com.mojang.blaze3d.vertex.DefaultVertexFormat.PARTICLE,
+            QUADS,
+            1536,
+            false,
+            false,
+            RenderType.CompositeState.builder()
+                .setShaderState(PARTICLE_PROGRAM)
+                .setTextureState(new RenderStateShard.TextureStateShard(texture, false, false))
+                .setTransparencyState(RenderType.TRANSLUCENT_TRANSPARENCY)
+                .setOutputState(RenderType.PARTICLES_TARGET)
+                .setLightmapState(RenderType.LIGHTMAP)
+                .setWriteMaskState(RenderType.COLOR_DEPTH_WRITE)
+                .createCompositeState(false));
+    }
 
-        MinecraftClient client = MinecraftClient.getInstance();
-        int clampedViewDistance = client.options.getClampedViewDistance() * 16;
-        float farPlaneDistance = client.gameRenderer.getFarPlaneDistance();
-        worldBorderRendering.render(world.getWorldBorder(), camera.getPos(), clampedViewDistance,
-            farPlaneDistance);
+    private static EntityRenderData worldRenderCapture;
+    private static final Map<Object, Long> worldRenderKeys = new java.util.IdentityHashMap<>();
 
-        processPostEntityRenderData(storageVertexConsumerProvider, 0, 0, 0, 0,
-            PostRenderFlags.WEATHER, EntityProxy::resolveWeatherContentName, renderDataList);
+    public static void captureWorldRender(Object stage, Runnable render) {
+        if (worldRenderCapture != null) {
+            render.run();
+            return;
+        }
+        long key = worldRenderKeys.computeIfAbsent(stage,
+            ignored -> staticEntityKey(0x10000L + worldRenderKeys.size()));
+        EntityRenderData data = new EntityRenderData(key, 0, 0, 0, 0,
+            Constants.PostRenderFlags.WORLD_OVERLAY.getValue(), -1, true);
+        worldRenderCapture = data;
+        try {
+            render.run();
+            Minecraft.getInstance().renderBuffers().bufferSource().endBatch();
+        } finally {
+            worldRenderCapture = null;
+            if (!data.isEmpty()) {
+                EntityRenderDataList list = new EntityRenderDataList();
+                list.add(data);
+                queueBuild(List.of(), list, 0.0075f, Constants.Coordinates.CAMERA_SHIFT, false);
+            }
+        }
+    }
 
-        queueBuild(storageVertexConsumerProviders, renderDataList, 0.0f,
-            Constants.Coordinates.CAMERA_SHIFT, false);
+    public static boolean isWorldRenderCaptureActive() {
+        return worldRenderCapture != null;
+    }
+
+    public static boolean captureWorldRenderLayer(RenderType layer, MeshData mesh) {
+        if (worldRenderCapture == null) {
+            return false;
+        }
+        String content = layer instanceof RenderType.CompositeRenderType composite
+            && composite.state.depthTestState.functionName.equals("always")
+            ? "/world_overlay/through" : "/world_overlay/default";
+        worldRenderCapture.add(new EntityRenderLayer(layer, mesh, null, false, content));
+        return true;
+    }
+
+    public static void queueTargetBlockOutlineRebuild(Camera camera, ClientLevel world) {
+        if (!isEntityNativeTransferEnabled()) {
+            return;
+        }
+
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.EntityProxy.queueTargetBlockOutlineRebuild");
+        }
+        try {
+            List<StorageVertexConsumerProvider> storageVertexConsumerProviders = new ArrayList<>();
+            EntityRenderDataList renderDataList = new EntityRenderDataList();
+
+            Minecraft client = Minecraft.getInstance();
+            PoseStack matrixStack = new PoseStack();
+
+            StorageVertexConsumerProvider storageVertexConsumerProvider = new StorageVertexConsumerProvider(
+                0);
+            storageVertexConsumerProvider.setEntityBuildContext(
+                Constants.Coordinates.WORLD.getValue(), false, 0, 0, 0);
+            storageVertexConsumerProviders.add(storageVertexConsumerProvider);
+
+            if (client.hitResult instanceof BlockHitResult blockHitResult) {
+                if (blockHitResult.getType() != HitResult.Type.MISS) {
+                    BlockPos blockPos = blockHitResult.getBlockPos();
+                    BlockState blockState = world.getBlockState(blockPos);
+                    if (!blockState.isAir() && world.getWorldBorder()
+                        .isWithinBounds(blockPos)) {
+                        VertexConsumer vertexConsumer = storageVertexConsumerProvider.getBuffer(
+                            RenderType.lines());
+                        int color = FastColor.ARGB32.color(102, CommonColors.BLACK);
+                        LevelRenderer.renderVoxelShape(matrixStack,
+                            vertexConsumer,
+                            blockState.getShape(world, blockPos,
+                                CollisionContext.of(camera.getEntity())),
+                            0,
+                            0,
+                            0,
+                            FastColor.ARGB32.red(color) / 255.0F,
+                            FastColor.ARGB32.green(color) / 255.0F,
+                            FastColor.ARGB32.blue(color) / 255.0F,
+                            FastColor.ARGB32.alpha(color) / 255.0F,
+                            false);
+
+                        processWorldEntityRenderData(storageVertexConsumerProvider,
+                            targetBlockOutlineKey(blockPos),
+                            blockPos.getX(),
+                            blockPos.getY(),
+                            blockPos.getZ(),
+                            Constants.RayTracingFlags.FISHING_BOBBER,
+                            false,
+                            renderDataList);
+                    }
+                }
+            }
+
+            queueBuild(storageVertexConsumerProviders, renderDataList, 0.0075f,
+                Constants.Coordinates.WORLD,
+                false);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
+        }
     }
 
     public static void queueBuild(
@@ -842,269 +1326,381 @@ public class EntityProxy {
         Constants.Coordinates coordinate,
         boolean normalOffset,
         boolean closeAfterBuild) {
-        TextureManager
-            textureManager =
-            MinecraftClient.getInstance()
-                .getTextureManager();
-        List<ByteBuffer> geometryGroupNameBuffers = new ArrayList<>(
-            entityRenderDataList.getTotalLayersCount());
-        List<ByteBuffer> geometryContentNameBuffers = new ArrayList<>(
-            entityRenderDataList.getTotalLayersCount());
-        ByteBuffer entityHashCodeBB = null;
-        ByteBuffer entityPosXBB = null;
-        ByteBuffer entityPosYBB = null;
-        ByteBuffer entityPosZBB = null;
-        ByteBuffer entityRayTracingFlagBB = null;
-        ByteBuffer entityPostRenderFlagBB = null;
-        ByteBuffer entityPrebuiltBLASBB = null;
-        ByteBuffer entityPostBB = null;
-        ByteBuffer entityLayerCountBB = null;
-        ByteBuffer geometryTypeBB = null;
-        ByteBuffer geometryGroupNameBB = null;
-        ByteBuffer geometryContentNameBB = null;
-        ByteBuffer geometryTextureBB = null;
-        ByteBuffer vertexFormatBB = null;
-        ByteBuffer indexFormatBB = null;
-        ByteBuffer vertexCountBB = null;
-        ByteBuffer verticesBB = null;
+        if (!isEntityNativeTransferEnabled()) {
+            if (closeAfterBuild) {
+                closeUntransferredBuiltBuffers(entityRenderDataList, null);
+                closeStorageVertexConsumerProviders(storageVertexConsumerProviders);
+            }
+            return;
+        }
+
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.EntityProxy.queueBuildInternal");
+        }
+        try {
+            TextureManager
+                textureManager =
+                Minecraft.getInstance()
+                    .getTextureManager();
+        ByteBuffer entityKeyBuffer = null;
+        ByteBuffer entityPosXBuffer = null;
+        ByteBuffer entityPosYBuffer = null;
+        ByteBuffer entityPosZBuffer = null;
+        ByteBuffer entityRayTracingFlagBuffer = null;
+        ByteBuffer entityPostRenderFlagBuffer = null;
+        ByteBuffer entityPrebuiltBlasBuffer = null;
+        ByteBuffer entityPostRenderBuffer = null;
+        ByteBuffer entityTransformBB = null;
+        ByteBuffer entityMaterialBB = null;
+        ByteBuffer entityLayerCountBuffer = null;
+        ByteBuffer geometryTypeBuffer = null;
+        ByteBuffer geometryGroupNamePointerBuffer = null;
+        ByteBuffer geometryContentNamePointerBuffer = null;
+        ByteBuffer geometryTextureBuffer = null;
+        ByteBuffer geometryNormalOffsetBuffer = null;
+        ByteBuffer vertexFormatBuffer = null;
+        ByteBuffer indexFormatBuffer = null;
+        ByteBuffer vertexCountBuffer = null;
+        ByteBuffer vertexPointerBuffer = null;
+        TransferredBuildBuffer[] transferredBuffers =
+            closeAfterBuild ? new TransferredBuildBuffer[entityRenderDataList.getTotalLayersCount()] : null;
+        boolean submittedNative = false;
 
         try {
-            int entityHashCodeSize = entityRenderDataList.getTotalEntityCount() * Integer.BYTES;
-            entityHashCodeBB = MemoryUtil.memAlloc(entityHashCodeSize);
-            long entityHashCodeAddr = memAddress(entityHashCodeBB);
-            int entityHashCodeBaseAddr = 0;
+            int entityKeySize = entityRenderDataList.getTotalEntityCount() * Long.BYTES;
+            entityKeyBuffer = MemoryUtil.memAlloc(entityKeySize);
+            long entityKeyAddress = memAddress(entityKeyBuffer);
+            int entityKeyByteOffset = 0;
 
             int entityPosXSize = entityRenderDataList.getTotalEntityCount() * Double.BYTES;
-            entityPosXBB = MemoryUtil.memAlloc(entityPosXSize);
-            long entityPosXAddr = memAddress(entityPosXBB);
-            int entityPosXBaseAddr = 0;
+            entityPosXBuffer = MemoryUtil.memAlloc(entityPosXSize);
+            long entityPosXAddress = memAddress(entityPosXBuffer);
+            int entityPosXByteOffset = 0;
 
             int entityPosYSize = entityRenderDataList.getTotalEntityCount() * Double.BYTES;
-            entityPosYBB = MemoryUtil.memAlloc(entityPosYSize);
-            long entityPosYAddr = memAddress(entityPosYBB);
-            int entityPosYBaseAddr = 0;
+            entityPosYBuffer = MemoryUtil.memAlloc(entityPosYSize);
+            long entityPosYAddress = memAddress(entityPosYBuffer);
+            int entityPosYByteOffset = 0;
 
             int entityPosZSize = entityRenderDataList.getTotalEntityCount() * Double.BYTES;
-            entityPosZBB = MemoryUtil.memAlloc(entityPosZSize);
-            long entityPosZAddr = memAddress(entityPosZBB);
-            int entityPosZBaseAddr = 0;
+            entityPosZBuffer = MemoryUtil.memAlloc(entityPosZSize);
+            long entityPosZAddress = memAddress(entityPosZBuffer);
+            int entityPosZByteOffset = 0;
 
             int entityRayTracingFlagSize = entityRenderDataList.getTotalEntityCount() * Integer.BYTES;
-            entityRayTracingFlagBB = MemoryUtil.memAlloc(entityRayTracingFlagSize);
-            long entityRayTracingFlagAddr = memAddress(entityRayTracingFlagBB);
-            int entityRayTracingFlagBaseAddr = 0;
+            entityRayTracingFlagBuffer = MemoryUtil.memAlloc(entityRayTracingFlagSize);
+            long entityRayTracingFlagAddress = memAddress(entityRayTracingFlagBuffer);
+            int entityRayTracingFlagByteOffset = 0;
 
             int entityPostRenderFlagSize = entityRenderDataList.getTotalEntityCount() * Integer.BYTES;
-            entityPostRenderFlagBB = MemoryUtil.memAlloc(entityPostRenderFlagSize);
-            long entityPostRenderFlagAddr = memAddress(entityPostRenderFlagBB);
-            int entityPostRenderFlagBaseAddr = 0;
+            entityPostRenderFlagBuffer = MemoryUtil.memAlloc(entityPostRenderFlagSize);
+            long entityPostRenderFlagAddress = memAddress(entityPostRenderFlagBuffer);
+            int entityPostRenderFlagByteOffset = 0;
 
             int entityPrebuiltBLASSize = entityRenderDataList.getTotalEntityCount() * Integer.BYTES;
-            entityPrebuiltBLASBB = MemoryUtil.memAlloc(entityPrebuiltBLASSize);
-            long entityPrebuiltBLASAddr = memAddress(entityPrebuiltBLASBB);
-            int entityPrebuiltBLASBaseAddr = 0;
+            entityPrebuiltBlasBuffer = MemoryUtil.memAlloc(entityPrebuiltBLASSize);
+            long entityPrebuiltBlasAddress = memAddress(entityPrebuiltBlasBuffer);
+            int entityPrebuiltBlasByteOffset = 0;
 
             int entityPostSize = entityRenderDataList.getTotalEntityCount() * Integer.BYTES;
-            entityPostBB = MemoryUtil.memAlloc(entityPostSize);
-            long entityPostAddr = memAddress(entityPostBB);
-            int entityPostBaseAddr = 0;
+            entityPostRenderBuffer = MemoryUtil.memAlloc(entityPostSize);
+            long entityPostRenderAddress = memAddress(entityPostRenderBuffer);
+            int entityPostRenderByteOffset = 0;
 
             int entityLayerCountSize = entityRenderDataList.getTotalEntityCount() * Integer.BYTES;
-            entityLayerCountBB = MemoryUtil.memAlloc(entityLayerCountSize);
-            long entityLayerCountAddr = memAddress(entityLayerCountBB);
-            int entityLayerCountBaseAddr = 0;
+            entityLayerCountBuffer = MemoryUtil.memAlloc(entityLayerCountSize);
+            long entityLayerCountAddress = memAddress(entityLayerCountBuffer);
+            int entityLayerCountByteOffset = 0;
 
             int geometryTypeSize = entityRenderDataList.getTotalLayersCount() * Integer.BYTES;
-            geometryTypeBB = MemoryUtil.memAlloc(geometryTypeSize);
-            long geometryTypeAddr = memAddress(geometryTypeBB);
-            int geometryTypeBaseAddr = 0;
+            geometryTypeBuffer = MemoryUtil.memAlloc(geometryTypeSize);
+            long geometryTypeAddress = memAddress(geometryTypeBuffer);
+            int geometryTypeByteOffset = 0;
 
             int geometryGroupNameSize = entityRenderDataList.getTotalLayersCount() * Long.BYTES;
-            geometryGroupNameBB = MemoryUtil.memAlloc(geometryGroupNameSize);
-            long geometryGroupNameAddr = memAddress(geometryGroupNameBB);
-            int geometryGroupNameBaseAddr = 0;
+            geometryGroupNamePointerBuffer = MemoryUtil.memAlloc(geometryGroupNameSize);
+            long geometryGroupNameAddress = memAddress(geometryGroupNamePointerBuffer);
+            int geometryGroupNameByteOffset = 0;
 
             int geometryContentNameSize = entityRenderDataList.getTotalLayersCount() * Long.BYTES;
-            geometryContentNameBB = MemoryUtil.memAlloc(geometryContentNameSize);
-            long geometryContentNameAddr = memAddress(geometryContentNameBB);
-            int geometryContentNameBaseAddr = 0;
+            geometryContentNamePointerBuffer = MemoryUtil.memAlloc(geometryContentNameSize);
+            long geometryContentNameAddress = memAddress(geometryContentNamePointerBuffer);
+            int geometryContentNameByteOffset = 0;
 
             int geometryTextureSize = entityRenderDataList.getTotalLayersCount() * Integer.BYTES;
-            geometryTextureBB = MemoryUtil.memAlloc(geometryTextureSize);
-            long geometryTextureAddr = memAddress(geometryTextureBB);
-            int geometryTextureBaseAddr = 0;
+            geometryTextureBuffer = MemoryUtil.memAlloc(geometryTextureSize);
+            long geometryTextureAddress = memAddress(geometryTextureBuffer);
+            int geometryTextureByteOffset = 0;
+
+            int geometryNormalOffsetSize = entityRenderDataList.getTotalLayersCount() * Float.BYTES;
+            geometryNormalOffsetBuffer = MemoryUtil.memAlloc(geometryNormalOffsetSize);
+            long geometryNormalOffsetAddress = memAddress(geometryNormalOffsetBuffer);
+            int geometryNormalOffsetByteOffset = 0;
 
             int vertexFormatSize = entityRenderDataList.getTotalLayersCount() * Integer.BYTES;
-            vertexFormatBB = MemoryUtil.memAlloc(vertexFormatSize);
-            long vertexFormatAddr = memAddress(vertexFormatBB);
-            int vertexFormatBaseAddr = 0;
+            vertexFormatBuffer = MemoryUtil.memAlloc(vertexFormatSize);
+            long vertexFormatAddress = memAddress(vertexFormatBuffer);
+            int vertexFormatByteOffset = 0;
 
             int indexFormatSize = entityRenderDataList.getTotalLayersCount() * Integer.BYTES;
-            indexFormatBB = MemoryUtil.memAlloc(indexFormatSize);
-            long indexFormatAddr = memAddress(indexFormatBB);
-            int indexFormatBaseAddr = 0;
+            indexFormatBuffer = MemoryUtil.memAlloc(indexFormatSize);
+            long indexFormatAddress = memAddress(indexFormatBuffer);
+            int indexFormatByteOffset = 0;
 
             int vertexCountSize = entityRenderDataList.getTotalLayersCount() * Integer.BYTES;
-            vertexCountBB = MemoryUtil.memAlloc(vertexCountSize);
-            long vertexCountAddr = memAddress(vertexCountBB);
-            int vertexCountBaseAddr = 0;
+            vertexCountBuffer = MemoryUtil.memAlloc(vertexCountSize);
+            long vertexCountAddress = memAddress(vertexCountBuffer);
+            int vertexCountByteOffset = 0;
 
             int verticesSize = entityRenderDataList.getTotalLayersCount() * Long.BYTES;
-            verticesBB = MemoryUtil.memAlloc(verticesSize);
-            long verticesAddr = memAddress(verticesBB);
-            int verticesBaseAddr = 0;
+            vertexPointerBuffer = MemoryUtil.memAlloc(verticesSize);
+            long vertexPointerAddress = memAddress(vertexPointerBuffer);
+            int vertexPointerByteOffset = 0;
 
+            int entityCount = entityRenderDataList.getTotalEntityCount();
+            boolean shared = entityRenderDataList.stream().anyMatch(data -> data.prebuiltBLAS >= 0);
+            entityTransformBB = shared ? MemoryUtil.memCalloc(entityCount * 64) : null;
+            entityMaterialBB = shared ? MemoryUtil.memCalloc(entityCount * 48) : null;
+            int entityIndex = 0;
+            int transferBufferIndex = 0;
             for (EntityRenderData entityRenderData : entityRenderDataList) {
-                entityHashCodeBB.putInt(entityHashCodeBaseAddr, entityRenderData.hashCode);
-                entityHashCodeBaseAddr += Integer.BYTES;
+                if (entityRenderData.prebuiltBLAS >= 0) {
+                    entityRenderData.transform.get(entityIndex * 64, entityTransformBB);
+                    int offset = entityIndex * 48;
+                    entityMaterialBB.putFloat(offset, entityRenderData.color.x);
+                    entityMaterialBB.putFloat(offset + 4, entityRenderData.color.y);
+                    entityMaterialBB.putFloat(offset + 8, entityRenderData.color.z);
+                    entityMaterialBB.putFloat(offset + 12, entityRenderData.color.w);
+                    entityMaterialBB.putFloat(offset + 16, 1.0f);
+                    entityMaterialBB.putFloat(offset + 20, 1.0f);
+                    entityMaterialBB.putFloat(offset + 24, entityRenderData.uvOffset.x);
+                    entityMaterialBB.putFloat(offset + 28, entityRenderData.uvOffset.y);
+                    entityMaterialBB.putInt(offset + 32, entityRenderData.light);
+                    entityMaterialBB.putInt(offset + 36, entityRenderData.overlay);
+                }
+                entityIndex++;
+                entityKeyBuffer.putLong(entityKeyByteOffset, entityRenderData.entityKey);
+                entityKeyByteOffset += Long.BYTES;
 
-                entityPosXBB.putDouble(entityPosXBaseAddr, entityRenderData.x);
-                entityPosXBaseAddr += Double.BYTES;
+                entityPosXBuffer.putDouble(entityPosXByteOffset, entityRenderData.x);
+                entityPosXByteOffset += Double.BYTES;
 
-                entityPosYBB.putDouble(entityPosYBaseAddr, entityRenderData.y);
-                entityPosYBaseAddr += Double.BYTES;
+                entityPosYBuffer.putDouble(entityPosYByteOffset, entityRenderData.y);
+                entityPosYByteOffset += Double.BYTES;
 
-                entityPosZBB.putDouble(entityPosZBaseAddr, entityRenderData.z);
-                entityPosZBaseAddr += Double.BYTES;
+                entityPosZBuffer.putDouble(entityPosZByteOffset, entityRenderData.z);
+                entityPosZByteOffset += Double.BYTES;
 
-                entityRayTracingFlagBB.putInt(entityRayTracingFlagBaseAddr,
+                entityRayTracingFlagBuffer.putInt(entityRayTracingFlagByteOffset,
                     entityRenderData.rayTracingFlag);
-                entityRayTracingFlagBaseAddr += Integer.BYTES;
+                entityRayTracingFlagByteOffset += Integer.BYTES;
 
-                entityPostRenderFlagBB.putInt(entityPostRenderFlagBaseAddr,
+                entityPostRenderFlagBuffer.putInt(entityPostRenderFlagByteOffset,
                     entityRenderData.postRenderFlag);
-                entityPostRenderFlagBaseAddr += Integer.BYTES;
+                entityPostRenderFlagByteOffset += Integer.BYTES;
 
-                entityPrebuiltBLASBB.putInt(entityPrebuiltBLASBaseAddr, entityRenderData.prebuiltBLAS);
-                entityPrebuiltBLASBaseAddr += Integer.BYTES;
+                entityPrebuiltBlasBuffer.putInt(entityPrebuiltBlasByteOffset, entityRenderData.prebuiltBLAS);
+                entityPrebuiltBlasByteOffset += Integer.BYTES;
 
-                entityPostBB.putInt(entityPostBaseAddr, entityRenderData.post ? 1 : 0);
-                entityPostBaseAddr += Integer.BYTES;
+                entityPostRenderBuffer.putInt(entityPostRenderByteOffset, entityRenderData.isPostRender ? 1 : 0);
+                entityPostRenderByteOffset += Integer.BYTES;
 
-                entityLayerCountBB.putInt(entityLayerCountBaseAddr, entityRenderData.size());
-                entityLayerCountBaseAddr += Integer.BYTES;
+                entityLayerCountBuffer.putInt(entityLayerCountByteOffset, entityRenderData.size());
+                entityLayerCountByteOffset += Integer.BYTES;
 
                 for (EntityRenderLayer entityRenderLayer : entityRenderData) {
-                    if (entityRenderData.postRenderFlag != 0) {
-                        logPostContentNameOnce(entityRenderData.postRenderFlag,
-                            entityRenderLayer.contentName, entityRenderLayer.renderLayer);
-                    }
+                    RenderType renderLayer = entityRenderLayer.renderLayer;
+                    MeshData vertexBuffer = entityRenderLayer.builtBuffer;
 
-                    RenderLayer renderLayer = entityRenderLayer.renderLayer;
-                    BuiltBuffer vertexBuffer = entityRenderLayer.builtBuffer;
-
-                    Identifier
-                        identifier =
-                        ((RenderLayer.MultiPhase) renderLayer).phases.texture.getId()
-                            .orElse(MissingSprite.getMissingSpriteId());
+                    ResourceLocation
+                        textureIdentifier =
+                        ((RenderType.CompositeRenderType) renderLayer).state.textureState.cutoutTexture()
+                            .orElse(MissingTextureAtlasSprite.getLocation());
                     int
                         geometryTypeID =
                         Constants.GeometryTypes.getGeometryType(renderLayer, entityRenderLayer.reflect)
                             .getValue();
                     int
                         geometryTextureID =
-                        textureManager.getTexture(identifier)
-                            .getGlId();
+                        textureManager.getTexture(textureIdentifier)
+                            .getId();
+                    float geometryNormalOffset = getGeometryNormalOffset(textureIdentifier);
                     int
                         vertexFormatID =
-                        Constants.VertexFormats.getValue(vertexBuffer.getDrawParameters()
+                        Constants.VertexFormats.getValue(vertexBuffer.drawState()
                             .format());
                     int
                         indexFormatID =
-                        Constants.DrawModes.getValue(vertexBuffer.getDrawParameters()
+                        Constants.DrawModes.getValue(vertexBuffer.drawState()
                             .mode());
+                    float externalBaseX = entityRenderData.isPostRender ? (float) entityRenderData.x : 0.0f;
+                    float externalBaseY = entityRenderData.isPostRender ? (float) entityRenderData.y : 0.0f;
+                    float externalBaseZ = entityRenderData.isPostRender ? (float) entityRenderData.z : 0.0f;
+                    boolean canUseExternalPbr = PBRVertexConsumer.canUseExternalPbr(vertexBuffer);
+                    boolean hasFinalExternalPbrContext = canUseExternalPbr &&
+                        entityRenderLayer.ownerProvider != null &&
+                        entityRenderLayer.ownerProvider.hasFinalEntityBuildContext(
+                            coordinate.getValue(), normalOffset, externalBaseX, externalBaseY, externalBaseZ);
+                    if (canUseExternalPbr && !hasFinalExternalPbrContext) {
+                        throw new IllegalStateException(
+                            "PBR QUADS entity layer was built before its final build context was set: layer=" +
+                                renderLayer.name + ", content=" + entityRenderLayer.contentName() +
+                                ", coordinate=" + coordinate.getValue() +
+                                ", normalOffset=" + normalOffset +
+                                ", postBase=(" + externalBaseX + ", " + externalBaseY + ", " + externalBaseZ + ")");
+                    }
+                    boolean shouldTransferExternalPbr = transferredBuffers != null && hasFinalExternalPbrContext;
 
-                    BufferProxy.BufferInfo vertexBufferInfo = BufferProxy.getBufferInfo(
-                        vertexBuffer.getBuffer());
-                    assert vertexBuffer.getDrawParameters()
-                        .indexCount() == vertexBuffer.getDrawParameters()
+                    TransferredBuildBuffer transferredBuffer = null;
+                    long vertexAddress;
+
+                    if (shouldTransferExternalPbr) {
+                        transferredBuffer = TransferredBuildBuffer.takeEntity(
+                            entityRenderLayer.ownerProvider, renderLayer, vertexBuffer);
+                        transferredBuffers[transferBufferIndex] = transferredBuffer;
+                        vertexAddress = transferredBuffer.vertexAddress();
+                    } else {
+                        BufferProxy.BufferInfo vertexBufferInfo = BufferProxy.getBufferInfo(
+                            vertexBuffer.vertexBuffer());
+                        vertexAddress = vertexBufferInfo.address();
+                    }
+                    assert vertexBuffer.drawState()
+                        .indexCount() == vertexBuffer.drawState()
                         .vertexCount() / 4 * 6;
 
-                    geometryTypeBB.putInt(geometryTypeBaseAddr, geometryTypeID);
-                    geometryTypeBaseAddr += Integer.BYTES;
+                    geometryTypeBuffer.putInt(geometryTypeByteOffset, geometryTypeID);
+                    geometryTypeByteOffset += Integer.BYTES;
 
-                    ByteBuffer geometryGroupNameBuffer = MemoryUtil.memUTF8(renderLayer.name, true);
-                    geometryGroupNameBuffers.add(geometryGroupNameBuffer);
-                    geometryGroupNameBB.putLong(geometryGroupNameBaseAddr, memAddress(geometryGroupNameBuffer));
-                    geometryGroupNameBaseAddr += Long.BYTES;
+                    ByteBuffer geometryGroupNameBuffer = getUtf8NameBuffer(renderLayer.name);
+                    geometryGroupNamePointerBuffer.putLong(geometryGroupNameByteOffset,
+                        memAddress(geometryGroupNameBuffer));
+                    geometryGroupNameByteOffset += Long.BYTES;
 
-                    ByteBuffer geometryContentNameBuffer = MemoryUtil.memUTF8(
-                        entityRenderLayer.contentName(), true);
-                    geometryContentNameBuffers.add(geometryContentNameBuffer);
-                    geometryContentNameBB.putLong(geometryContentNameBaseAddr,
+                    ByteBuffer geometryContentNameBuffer = getUtf8NameBuffer(
+                        entityRenderLayer.contentName());
+                    geometryContentNamePointerBuffer.putLong(geometryContentNameByteOffset,
                         memAddress(geometryContentNameBuffer));
-                    geometryContentNameBaseAddr += Long.BYTES;
+                    geometryContentNameByteOffset += Long.BYTES;
 
-                    geometryTextureBB.putInt(geometryTextureBaseAddr, geometryTextureID);
-                    geometryTextureBaseAddr += Integer.BYTES;
+                    geometryTextureBuffer.putInt(geometryTextureByteOffset, geometryTextureID);
+                    geometryTextureByteOffset += Integer.BYTES;
 
-                    vertexFormatBB.putInt(vertexFormatBaseAddr, vertexFormatID);
-                    vertexFormatBaseAddr += Integer.BYTES;
+                    geometryNormalOffsetBuffer.putFloat(geometryNormalOffsetByteOffset, geometryNormalOffset);
+                    geometryNormalOffsetByteOffset += Float.BYTES;
 
-                    indexFormatBB.putInt(indexFormatBaseAddr, indexFormatID);
-                    indexFormatBaseAddr += Integer.BYTES;
+                    vertexFormatBuffer.putInt(vertexFormatByteOffset, vertexFormatID);
+                    vertexFormatByteOffset += Integer.BYTES;
 
-                    vertexCountBB.putInt(vertexCountBaseAddr,
-                        vertexBuffer.getDrawParameters()
+                    indexFormatBuffer.putInt(indexFormatByteOffset, indexFormatID);
+                    indexFormatByteOffset += Integer.BYTES;
+
+                    vertexCountBuffer.putInt(vertexCountByteOffset,
+                        vertexBuffer.drawState()
                             .vertexCount());
-                    vertexCountBaseAddr += Integer.BYTES;
+                    vertexCountByteOffset += Integer.BYTES;
 
-                    verticesBB.putLong(verticesBaseAddr, vertexBufferInfo.addr());
-                    verticesBaseAddr += Long.BYTES;
+                    vertexPointerBuffer.putLong(vertexPointerByteOffset, vertexAddress);
+                    vertexPointerByteOffset += Long.BYTES;
+
+                    transferBufferIndex++;
                 }
             }
 
-            queueBuild(lineWidth,
-                coordinate.getValue(),
-                normalOffset,
-                entityRenderDataList.getTotalEntityCount(),
-                entityHashCodeAddr,
-                entityPosXAddr,
-                entityPosYAddr,
-                entityPosZAddr,
-                entityRayTracingFlagAddr,
-                entityPostRenderFlagAddr,
-                entityPrebuiltBLASAddr,
-                entityPostAddr,
-                entityLayerCountAddr,
-                geometryTypeAddr,
-                geometryGroupNameAddr,
-                geometryContentNameAddr,
-                geometryTextureAddr,
-                vertexFormatAddr,
-                indexFormatAddr,
-                vertexCountAddr,
-                verticesAddr);
+            if (Profiler.ENABLED) {
+                Profiler.enter("java.EntityProxy.queueBuildNative");
+            }
+            try {
+                queueBuildNative(lineWidth,
+                    coordinate.getValue(),
+                    normalOffset,
+                    entityRenderDataList.getTotalEntityCount(),
+                    entityKeyAddress,
+                    entityPosXAddress,
+                    entityPosYAddress,
+                    entityPosZAddress,
+                    entityRayTracingFlagAddress,
+                    entityPostRenderFlagAddress,
+                    entityPrebuiltBlasAddress,
+                    entityTransformBB == null ? 0 : memAddress(entityTransformBB),
+                    entityMaterialBB == null ? 0 : memAddress(entityMaterialBB),
+                    entityPostRenderAddress,
+                    entityLayerCountAddress,
+                    geometryTypeAddress,
+                    geometryGroupNameAddress,
+                    geometryContentNameAddress,
+                    geometryTextureAddress,
+                    geometryNormalOffsetAddress,
+                    vertexFormatAddress,
+                    indexFormatAddress,
+                    vertexCountAddress,
+                    vertexPointerAddress,
+                    transferredBuffers);
+                submittedNative = true;
+            } finally {
+                if (Profiler.ENABLED) {
+                    Profiler.exit();
+                }
+            }
         } finally {
-            freeDirectBuffer(entityHashCodeBB);
-            freeDirectBuffer(entityPosXBB);
-            freeDirectBuffer(entityPosYBB);
-            freeDirectBuffer(entityPosZBB);
-            freeDirectBuffer(entityRayTracingFlagBB);
-            freeDirectBuffer(entityPostRenderFlagBB);
-            freeDirectBuffer(entityPrebuiltBLASBB);
-            freeDirectBuffer(entityPostBB);
-            freeDirectBuffer(entityLayerCountBB);
-            freeDirectBuffer(geometryTypeBB);
-            freeDirectBuffer(geometryGroupNameBB);
-            freeDirectBuffer(geometryContentNameBB);
-            freeDirectBuffer(geometryTextureBB);
-            freeDirectBuffer(vertexFormatBB);
-            freeDirectBuffer(indexFormatBB);
-            freeDirectBuffer(vertexCountBB);
-            freeDirectBuffer(verticesBB);
-            for (ByteBuffer geometryGroupNameBuffer : geometryGroupNameBuffers) {
-                MemoryUtil.memFree(geometryGroupNameBuffer);
+            freeDirectBuffer(entityKeyBuffer);
+            freeDirectBuffer(entityPosXBuffer);
+            freeDirectBuffer(entityPosYBuffer);
+            freeDirectBuffer(entityPosZBuffer);
+            freeDirectBuffer(entityRayTracingFlagBuffer);
+            freeDirectBuffer(entityPostRenderFlagBuffer);
+            freeDirectBuffer(entityPrebuiltBlasBuffer);
+            freeDirectBuffer(entityPostRenderBuffer);
+            freeDirectBuffer(entityTransformBB);
+            freeDirectBuffer(entityMaterialBB);
+            freeDirectBuffer(entityLayerCountBuffer);
+            freeDirectBuffer(geometryTypeBuffer);
+            freeDirectBuffer(geometryGroupNamePointerBuffer);
+            freeDirectBuffer(geometryContentNamePointerBuffer);
+            freeDirectBuffer(geometryTextureBuffer);
+            freeDirectBuffer(geometryNormalOffsetBuffer);
+            freeDirectBuffer(vertexFormatBuffer);
+            freeDirectBuffer(indexFormatBuffer);
+            freeDirectBuffer(vertexCountBuffer);
+            freeDirectBuffer(vertexPointerBuffer);
+            if (transferredBuffers != null && !submittedNative) {
+                closeTransferredBuffers(transferredBuffers);
             }
-            for (ByteBuffer geometryContentNameBuffer : geometryContentNameBuffers) {
-                MemoryUtil.memFree(geometryContentNameBuffer);
-            }
-
             if (closeAfterBuild) {
-                closeBuiltBuffers(entityRenderDataList);
+                closeUntransferredBuiltBuffers(entityRenderDataList, transferredBuffers);
                 closeStorageVertexConsumerProviders(storageVertexConsumerProviders);
             }
         }
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
+        }
+    }
+
+    private static float getGeometryNormalOffset(ResourceLocation identifier) {
+        if (!"minecraft".equals(identifier.getNamespace())) {
+            return 0.0f;
+        }
+        String path = identifier.getPath();
+        String layerPath;
+        if (path.startsWith(VILLAGER_TEXTURE_PREFIX)) {
+            layerPath = path.substring(VILLAGER_TEXTURE_PREFIX.length());
+        } else if (path.startsWith(ZOMBIE_VILLAGER_TEXTURE_PREFIX)) {
+            layerPath = path.substring(ZOMBIE_VILLAGER_TEXTURE_PREFIX.length());
+        } else {
+            return 0.0f;
+        }
+
+        if (layerPath.startsWith("profession_level/")) {
+            return VILLAGER_LAYER_OFFSET_UNIT * 3.0f;
+        }
+        if (layerPath.startsWith("profession/")) {
+            return VILLAGER_LAYER_OFFSET_UNIT * 2.0f;
+        }
+        if (layerPath.startsWith("type/")) {
+            return VILLAGER_LAYER_OFFSET_UNIT;
+        }
+        return 0.0f;
     }
 
     private static void freeDirectBuffer(ByteBuffer buffer) {
@@ -1113,13 +1709,45 @@ public class EntityProxy {
         }
     }
 
-    private static void closeBuiltBuffers(EntityRenderDataList entityRenderDataList) {
+    private static void closeTransferredBuffers(TransferredBuildBuffer[] transferredBuffers) {
+        for (TransferredBuildBuffer transferredBuffer : transferredBuffers) {
+            if (transferredBuffer != null) {
+                transferredBuffer.close();
+            }
+        }
+    }
+
+    private static void closeUntransferredBuiltBuffers(
+        EntityRenderDataList entityRenderDataList,
+        TransferredBuildBuffer[] transferredBuffers) {
+        if (entityRenderDataList == null) {
+            return;
+        }
+
         for (EntityRenderData entityRenderData : entityRenderDataList) {
             for (EntityRenderLayer entityRenderLayer : entityRenderData) {
-                BuiltBuffer vertexBuffer = entityRenderLayer.builtBuffer;
+                MeshData vertexBuffer = entityRenderLayer.builtBuffer;
+                if (isTransferred(vertexBuffer, transferredBuffers)) {
+                    continue;
+                }
                 vertexBuffer.close();
             }
         }
+    }
+
+    private static boolean isTransferred(
+        MeshData builtBuffer,
+        TransferredBuildBuffer[] transferredBuffers) {
+        if (transferredBuffers == null) {
+            return false;
+        }
+
+        for (TransferredBuildBuffer transferredBuffer : transferredBuffers) {
+            if (transferredBuffer != null && transferredBuffer.builtBuffer() == builtBuffer) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static void closeStorageVertexConsumerProviders(
@@ -1133,29 +1761,61 @@ public class EntityProxy {
         }
     }
 
-    private static native void queueBuild(float lineWidth,
+    public static native int registerVertexShaderNative(String source);
+    public static native void releaseVertexShaderNative(int handle);
+    public static native String[] queueVertexShaderInstancesNative(ByteBuffer records, ByteBuffer[] uniforms);
+
+    public static native int registerPrebuiltGeometryNative(ByteBuffer data);
+
+    public static native void releasePrebuiltGeometryNative(int handle);
+
+    public static native int updatePrebuiltGeometryNative(int previous, int format, int[] geometryTypes,
+        ByteBuffer[] vertices);
+
+    private static native void queueBuildNative(float lineWidth,
         int coordinate,
         boolean normalOffset,
         int size,
-        long entityHashCodes,
+        long entityKeys,
         long entityPosXs,
         long entityPosYs,
         long entityPosZs,
         long entityRayTracingFlags,
         long entityPostRenderFlags,
         long entityPrebuiltBLASs,
+        long entityTransforms,
+        long entityMaterials,
         long entityPosts,
         long entityLayerCounts,
         long geometryTypes,
         long geometryGroupNames,
         long geometryContentNames,
         long geometryTextures,
+        long geometryNormalOffsets,
         long vertexFormats,
         long indexFormats,
         long vertexCounts,
-        long vertices);
+        long vertices,
+        TransferredBuildBuffer[] transferredBuffers);
 
-    public static native void build();
+    private static native void buildNative();
+
+    public static void build() {
+        if (!isEntityNativeTransferEnabled()) {
+            return;
+        }
+
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.EntityProxy.build");
+        }
+        try {
+            buildNative();
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
+        }
+    }
 
     private static String defaultPostContentName(Constants.PostRenderFlags postRenderFlag) {
         return switch (postRenderFlag) {
@@ -1163,6 +1823,7 @@ public class EntityProxy {
             case PARTICLE -> PARTICLE_DEFAULT_CONTENT;
             case TEXT -> TEXT_DEFAULT_CONTENT;
             case NAME_TAG -> NAME_TAG_DEFAULT_CONTENT;
+            case WORLD_OVERLAY -> "/world_overlay/default";
         };
     }
 
@@ -1173,81 +1834,51 @@ public class EntityProxy {
         return particleContentName;
     }
 
-    private static String resolveWeatherContentName(RenderLayer renderLayer) {
-        Identifier identifier = getTextureId(renderLayer);
-        if (WEATHER_RAIN_TEXTURE.equals(identifier)) {
-            return WEATHER_RAIN_CONTENT;
+    private static ResourceLocation getTextureId(RenderType renderLayer) {
+        if (renderLayer instanceof RenderType.CompositeRenderType multiPhase) {
+            return multiPhase.state.textureState.cutoutTexture()
+                .orElse(MissingTextureAtlasSprite.getLocation());
         }
-        if (WEATHER_SNOW_TEXTURE.equals(identifier)) {
-            return WEATHER_SNOW_CONTENT;
-        }
-        return WEATHER_DEFAULT_CONTENT;
+        return MissingTextureAtlasSprite.getLocation();
     }
 
-    private static Identifier getTextureId(RenderLayer renderLayer) {
-        if (renderLayer instanceof RenderLayer.MultiPhase multiPhase) {
-            return multiPhase.phases.texture.getId()
-                .orElse(MissingSprite.getMissingSpriteId());
-        }
-        return MissingSprite.getMissingSpriteId();
-    }
-
-    private static void logPostContentNameOnce(int postRenderFlag, String contentName,
-        RenderLayer renderLayer) {
-        String normalizedContentName = Objects.requireNonNullElse(contentName, "");
-        String postRenderFlagName = postRenderFlagName(postRenderFlag);
-        String key = postRenderFlagName + "|" + normalizedContentName;
-        if (!LOGGED_POST_CONTENT_KEYS.add(key)) {
-            return;
-        }
-
-        Identifier textureId = getTextureId(renderLayer);
-    }
-
-    private static String postRenderFlagName(int postRenderFlag) {
-        if (postRenderFlag == PostRenderFlags.WEATHER.getValue()) {
-            return "WEATHER";
-        }
-        if (postRenderFlag == PostRenderFlags.PARTICLE.getValue()) {
-            return "PARTICLE";
-        }
-        if (postRenderFlag == PostRenderFlags.TEXT.getValue()) {
-            return "TEXT";
-        }
-        if (postRenderFlag == PostRenderFlags.NAME_TAG.getValue()) {
-            return "NAME_TAG";
-        }
-        return "UNKNOWN(" + postRenderFlag + ")";
-    }
-
-    public record EntityRenderLayer(RenderLayer renderLayer, BuiltBuffer builtBuffer,
+    public record EntityRenderLayer(RenderType renderLayer, MeshData builtBuffer,
+                                    StorageVertexConsumerProvider ownerProvider,
                                     boolean reflect, String contentName) {
 
     }
 
     public static class EntityRenderData extends ArrayList<EntityRenderLayer> {
 
-        private final int hashCode;
+        private final long entityKey;
         private final int rayTracingFlag;
         private final int postRenderFlag;
         private final int prebuiltBLAS;
-        private final boolean post;
+        private final boolean isPostRender;
+        public final Matrix4f transform;
+        public final Vector4f color;
+        public final Vector2f uvOffset;
+        public int light;
+        public int overlay;
         private double x;
         private double y;
         private double z;
 
-        public EntityRenderData(int hashCode, double x, double y, double z, int rayTracingFlag,
+        public EntityRenderData(long entityKey, double x, double y, double z, int rayTracingFlag,
             int postRenderFlag,
             int prebuiltBLAS,
-            boolean post) {
-            this.hashCode = hashCode;
+            boolean isPostRender) {
+            this.entityKey = entityKey;
             this.x = x;
             this.y = y;
             this.z = z;
             this.rayTracingFlag = rayTracingFlag;
             this.postRenderFlag = postRenderFlag;
             this.prebuiltBLAS = prebuiltBLAS;
-            this.post = post;
+            this.transform = prebuiltBLAS >= 0 ? new Matrix4f() : null;
+            this.color = prebuiltBLAS >= 0 ? new Vector4f(1) : null;
+            this.uvOffset = prebuiltBLAS >= 0 ? new Vector2f() : null;
+            this.isPostRender = isPostRender;
         }
 
         public double getX() {
@@ -1286,12 +1917,12 @@ public class EntityProxy {
             return prebuiltBLAS;
         }
 
-        public int getHashCode() {
-            return hashCode;
+        public long getEntityKey() {
+            return entityKey;
         }
 
-        public boolean isPost() {
-            return post;
+        public boolean isPostRender() {
+            return isPostRender;
         }
     }
 
@@ -1303,6 +1934,56 @@ public class EntityProxy {
         public boolean add(EntityRenderData entityRenderData) {
             totalLayersCount += entityRenderData.size();
             return super.add(entityRenderData);
+        }
+
+        @Override
+        public void add(int index, EntityRenderData entityRenderData) {
+            totalLayersCount += entityRenderData.size();
+            super.add(index, entityRenderData);
+        }
+
+        @Override
+        public boolean addAll(Collection<? extends EntityRenderData> entityRenderDataCollection) {
+            boolean changed = false;
+            for (EntityRenderData entityRenderData : entityRenderDataCollection) {
+                changed |= add(entityRenderData);
+            }
+            return changed;
+        }
+
+        @Override
+        public boolean addAll(int index, Collection<? extends EntityRenderData> entityRenderDataCollection) {
+            int insertIndex = index;
+            for (EntityRenderData entityRenderData : entityRenderDataCollection) {
+                add(insertIndex, entityRenderData);
+                insertIndex++;
+            }
+            return !entityRenderDataCollection.isEmpty();
+        }
+
+        @Override
+        public EntityRenderData remove(int index) {
+            EntityRenderData removed = super.remove(index);
+            totalLayersCount -= removed.size();
+            return removed;
+        }
+
+        @Override
+        public boolean remove(Object object) {
+            if (!(object instanceof EntityRenderData entityRenderData)) {
+                return false;
+            }
+            boolean removed = super.remove(object);
+            if (removed) {
+                totalLayersCount -= entityRenderData.size();
+            }
+            return removed;
+        }
+
+        @Override
+        public void clear() {
+            totalLayersCount = 0;
+            super.clear();
         }
 
         public int getTotalLayersCount() {

@@ -1,14 +1,14 @@
 package com.radiance.mixin_related.extensions.vulkan_render_integration;
 
-import net.minecraft.client.network.ClientPlayerEntity;
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.util.math.MatrixStack;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.player.LocalPlayer;
+import net.minecraft.client.renderer.MultiBufferSource;
 
 public interface IHeldItemRendererExt {
 
     void radiance$renderItem(float tickDelta,
-        MatrixStack matrices,
-        VertexConsumerProvider vertexConsumers,
-        ClientPlayerEntity player,
+        PoseStack matrices,
+        MultiBufferSource vertexConsumers,
+        LocalPlayer player,
         int light);
 }

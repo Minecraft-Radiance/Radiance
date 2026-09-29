@@ -1,8 +1,10 @@
 package com.radiance.client;
 
+import com.radiance.client.mod_support.ModSupport;
 import com.mojang.logging.LogUtils;
 import com.radiance.client.option.Options;
 import com.radiance.client.pipeline.Pipeline;
+import com.radiance.client.profiler.Profiler;
 import com.radiance.client.proxy.vulkan.RendererProxy;
 import java.io.IOException;
 import java.io.InputStream;
@@ -21,29 +23,48 @@ import java.util.Collections;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import java.util.stream.StreamSupport;
-import net.fabricmc.api.ClientModInitializer;
-import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.Minecraft;
+import net.minecraft.world.phys.Vec3;
+import net.neoforged.neoforge.client.event.ClientTickEvent;
 import org.slf4j.Logger;
 
-public class RadianceClient implements ClientModInitializer {
+public class RadianceClient {
 
     public static final Logger LOGGER = LogUtils.getLogger();
-    public static Path radianceDir;
+    private static final long PROFILER_PLAYER_POSITION_LOG_INTERVAL_NANOS = 1_000_000_000L;
+    private static final boolean PROFILER_AUTO_FORWARD = Profiler.ENABLED
+        && Boolean.parseBoolean(System.getenv().getOrDefault("RADIANCE_PROFILER_AUTO_FORWARD", "false"));
 
-    @Override
-    public void onInitializeClient() {
-        MinecraftClient mc = MinecraftClient.getInstance();
-        Path mcBaseDir = mc.runDirectory.toPath();
-        radianceDir = mcBaseDir.resolve("radiance");
+    public static Path radianceDir;
+    private static long nextProfilerPlayerPositionLogNanos = 0L;
+    private static Vec3 lastProfilerPlayerPosition = null;
+    private static boolean profilerAutoForwardPressed = false;
+    private static boolean initialized = false;
+
+    public static synchronized void initialize() {
+        if (initialized) {
+            return;
+        }
+
+        RadianceClient initializer = new RadianceClient();
+        initializer.initializeClient();
+        initialized = true;
+    }
+
+    private void initializeClient() {
+        ModSupport.initialize();
+        Minecraft minecraftClient = Minecraft.getInstance();
+        Path minecraftBaseDirectory = minecraftClient.gameDirectory.toPath();
+        radianceDir = minecraftBaseDirectory.resolve("radiance");
         try {
             Files.createDirectories(radianceDir);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
 
-        // core lib
-        String osName = System.getProperty("os.name");
-        if (osName.toLowerCase().contains("windows")) {
+
+        String operatingSystemName = System.getProperty("os.name");
+        if (operatingSystemName.toLowerCase().contains("windows")) {
             Path libTargetPath = radianceDir.resolve("core.lib");
             Path libResourcePath = Path.of("core.lib");
             copyFileFromResource(libTargetPath, libResourcePath);
@@ -55,29 +76,32 @@ public class RadianceClient implements ClientModInitializer {
             Path xessDx11Path = radianceDir.resolve("libxess_dx11.dll");
             Path xessFgPath = radianceDir.resolve("libxess_fg.dll");
             copyOptionalFileFromResource(xessPath, Path.of("libxess.dll"));
-            // currently not used, can be used later for fg
+
             copyOptionalFileFromResource(xessDx11Path, Path.of("libxess_dx11.dll"));
             copyOptionalFileFromResource(xessFgPath, Path.of("libxess_fg.dll"));
 
             loadOptionalLibrary(xessPath);
 
             System.load(dllTargetPath.toAbsolutePath().toString());
-        } else if (osName.toLowerCase().contains("linux")) {
+        } else if (operatingSystemName.toLowerCase().contains("linux")) {
             Path soTargetPath = radianceDir.resolve("libcore.so");
             Path soResourcePath = Path.of("libcore.so");
             copyFileFromResource(soTargetPath, soResourcePath);
 
             System.load(soTargetPath.toAbsolutePath().toString());
         } else {
-            throw new RuntimeException("The OS " + osName + " is not supported");
+            throw new RuntimeException("The OS " + operatingSystemName + " is not supported");
+        }
+        if (Profiler.ENABLED) {
+            Profiler.initialize();
         }
 
-        // shaders
+
         Path shaderTargetPath = radianceDir.resolve("shaders");
         Path shaderResourcePath = Path.of("shaders");
         copyFolderFromResource(shaderTargetPath, shaderResourcePath);
 
-        // modules
+
         Path moduleTargetPath = radianceDir.resolve("modules");
         Path moduleResourcePath = Path.of("modules");
         copyFolderFromResource(moduleTargetPath, moduleResourcePath);
@@ -90,27 +114,84 @@ public class RadianceClient implements ClientModInitializer {
         Pipeline.reloadAllModuleEntries();
     }
 
+    public static void onClientTick(ClientTickEvent.Post event) {
+        tickProfiler(Minecraft.getInstance());
+    }
+
+    private static void tickProfiler(Minecraft client) {
+        if (Profiler.ENABLED) {
+            updateProfilerAutoForward(client);
+            logProfilerPlayerPosition(client);
+        }
+    }
+
+    private static void updateProfilerAutoForward(Minecraft client) {
+        if (!PROFILER_AUTO_FORWARD) {
+            return;
+        }
+
+        boolean shouldPressForward = client.player != null && client.level != null
+            && client.screen == null && client.isWindowActive() && client.mouseHandler.isMouseGrabbed();
+        client.options.keyUp.setDown(shouldPressForward);
+        profilerAutoForwardPressed = shouldPressForward;
+    }
+
+    private static void logProfilerPlayerPosition(Minecraft client) {
+        if (client.player == null || client.level == null) {
+            lastProfilerPlayerPosition = null;
+            nextProfilerPlayerPositionLogNanos = 0L;
+            return;
+        }
+
+        long now = System.nanoTime();
+        if (now < nextProfilerPlayerPositionLogNanos) {
+            return;
+        }
+
+        Vec3 position = client.player.position();
+        double dx = lastProfilerPlayerPosition == null ? 0.0 : position.x - lastProfilerPlayerPosition.x;
+        double dy = lastProfilerPlayerPosition == null ? 0.0 : position.y - lastProfilerPlayerPosition.y;
+        double dz = lastProfilerPlayerPosition == null ? 0.0 : position.z - lastProfilerPlayerPosition.z;
+        double horizontalDelta = Math.sqrt(dx * dx + dz * dz);
+
+        LOGGER.info(
+            "radiance.profiler.player_pos x={} y={} z={} dx={} dy={} dz={} horizontal_delta={} forward_pressed={} auto_forward={} focused={} cursor_locked={} screen={}",
+            roundProfilerLogValue(position.x), roundProfilerLogValue(position.y),
+            roundProfilerLogValue(position.z), roundProfilerLogValue(dx), roundProfilerLogValue(dy),
+            roundProfilerLogValue(dz), roundProfilerLogValue(horizontalDelta),
+            client.options.keyUp.isDown(), profilerAutoForwardPressed,
+            client.isWindowActive(), client.mouseHandler.isMouseGrabbed(),
+            client.screen == null ? "none" : client.screen.getClass().getSimpleName());
+
+        lastProfilerPlayerPosition = position;
+        nextProfilerPlayerPositionLogNanos = now + PROFILER_PLAYER_POSITION_LOG_INTERVAL_NANOS;
+    }
+
+    private static double roundProfilerLogValue(double value) {
+        return Math.round(value * 1000.0) / 1000.0;
+    }
+
     public void copyFileFromResource(Path targetPath, Path resourcePath) {
-        try (InputStream is = getClass().getResourceAsStream(toResourcePath(resourcePath))) {
-            if (is == null) {
+        try (InputStream resourceStream = getClass().getResourceAsStream(toResourcePath(resourcePath))) {
+            if (resourceStream == null) {
                 throw new IOException("Cannot find target path: " + resourcePath);
             }
 
             Files.createDirectories(targetPath.getParent());
-            Files.copy(is, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(resourceStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
 
     public void copyOptionalFileFromResource(Path targetPath, Path resourcePath) {
-        try (InputStream is = getClass().getResourceAsStream(toResourcePath(resourcePath))) {
-            if (is == null) {
+        try (InputStream resourceStream = getClass().getResourceAsStream(toResourcePath(resourcePath))) {
+            if (resourceStream == null) {
                 return;
             }
 
             Files.createDirectories(targetPath.getParent());
-            Files.copy(is, targetPath, StandardCopyOption.REPLACE_EXISTING);
+            Files.copy(resourceStream, targetPath, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -129,44 +210,44 @@ public class RadianceClient implements ClientModInitializer {
     }
 
     public void copyFolderFromResource(Path targetPath, Path resourcePath) {
-        String resourcePathStr = toResourcePath(resourcePath);
-        URL url = getClass().getResource(resourcePathStr);
+        String resourcePathString = toResourcePath(resourcePath);
+        URL url = getClass().getResource(resourcePathString);
 
         if (url == null) {
-            throw new RuntimeException("Resource folder not found: " + resourcePathStr);
+            throw new RuntimeException("Resource folder not found: " + resourcePathString);
         }
 
         try {
             URI uri = url.toURI();
 
             if ("jar".equals(uri.getScheme())) {
-                JarURLConnection conn = (JarURLConnection) url.openConnection();
-                URI jarFileUri = conn.getJarFileURL().toURI();
-                URI jarFsUri = URI.create("jar:" + jarFileUri);
+                JarURLConnection connection = (JarURLConnection) url.openConnection();
+                URI jarFileUri = connection.getJarFileURL().toURI();
+                URI jarFileSystemUri = URI.create("jar:" + jarFileUri);
 
-                FileSystem fs = null;
-                boolean created = false;
+                FileSystem fileSystem = null;
+                boolean createdFileSystem = false;
                 try {
                     try {
-                        fs = FileSystems.getFileSystem(jarFsUri);
+                        fileSystem = FileSystems.getFileSystem(jarFileSystemUri);
                     } catch (FileSystemNotFoundException e) {
-                        fs = FileSystems.newFileSystem(jarFsUri, Collections.emptyMap());
-                        created = true;
+                        fileSystem = FileSystems.newFileSystem(jarFileSystemUri, Collections.emptyMap());
+                        createdFileSystem = true;
                     }
 
-                    Path root = fs.getPath(resourcePathStr);
-                    walkAndCopy(root, targetPath, resourcePath);
+                    Path resourceRoot = fileSystem.getPath(resourcePathString);
+                    walkAndCopy(resourceRoot, targetPath, resourcePath);
                 } finally {
-                    if (created) {
+                    if (createdFileSystem) {
                         try {
-                            fs.close();
+                            fileSystem.close();
                         } catch (IOException ignored) {
                         }
                     }
                 }
             } else {
-                Path root = Paths.get(uri);
-                walkAndCopy(root, targetPath, resourcePath);
+                Path resourceRoot = Paths.get(uri);
+                walkAndCopy(resourceRoot, targetPath, resourcePath);
             }
         } catch (URISyntaxException | IOException e) {
             throw new RuntimeException("Failed to copy resource folder", e);
@@ -176,12 +257,19 @@ public class RadianceClient implements ClientModInitializer {
     private void walkAndCopy(Path walkRoot, Path targetRoot, Path baseResourcePath)
         throws IOException {
         try (Stream<Path> stream = Files.walk(walkRoot)) {
-            stream.filter(Files::isRegularFile).forEach(source -> {
-                String relativePathStr = walkRoot.relativize(source).toString();
-                Path targetFile = targetRoot.resolve(relativePathStr);
-                Path childResourcePath = baseResourcePath.resolve(relativePathStr);
-                copyFileFromResource(targetFile, childResourcePath);
-            });
+            stream.filter(Files::isRegularFile)
+                .filter(source -> !isMutableShaderSettingsResource(source))
+                .forEach(source -> {
+                    String relativePathString = walkRoot.relativize(source).toString();
+                    Path targetFile = targetRoot.resolve(relativePathString);
+                    Path childResourcePath = baseResourcePath.resolve(relativePathString);
+                    copyFileFromResource(targetFile, childResourcePath);
+                });
         }
+    }
+
+    private boolean isMutableShaderSettingsResource(Path resourceFile) {
+        Path fileName = resourceFile == null ? null : resourceFile.getFileName();
+        return fileName != null && fileName.toString().endsWith(".zip.txt");
     }
 }

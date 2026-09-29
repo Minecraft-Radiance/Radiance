@@ -1,13 +1,13 @@
 package com.radiance.mixins.vulkan_render_integration;
 
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.RenderPhase;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.RenderStateShard;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(RenderPhase.Lightmap.class)
+@Mixin(RenderStateShard.LightmapStateShard.class)
 public class RenderPhaseLightmapMixins extends RenderPhaseMixins {
 
     @Inject(method = "<init>(Z)V", at = @At(value = "TAIL"))
@@ -20,13 +20,13 @@ public class RenderPhaseLightmapMixins extends RenderPhaseMixins {
             return;
         }
 
-        setBeginAction(() -> MinecraftClient.getInstance()
+        setBeginAction(() -> Minecraft.getInstance()
             .gameRenderer
-            .getLightmapTextureManager()
-            .enable());
-        setEndAction(() -> MinecraftClient.getInstance()
+            .lightTexture()
+            .turnOnLightLayer());
+        setEndAction(() -> Minecraft.getInstance()
             .gameRenderer
-            .getLightmapTextureManager()
-            .disable());
+            .lightTexture()
+            .turnOffLightLayer());
     }
 }

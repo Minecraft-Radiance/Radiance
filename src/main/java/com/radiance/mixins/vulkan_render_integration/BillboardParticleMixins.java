@@ -1,8 +1,8 @@
 package com.radiance.mixins.vulkan_render_integration;
 
-import net.minecraft.client.particle.BillboardParticle;
+import com.mojang.blaze3d.vertex.VertexConsumer;
+import net.minecraft.client.particle.SingleQuadParticle;
 import net.minecraft.client.particle.WhiteAshParticle;
-import net.minecraft.client.render.VertexConsumer;
 import org.joml.Quaternionf;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -10,10 +10,10 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(BillboardParticle.class)
+@Mixin(SingleQuadParticle.class)
 public abstract class BillboardParticleMixins {
 
-    @Inject(method = "method_60374(Lnet/minecraft/client/render/VertexConsumer;Lorg/joml/Quaternionf;FFFF)V",
+    @Inject(method = "renderRotatedQuad(Lcom/mojang/blaze3d/vertex/VertexConsumer;Lorg/joml/Quaternionf;FFFF)V",
         at = @At(value = "HEAD"),
         cancellable = true)
     public void resizeParticle(VertexConsumer vertexConsumer,
@@ -23,20 +23,20 @@ public abstract class BillboardParticleMixins {
         float h,
         float i,
         CallbackInfo ci) {
-        if (((BillboardParticle) (Object) this) instanceof WhiteAshParticle) {
-            float j = this.getSize(i);
-            float k = this.getMinU();
-            float l = this.getMaxU();
-            float m = this.getMinV();
-            float n = this.getMaxV();
+        if (((SingleQuadParticle) (Object) this) instanceof WhiteAshParticle) {
+            float j = this.getQuadSize(i);
+            float k = this.getU0();
+            float l = this.getU1();
+            float m = this.getV0();
+            float n = this.getV1();
             int o = 0;
-            this.method_60375(vertexConsumer, quaternionf, f, g, h, 1.0F / 8.0F, -1.0F / 8.0F, j, l,
+            this.renderVertex(vertexConsumer, quaternionf, f, g, h, 1.0F / 8.0F, -1.0F / 8.0F, j, l,
                 n, o);
-            this.method_60375(vertexConsumer, quaternionf, f, g, h, 1.0F / 8.0F, 1.0F / 8.0F, j, l,
+            this.renderVertex(vertexConsumer, quaternionf, f, g, h, 1.0F / 8.0F, 1.0F / 8.0F, j, l,
                 m, o);
-            this.method_60375(vertexConsumer, quaternionf, f, g, h, -1.0F / 8.0F, 1.0F / 8.0F, j, k,
+            this.renderVertex(vertexConsumer, quaternionf, f, g, h, -1.0F / 8.0F, 1.0F / 8.0F, j, k,
                 m, o);
-            this.method_60375(vertexConsumer, quaternionf, f, g, h, -1.0F / 8.0F, -1.0F / 8.0F, j,
+            this.renderVertex(vertexConsumer, quaternionf, f, g, h, -1.0F / 8.0F, -1.0F / 8.0F, j,
                 k, n, o);
 
             ci.cancel();
@@ -44,22 +44,22 @@ public abstract class BillboardParticleMixins {
     }
 
     @Shadow
-    public abstract float getSize(float i);
+    public abstract float getQuadSize(float i);
 
     @Shadow
-    protected abstract float getMinU();
+    protected abstract float getU0();
 
     @Shadow
-    protected abstract float getMaxU();
+    protected abstract float getU1();
 
     @Shadow
-    protected abstract float getMinV();
+    protected abstract float getV0();
 
     @Shadow
-    protected abstract float getMaxV();
+    protected abstract float getV1();
 
     @Shadow
-    protected abstract void method_60375(VertexConsumer vertexConsumer,
+    protected abstract void renderVertex(VertexConsumer vertexConsumer,
         Quaternionf quaternionf,
         float f,
         float g,

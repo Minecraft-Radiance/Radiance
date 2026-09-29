@@ -1,48 +1,54 @@
 package com.radiance.mixins.vulkan_render_integration;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.BufferUploader;
+import com.mojang.blaze3d.vertex.MeshData;
 import com.radiance.client.constant.Constants;
+import com.radiance.client.render.WeatherRenderer;
 import com.radiance.client.proxy.vulkan.BufferProxy;
 import com.radiance.client.proxy.vulkan.ShaderProxy;
 import com.radiance.client.shader.ShaderDefinition;
 import com.radiance.client.shader.ShaderRegistry;
-import net.minecraft.client.gl.ShaderProgram;
-import net.minecraft.client.render.BufferRenderer;
-import net.minecraft.client.render.BuiltBuffer;
+import net.minecraft.client.renderer.ShaderInstance;
 import org.lwjgl.system.MemoryStack;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(BufferRenderer.class)
+@Mixin(BufferUploader.class)
 public class BufferRendererMixins {
 
-    @Inject(method = "drawWithGlobalProgram(Lnet/minecraft/client/render/BuiltBuffer;)V",
-        at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;assertOnRenderThread()V", shift = At.Shift.AFTER, remap = false),
+    @Inject(method = "_drawWithShader(Lcom/mojang/blaze3d/vertex/MeshData;)V",
+        at = @At(value = "HEAD"),
         cancellable = true)
-    private static void rewriteDrawWithGlobalProgram(BuiltBuffer buffer, CallbackInfo ci) {
-        ShaderProgram shaderProgram = RenderSystem.getShader();
+    private static void rewriteDrawWithGlobalProgram(MeshData buffer, CallbackInfo ci) {
+        if (WeatherRenderer.captureActive(buffer)) {
+            ci.cancel();
+            return;
+        }
+
+        ShaderInstance shaderProgram = RenderSystem.getShader();
         if (shaderProgram == null) {
             buffer.close();
             throw new IllegalStateException(
-                "No active shader for shader draw: " + buffer.getDrawParameters()
+                "No active shader for shader draw: " + buffer.drawState()
                     .format());
         }
-        ShaderProxy.syncState(shaderProgram, buffer.getDrawParameters().mode());
+        ShaderProxy.syncState(shaderProgram, buffer.drawState().mode());
         ShaderDefinition shader = ShaderRegistry.getOrCreate(shaderProgram);
         BufferProxy.VertexIndexBufferHandle handle = BufferProxy.createAndUploadVertexIndexBuffer(
             buffer);
         try (MemoryStack stack = MemoryStack.stackPush()) {
-            ShaderProxy.UniformHandle uniform = ShaderProxy.createUniform(shader, shaderProgram,
-                stack);
+            ShaderProxy.UniformHandle uniform = ShaderProxy.createUniform(shader,
+                shaderProgram, stack);
             ShaderProxy.draw(handle, shader.nativeId(),
-                buffer.getDrawParameters()
+                buffer.drawState()
                     .indexCount(),
-                Constants.IndexTypes.getValue(buffer.getDrawParameters()
+                Constants.IndexTypes.getValue(buffer.drawState()
                     .indexType()),
-                uniform.addr(),
-                uniform.size());
+                uniform.address(),
+                uniform.sizeBytes());
         }
 
         buffer.close();

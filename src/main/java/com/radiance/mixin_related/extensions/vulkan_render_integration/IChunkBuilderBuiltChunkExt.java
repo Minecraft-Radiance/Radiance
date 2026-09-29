@@ -1,8 +1,8 @@
 package com.radiance.mixin_related.extensions.vulkan_render_integration;
 
-import net.minecraft.client.render.chunk.ChunkBuilder;
+import net.minecraft.client.renderer.chunk.SectionRenderDispatcher;
 
 public interface IChunkBuilderBuiltChunkExt {
 
-    ChunkBuilder radiance$getChunkBuilder();
+    SectionRenderDispatcher radiance$getChunkBuilder();
 }
