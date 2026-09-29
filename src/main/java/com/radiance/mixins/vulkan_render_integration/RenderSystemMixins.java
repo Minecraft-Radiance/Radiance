@@ -34,13 +34,13 @@ public abstract class RenderSystemMixins {
         cir.setReturnValue(maxImageSize);
     }
 
-    @Redirect(method = "flipFrame(JLnet/minecraft/client/util/tracy/TracyFrameCapturer;)V",
+    @Redirect(method = "Lcom/mojang/blaze3d/systems/RenderSystem;flipFrame(JLcom/mojang/blaze3d/TracyFrameCapture;)V",
         at = @At(value = "INVOKE", target = "Lorg/lwjgl/glfw/GLFW;glfwSwapBuffers(J)V", remap = false))
     private static void cancelSwapBuffers(long window) {
 
     }
 
-    @Redirect(method = "renderCrosshair(I)V", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/GLX;_renderCrosshair(IZZZ)V"))
+    @Redirect(method = "Lcom/mojang/blaze3d/systems/RenderSystem;renderCrosshair(I)V", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/platform/GLX;_renderCrosshair(IZZZ)V"))
     private static void cancelDrawCrossAirForNow(int size, boolean drawX, boolean drawY,
         boolean drawZ) {
 

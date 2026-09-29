@@ -11,11 +11,11 @@ import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.atomic.AtomicInteger;
 import net.minecraft.client.particle.Particle;
-import net.minecraft.client.particle.ParticleManager;
-import net.minecraft.client.particle.ParticleTextureSheet;
-import net.minecraft.particle.ParticleEffect;
-import net.minecraft.registry.Registries;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.particle.ParticleEngine;
+import net.minecraft.client.particle.ParticleRenderType;
+import net.minecraft.core.particles.ParticleOptions;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.resources.ResourceLocation;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -24,33 +24,33 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(ParticleManager.class)
+@Mixin(ParticleEngine.class)
 public class ParticleManagerMixins implements IParticleManagerExt {
 
     @Final
     @Shadow
-    private static List<ParticleTextureSheet> PARTICLE_TEXTURE_SHEETS;
+    private static List<ParticleRenderType> RENDER_ORDER;
     @Final
     @Shadow
-    private Map<ParticleTextureSheet, Queue<Particle>> particles;
+    private Map<ParticleRenderType, Queue<Particle>> particles;
 
     @Override
-    public List<ParticleTextureSheet> radiance$getTextureSheets() {
-        return PARTICLE_TEXTURE_SHEETS;
+    public List<ParticleRenderType> radiance$getTextureSheets() {
+        return RENDER_ORDER;
     }
 
     @Override
-    public Map<ParticleTextureSheet, Queue<Particle>> radiance$getParticles() {
+    public Map<ParticleRenderType, Queue<Particle>> radiance$getParticles() {
         return particles;
     }
 
-    @Inject(method = "addParticle(Lnet/minecraft/client/particle/Particle;)V", at = @At(value = "HEAD"))
+    @Inject(method = "Lnet/minecraft/client/particle/ParticleEngine;add(Lnet/minecraft/client/particle/Particle;)V", at = @At(value = "HEAD"))
     public void addParticleCounter(Particle particle, CallbackInfo ci) {
         PARTICLE_COUNTERS.computeIfAbsent(particle.getClass(), k -> new AtomicInteger())
             .incrementAndGet();
     }
 
-    @Inject(method = "tickParticles(Ljava/util/Collection;)V", at = @At(value = "INVOKE", target = "Ljava/util/Iterator;remove()V"))
+    @Inject(method = "Lnet/minecraft/client/particle/ParticleEngine;tickParticleList(Ljava/util/Collection;)V", at = @At(value = "INVOKE", target = "Ljava/util/Iterator;remove()V"))
     public void removeParticleCounter(Collection<Particle> particles, CallbackInfo ci,
         @Local Particle particle) {
         AtomicInteger counter = PARTICLE_COUNTERS.get(particle.getClass());
@@ -59,12 +59,12 @@ public class ParticleManagerMixins implements IParticleManagerExt {
         }
     }
 
-    @Inject(method = "addParticle(Lnet/minecraft/particle/ParticleEffect;DDDDDD)Lnet/minecraft/client/particle/Particle;",
+    @Inject(method = "Lnet/minecraft/client/particle/ParticleEngine;createParticle(Lnet/minecraft/core/particles/ParticleOptions;DDDDDD)Lnet/minecraft/client/particle/Particle;",
         at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/particle/ParticleManager;addParticle(Lnet/minecraft/client/particle/Particle;)V",
+            target = "Lnet/minecraft/client/particle/ParticleEngine;add(Lnet/minecraft/client/particle/Particle;)V",
             shift = At.Shift.BEFORE),
         cancellable = true)
-    public void checkParticleCounter(ParticleEffect parameters,
+    public void checkParticleCounter(ParticleOptions parameters,
         double x,
         double y,
         double z,
@@ -76,18 +76,18 @@ public class ParticleManagerMixins implements IParticleManagerExt {
         AtomicInteger counter = PARTICLE_COUNTERS.get(particle.getClass());
         if (counter != null) {
             int numParticles = counter.get();
-//            if (particle instanceof WaterSuspendParticle) {
-//                if (numParticles > 128) {
-//                    cir.setReturnValue(null);
-//                }
-//            } else if (particle instanceof RainSplashParticle || particle instanceof WaterSplashParticle) {
-//                if (numParticles > 32) {
-//                    cir.setReturnValue(null);
-//                }
-//            }
+
+
+
+
+
+
+
+
+
         }
 
-        Identifier particleId = Registries.PARTICLE_TYPE.getId(parameters.getType());
+        ResourceLocation particleId = BuiltInRegistries.PARTICLE_TYPE.getKey(parameters.getType());
         if (particleId != null) {
             ((IParticleExt) particle).radiance$setContentName(
                 EntityContentNames.toParticleContentName(particleId));
@@ -96,7 +96,7 @@ public class ParticleManagerMixins implements IParticleManagerExt {
 
     private static final class EntityContentNames {
 
-        private static String toParticleContentName(Identifier particleId) {
+        private static String toParticleContentName(ResourceLocation particleId) {
             if ("minecraft".equals(particleId.getNamespace())) {
                 return "/particle/" + particleId.getPath();
             }

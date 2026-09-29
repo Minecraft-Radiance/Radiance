@@ -1,21 +1,21 @@
 package com.radiance.mixins.vulkan_render_integration;
 
 import com.radiance.client.texture.AuxiliaryTextures;
-import net.minecraft.client.texture.atlas.AtlasSource.SpriteRegion;
-import net.minecraft.client.texture.atlas.AtlasSource.SpriteRegions;
-import net.minecraft.client.texture.atlas.PalettedPermutationsAtlasSource;
-import net.minecraft.resource.ResourceManager;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.renderer.texture.atlas.SpriteSource.Output;
+import net.minecraft.client.renderer.texture.atlas.SpriteSource.SpriteSupplier;
+import net.minecraft.client.renderer.texture.atlas.sources.PalettedPermutations;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.resources.ResourceManager;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
 
-@Mixin(PalettedPermutationsAtlasSource.class)
+@Mixin(PalettedPermutations.class)
 public class PalettedPermutationsAtlasSourceMixins {
 
-    @Redirect(method = "load(Lnet/minecraft/resource/ResourceManager;Lnet/minecraft/client/texture/atlas/AtlasSource$SpriteRegions;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/texture/atlas/AtlasSource$SpriteRegions;add(Lnet/minecraft/util/Identifier;Lnet/minecraft/client/texture/atlas/AtlasSource$SpriteRegion;)V"))
-    public void cancelPBRLoad(SpriteRegions instance, Identifier identifier,
-        SpriteRegion spriteRegion, ResourceManager resourceManager) {
+    @Redirect(method = "Lnet/minecraft/client/renderer/texture/atlas/sources/PalettedPermutations;run(Lnet/minecraft/server/packs/resources/ResourceManager;Lnet/minecraft/client/renderer/texture/atlas/SpriteSource$Output;)V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/renderer/texture/atlas/SpriteSource$Output;add(Lnet/minecraft/resources/ResourceLocation;Lnet/minecraft/client/renderer/texture/atlas/SpriteSource$SpriteSupplier;)V"))
+    public void cancelPBRLoad(Output instance, ResourceLocation identifier,
+        SpriteSupplier spriteRegion, ResourceManager resourceManager) {
         if (AuxiliaryTextures.shouldSkipAtlasSprite(resourceManager, identifier)) {
             return;
         }

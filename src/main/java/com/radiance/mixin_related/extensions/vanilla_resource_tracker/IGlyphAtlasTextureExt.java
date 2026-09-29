@@ -1,6 +1,6 @@
 package com.radiance.mixin_related.extensions.vanilla_resource_tracker;
 
-import net.minecraft.client.font.BakedGlyph;
+import net.minecraft.client.gui.font.glyphs.BakedGlyph;
 
 public interface IGlyphAtlasTextureExt {
 

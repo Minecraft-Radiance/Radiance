@@ -22,7 +22,7 @@ public class GlStateManagerMixins {
         ci.cancel();
     }
 
-    // region <PipelineStateProxy.ViewportState>
+
     @Inject(method = "_disableScissorTest()V",
         at = @At(value = "INVOKE",
             target = "Lcom/mojang/blaze3d/systems/RenderSystem;assertOnRenderThreadOrInit()V",
@@ -66,9 +66,9 @@ public class GlStateManagerMixins {
         PipelineStateProxy.ViewportState.setViewport(x, y, width, height);
         ci.cancel();
     }
-    // endregion
 
-    // region <PipelineStateProxy.ColorBlendState>
+
+
     @Inject(method = "_disableBlend()V",
         at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;assertOnRenderThread()V", shift = At.Shift.AFTER),
         cancellable = true,
@@ -155,9 +155,9 @@ public class GlStateManagerMixins {
         PipelineStateProxy.ColorBlendState.glSetColorLogicOp(op);
         ci.cancel();
     }
-    // endregion
 
-    // region <PipelineStateProxy.DepthStencilState>
+
+
     @Inject(method = "_disableDepthTest()V",
         at = @At(value = "INVOKE",
             target = "Lcom/mojang/blaze3d/systems/RenderSystem;assertOnRenderThreadOrInit()V",
@@ -226,9 +226,9 @@ public class GlStateManagerMixins {
         PipelineStateProxy.DepthStencilState.glSetStencilOp(sfail, dpfail, dppass);
         ci.cancel();
     }
-    // endregion
 
-    // region <PipelineStateProxy.RasterizationState>
+
+
     @Inject(method = "_enableCull()V",
         at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;assertOnRenderThread()V", shift = At.Shift.AFTER),
         cancellable = true,
@@ -253,9 +253,9 @@ public class GlStateManagerMixins {
         cancellable = true,
         remap = false)
     private static void redirectPolygonMode(int face, int mode, CallbackInfo ci) {
-        /*
-          @Warning no vulkan equivalent implementation
-         */
+
+
+
         PipelineStateProxy.RasterizationState.glSetPolygonMode(mode);
         ci.cancel();
     }
@@ -286,9 +286,9 @@ public class GlStateManagerMixins {
         PipelineStateProxy.RasterizationState.glSetPolygonOffset(factor, units);
         ci.cancel();
     }
-    // endregion
 
-    // region <PipelineStateProxy.ClearState>
+
+
     @Inject(method = "_clearColor(FFFF)V",
         at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;assertOnRenderThreadOrInit()V", shift = At.Shift.AFTER),
         cancellable = true,
@@ -316,9 +316,9 @@ public class GlStateManagerMixins {
         PipelineStateProxy.ClearState.setClearStencil(stencil);
         ci.cancel();
     }
-    // endregion
 
-    // region <DrawCommandProxy.Overlay>
+
+
     @Inject(method = "_clear(I)V",
         at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/systems/RenderSystem;assertOnRenderThreadOrInit()V", shift = At.Shift.AFTER),
         cancellable = true,
@@ -327,9 +327,9 @@ public class GlStateManagerMixins {
         DrawCommandProxy.Overlay.glClear(mask);
         ci.cancel();
     }
-    // endregion
 
-    @Redirect(method = "_getString(I)Ljava/lang/String;", at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/GL11;glGetString(I)Ljava/lang/String;", remap = false))
+
+    @Redirect(method = "Lcom/mojang/blaze3d/platform/GlStateManager;_getString(I)Ljava/lang/String;", at = @At(value = "INVOKE", target = "Lorg/lwjgl/opengl/GL11;glGetString(I)Ljava/lang/String;", remap = false))
     private static String redirectGetString(int name) {
         return "Vulkan 1.4";
     }

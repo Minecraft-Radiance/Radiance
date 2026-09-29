@@ -1,7 +1,7 @@
 package com.radiance.mixins.vulkan_render_integration;
 
-import net.minecraft.client.gl.Framebuffer;
-import net.minecraft.client.gui.screen.Screen;
+import com.mojang.blaze3d.pipeline.RenderTarget;
+import net.minecraft.client.gui.screens.Screen;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Redirect;
@@ -9,8 +9,8 @@ import org.spongepowered.asm.mixin.injection.Redirect;
 @Mixin(Screen.class)
 public class ScreenMixins {
 
-    @Redirect(method = "applyBlur()V", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gl/Framebuffer;beginWrite(Z)V"))
-    public void cancelFrameBufferInApplyBlur(Framebuffer instance, boolean setViewport) {
+    @Redirect(method = "Lnet/minecraft/client/gui/screens/Screen;renderBlurredBackground()V", at = @At(value = "INVOKE", target = "Lcom/mojang/blaze3d/pipeline/RenderTarget;bindWrite(Z)V"))
+    public void cancelFrameBufferInApplyBlur(RenderTarget instance, boolean setViewport) {
 
     }
 }

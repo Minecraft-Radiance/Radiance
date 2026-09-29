@@ -5,40 +5,37 @@ import java.util.List;
 import java.util.Optional;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import net.fabricmc.api.EnvType;
-import net.fabricmc.api.Environment;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.client.gui.widget.CyclingButtonWidget;
-import net.minecraft.client.option.GameOptions;
-import net.minecraft.client.option.SimpleOption;
-import net.minecraft.client.option.SimpleOption.TooltipFactory;
+import net.minecraft.client.OptionInstance;
+import net.minecraft.client.OptionInstance.TooltipSupplier;
+import net.minecraft.client.Options;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.CycleButton;
 
-@Environment(EnvType.CLIENT)
 public record PotentialValuesBasedCallbacksNoValue<T>(List<T> values, Codec<T> codec) implements
-    SimpleOption.CyclingCallbacks<T> {
+    OptionInstance.CycleableValueSet<T> {
 
     @Override
-    public Optional<T> validate(T value) {
+    public Optional<T> validateValue(T value) {
         return this.values.contains(value) ? Optional.of(value) : Optional.empty();
     }
 
     @Override
-    public CyclingButtonWidget.Values<T> getValues() {
-        return CyclingButtonWidget.Values.of(this.values);
+    public CycleButton.ValueListSupplier<T> valueListSupplier() {
+        return CycleButton.ValueListSupplier.create(this.values);
     }
 
     @Override
-    public Function<SimpleOption<T>, ClickableWidget> getWidgetCreator(
-        TooltipFactory<T> tooltipFactory, GameOptions gameOptions, int x, int y, int width,
+    public Function<OptionInstance<T>, AbstractWidget> createButton(
+        TooltipSupplier<T> tooltipFactory, Options gameOptions, int x, int y, int width,
         Consumer<T> changeCallback) {
-        return option -> CyclingButtonWidget.<T>builder(option.textGetter)
-            .values(this.getValues())
-            .tooltip(tooltipFactory)
-            .initially(option.getValue())
-            .omitKeyText()
-            .build(x, y, width, 20, option.text, (button, value) -> {
+        return option -> CycleButton.<T>builder(option.toString)
+            .withValues(this.valueListSupplier())
+            .withTooltip(tooltipFactory)
+            .withInitialValue(option.get())
+            .displayOnlyValue()
+            .create(x, y, width, 20, option.caption, (button, value) -> {
                 this.valueSetter().set(option, value);
-                gameOptions.write();
+                gameOptions.save();
                 changeCallback.accept(value);
             });
     }

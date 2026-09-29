@@ -1,14 +1,14 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.mojang.blaze3d.shaders.Uniform;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IGlUniformExt;
 import java.nio.FloatBuffer;
 import java.nio.IntBuffer;
-import net.minecraft.client.gl.GlUniform;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
-@Mixin(GlUniform.class)
+@Mixin(Uniform.class)
 public abstract class GlUniformMixins implements IGlUniformExt {
 
     @Shadow
@@ -17,19 +17,19 @@ public abstract class GlUniformMixins implements IGlUniformExt {
 
     @Shadow
     @Final
-    private int dataType;
+    private int type;
 
     @Shadow
     @Final
-    private IntBuffer intData;
+    private IntBuffer intValues;
 
     @Shadow
     @Final
-    private FloatBuffer floatData;
+    private FloatBuffer floatValues;
 
     @Override
     public int radiance$getDataTypeValue() {
-        return this.dataType;
+        return this.type;
     }
 
     @Override
@@ -39,11 +39,11 @@ public abstract class GlUniformMixins implements IGlUniformExt {
 
     @Override
     public IntBuffer radiance$getIntDataValue() {
-        return this.intData;
+        return this.intValues;
     }
 
     @Override
     public FloatBuffer radiance$getFloatDataValue() {
-        return this.floatData;
+        return this.floatValues;
     }
 }

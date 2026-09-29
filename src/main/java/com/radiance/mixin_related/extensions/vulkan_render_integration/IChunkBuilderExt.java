@@ -1,14 +1,17 @@
 package com.radiance.mixin_related.extensions.vulkan_render_integration;
 
-import net.minecraft.client.render.chunk.BlockBufferAllocatorStorage;
-import net.minecraft.client.render.chunk.SectionBuilder;
-import net.minecraft.client.world.ClientWorld;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.SectionBufferBuilderPack;
+import net.minecraft.client.renderer.chunk.SectionCompiler;
 
 public interface IChunkBuilderExt {
 
-    SectionBuilder radiance$getSectionBuilder();
+    SectionCompiler radiance$getSectionBuilder();
 
-    ClientWorld radiance$getWorld();
+    ClientLevel radiance$getWorld();
 
-    BlockBufferAllocatorStorage radiance$getBuffers();
+    LevelRenderer radiance$getWorldRenderer();
+
+    SectionBufferBuilderPack radiance$getBuffers();
 }
