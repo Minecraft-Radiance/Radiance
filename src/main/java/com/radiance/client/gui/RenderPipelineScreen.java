@@ -15,21 +15,20 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
-
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Drawable;
-import net.minecraft.client.gui.screen.Screen;
-import net.minecraft.client.gui.widget.ButtonWidget;
-import net.minecraft.client.gui.widget.ClickableWidget;
-import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.client.render.RenderLayer;
-import net.minecraft.text.Text;
-import net.minecraft.util.Identifier;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.components.Renderable;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 
 public class RenderPipelineScreen extends Screen {
 
-    private static final Identifier GEAR_TEX = Identifier.of(Radiance.MOD_ID,
+    private static final ResourceLocation GEAR_TEX = ResourceLocation.fromNamespaceAndPath(Radiance.MOD_ID,
         "textures/gui/render_pipeline/gear.png");
 
     private static final Map<String, Integer> FORMAT_COLORS = Map.of("R8G8B8A8_SRGB", 0xFF4EA5FF,
@@ -37,6 +36,10 @@ public class RenderPipelineScreen extends Screen {
         "R16G16B16A16_SFLOAT", 0xFFFFB84E);
 
     private static final int HEADER_HEIGHT = 32;
+    private static final int PRESET_GROUP_HEADER_HEIGHT = 28;
+    private static final int PRESET_GROUP_BOTTOM_GAP = 18;
+    private static final int PRESET_ROW_HEIGHT = 22;
+    private static final int PRESET_VIEWPORT_BOTTOM_PADDING = 24;
     private static final float GLOBAL_SCALE = 0.75f;
     private static final String RENDER_PIPELINE_SCREEN_BACK = "render_pipeline_screen.back";
     private static final String RENDER_PIPELINE_SCREEN_RELOAD = "render_pipeline_screen.reload";
@@ -60,11 +63,14 @@ public class RenderPipelineScreen extends Screen {
     private PresetEntry activePreset = null;
     private PresetSelector activePresetSelector = null;
     private final List<PresetModuleBlock> presetBlocks = new ArrayList<>();
-    private final List<ClickableWidget> presetWidgets = new ArrayList<>();
+    private final List<AbstractWidget> presetWidgets = new ArrayList<>();
     private int presetScrollY = 0;
+    private boolean presetScrollbarDragging = false;
+    private int presetScrollbarDragOffsetY = 0;
 
-    private ButtonWidget modeToggleBtn;
-    private ButtonWidget secondaryBtn;
+    private Button modeToggleBtn;
+    private Button secondaryBtn;
+    private Button resetAllBtn;
     private CompletableFuture<Void> rebuildFuture = null;
     private boolean rebuildQueued = false;
 
@@ -72,7 +78,7 @@ public class RenderPipelineScreen extends Screen {
     private static final String RENDER_PIPELINE_MODE_NAME = "render_pipeline.mode.name";
 
     public RenderPipelineScreen(Screen parent) {
-        super(Text.literal("Render Pipeline"));
+        super(Component.literal("Render Pipeline"));
 
         this.parent = parent;
 
@@ -110,10 +116,11 @@ public class RenderPipelineScreen extends Screen {
     }
 
     private void rebuildUI() {
-        clearChildren();
+        clearWidgets();
         activeSelector = null;
         activePresetSelector = null;
         presetWidgets.clear();
+        presetScrollbarDragging = false;
 
         if (mode == Mode.PRESET && activePreset == null && !presets.isEmpty()) {
             activePreset = presets.getFirst();
@@ -132,13 +139,13 @@ public class RenderPipelineScreen extends Screen {
         int secondaryX = shaderPackX + shaderPackW + 5;
         int secondaryW = 150;
 
-        addDrawableChild(
-            ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_SCREEN_BACK), button -> close())
-                .dimensions(backX, 6, backW, 20).build());
+        addRenderableWidget(
+            Button.builder(Component.translatable(RENDER_PIPELINE_SCREEN_BACK), button -> onClose())
+                .bounds(backX, 6, backW, 20).build());
 
-        modeToggleBtn = addDrawableChild(ButtonWidget.builder(
-            Text.translatable(RENDER_PIPELINE_MODE_NAME)
-                .append(Text.literal(": ").append(Text.translatable(mode.key))), button -> {
+        modeToggleBtn = addRenderableWidget(Button.builder(
+            Component.translatable(RENDER_PIPELINE_MODE_NAME)
+                .append(Component.literal(": ").append(Component.translatable(mode.key))), button -> {
                 if (mode == Mode.PIPELINE) {
                     if (activePreset == null && !presets.isEmpty()) {
                         activePreset = presets.getFirst();
@@ -151,50 +158,52 @@ public class RenderPipelineScreen extends Screen {
                     mode = Mode.PIPELINE;
                 }
                 rebuildUI();
-            }).dimensions(toggleX, 6, toggleW, 20).build());
+            }).bounds(toggleX, 6, toggleW, 20).build());
 
-        addDrawableChild(ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_SCREEN_SHADER_PACK),
-                button -> MinecraftClient.getInstance().setScreen(new ShaderPackScreen(this)))
-            .dimensions(shaderPackX, 6, shaderPackW, 20)
+        addRenderableWidget(Button.builder(Component.translatable(RENDER_PIPELINE_SCREEN_SHADER_PACK),
+                button -> Minecraft.getInstance().setScreen(new ShaderPackScreen(this)))
+            .bounds(shaderPackX, 6, shaderPackW, 20)
             .build());
 
         if (mode == Mode.PIPELINE) {
-            secondaryBtn = addDrawableChild(
-                ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_SCREEN_ADD_MODULE),
+            secondaryBtn = addRenderableWidget(
+                Button.builder(Component.translatable(RENDER_PIPELINE_SCREEN_ADD_MODULE),
                     button -> {
                         Map<String, ModuleEntry> entries = Pipeline.INSTANCE.getModuleEntries();
                         if (entries != null && !entries.isEmpty()) {
                             activeSelector = new ModuleSelector(secondaryX, HEADER_HEIGHT + 4,
                                 entries);
                         }
-                    }).dimensions(secondaryX, 6, secondaryW, 20).build());
+                    }).bounds(secondaryX, 6, secondaryW, 20).build());
         } else {
-            Text activePresetText = activePreset != null
-                ? Text.translatable(activePreset.name())
-                : Text.literal("N/A"); // to make sure
-            secondaryBtn = addDrawableChild(
-                ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_PRESET_NAME)
-                    .append(Text.literal(": "))
+            Component activePresetText = activePreset != null
+                ? Component.translatable(activePreset.name())
+                : Component.literal("N/A");
+            secondaryBtn = addRenderableWidget(
+                Button.builder(Component.translatable(RENDER_PIPELINE_PRESET_NAME)
+                    .append(Component.literal(": "))
                     .append(activePresetText), button -> {
                     if (!presets.isEmpty()) {
                         activePresetSelector = new PresetSelector(secondaryX, HEADER_HEIGHT + 4,
                             presets);
                     }
-                }).dimensions(secondaryX, 6, secondaryW, 20).build());
+                }).bounds(secondaryX, 6, secondaryW, 20).build());
         }
 
-        ButtonWidget reloadBtn = addDrawableChild(
-            ButtonWidget.builder(Text.translatable(RENDER_PIPELINE_SCREEN_RELOAD), button -> {
+        Button reloadBtn = addRenderableWidget(
+            Button.builder(Component.translatable(RENDER_PIPELINE_SCREEN_RELOAD), button -> {
                 if (mode == Mode.PIPELINE) {
                     refreshPipeline();
                 } else {
                     applyActivePreset();
                 }
-            }).dimensions(secondaryX + secondaryW + 5, 6, 100, 20).build());
+            }).bounds(secondaryX + secondaryW + 5, 6, 100, 20).build());
 
         reloadBtn.active = true;
         secondaryBtn.visible = true;
         secondaryBtn.active = true;
+        resetAllBtn = addRenderableWidget(AttributeWidgetUtil.buildGlobalResetButton(
+            secondaryX + secondaryW + 110, 6, this::resetAllPipelineAttributes));
 
         if (mode == Mode.PRESET) {
             presetScrollY = 0;
@@ -203,6 +212,8 @@ public class RenderPipelineScreen extends Screen {
             }
             applyActivePreset();
         }
+
+        syncResetAllButton();
     }
 
     public void refreshPipeline() {
@@ -240,7 +251,7 @@ public class RenderPipelineScreen extends Screen {
     }
 
     @Override
-    public void close() {
+    public void onClose() {
         if (isRebuilding()) {
             return;
         }
@@ -267,11 +278,11 @@ public class RenderPipelineScreen extends Screen {
 
         rebuildFuture.join();
         rebuildFuture = null;
-        MinecraftClient.getInstance().setScreen(parent);
+        Minecraft.getInstance().setScreen(parent);
     }
 
     @Override
-    public void render(DrawContext context, int mouseX, int mouseY, float delta) {
+    public void render(GuiGraphics context, int mouseX, int mouseY, float delta) {
         if (isRebuilding()) {
             this.renderBackground(context, mouseX, mouseY, delta);
             renderRebuildOverlay(context);
@@ -283,24 +294,26 @@ public class RenderPipelineScreen extends Screen {
         }
 
         for (ModuleNode node : nodes) {
-            node.updateWidth(textRenderer);
+            node.updateWidth(font);
         }
+        syncResetAllButton();
 
         this.renderBackground(context, mouseX, mouseY, delta);
 
-        context.getMatrices().push();
-        context.getMatrices().scale(GLOBAL_SCALE, GLOBAL_SCALE, 1f);
+        context.pose().pushPose();
+        context.pose().scale(GLOBAL_SCALE, GLOBAL_SCALE, 1f);
 
         int scaledMouseX = (int) (mouseX / GLOBAL_SCALE);
         int scaledMouseY = (int) (mouseY / GLOBAL_SCALE);
 
-        for (Drawable drawable : this.drawables) {
+        for (Renderable drawable : this.renderables) {
             drawable.render(context, scaledMouseX, scaledMouseY, delta);
         }
 
-        context.drawTextWithShadow(textRenderer,
-            Text.translatable(RENDER_PIPELINE_SCREEN_BACK_HINT), 10, HEADER_HEIGHT + 8, 0xFFEAEAEA);
+        context.drawString(font,
+            Component.translatable(RENDER_PIPELINE_SCREEN_BACK_HINT), 10, HEADER_HEIGHT + 8, 0xFFEAEAEA);
 
+        HoveredPresetAttribute hoveredPresetAttribute = null;
         if (mode == Mode.PIPELINE) {
             for (ModuleNode node : nodes) {
                 drawModuleNode(context, node);
@@ -309,23 +322,29 @@ public class RenderPipelineScreen extends Screen {
             drawConnections(context);
 
             if (activeSelector != null) {
-                context.getMatrices().push();
-                context.getMatrices().translate(0, 0, 200);
+                context.pose().pushPose();
+                context.pose().translate(0, 0, 200);
                 activeSelector.render(context, scaledMouseX, scaledMouseY);
-                context.getMatrices().pop();
+                context.pose().popPose();
             }
         } else {
-            renderPresetMode(context);
+            hoveredPresetAttribute = renderPresetMode(context, scaledMouseX, scaledMouseY);
             if (activePresetSelector != null) {
-                context.getMatrices().push();
-                context.getMatrices().translate(0, 0, 200);
+                context.pose().pushPose();
+                context.pose().translate(0, 0, 200);
                 activePresetSelector.render(context, scaledMouseX, scaledMouseY);
-                context.getMatrices().pop();
+                context.pose().popPose();
+                hoveredPresetAttribute = null;
             }
         }
 
-        context.getMatrices().pop();
+        context.pose().popPose();
 
+        if (hoveredPresetAttribute != null) {
+            AttributeWidgetUtil.drawAttributeTooltip(context, font,
+                hoveredPresetAttribute.module(), hoveredPresetAttribute.cfg(),
+                hoveredPresetAttribute.focus(), mouseX, mouseY);
+        }
     }
 
     private int scaledW() {
@@ -336,42 +355,58 @@ public class RenderPipelineScreen extends Screen {
         return (int) (this.height / GLOBAL_SCALE);
     }
 
-    private void renderPresetMode(DrawContext ctx) {
+    private HoveredPresetAttribute renderPresetMode(GuiGraphics ctx, int mouseX, int mouseY) {
         int sw = scaledW();
-        int sh = scaledH();
         int x0 = 10;
-        int y0 = HEADER_HEIGHT + 28;
+        int y0 = presetListTopY();
         int contentW = sw - 20;
 
+        presetScrollY = AttributeWidgetUtil.clampScroll(presetScrollY, presetViewportHeight(),
+            presetContentHeight());
         int y = y0 + presetScrollY;
-        int titleGap = 12;
-        int afterTitle = 8;
-        int rowH = 22;
+        int rowH = PRESET_ROW_HEIGHT;
+        HoveredPresetAttribute hoveredAttribute = null;
 
         for (PresetModuleBlock block : presetBlocks) {
-            if (block.rows.isEmpty()) {
+            int visibleRowCount = countVisibleRows(block);
+            if (visibleRowCount == 0) {
+                clearBlockVisibility(block);
                 continue;
             }
             int titleY = y;
-            int tw = textRenderer.getWidth(block.module.translateText(block.module.name));
-            int tx = x0 + (contentW - tw) / 2;
 
-            boolean titleVisible = titleY >= (HEADER_HEIGHT + 18) && titleY <= (sh - 24);
+            boolean titleVisible = titleY + PRESET_GROUP_HEADER_HEIGHT >= presetListTopY()
+                && titleY <= presetViewportBottomY();
             if (titleVisible) {
-                ctx.drawTextWithShadow(textRenderer, block.module.translateText(block.module.name), tx,
-                    titleY, 0xFFEAEAEA);
+                AttributeWidgetUtil.drawGroupHeader(ctx, font,
+                    block.module.translateText(block.module.name), x0, titleY, contentW,
+                    PRESET_GROUP_HEADER_HEIGHT);
             }
 
-            y += titleGap + afterTitle;
+            y += PRESET_GROUP_HEADER_HEIGHT;
 
-            for (int i = 0; i < block.rows.size(); i++) {
-                PresetRow row = block.rows.get(i);
-                int ry = y + i * rowH;
-                boolean visible = ry >= (HEADER_HEIGHT + 18) && ry <= (sh - 24);
+            int visibleIndex = 0;
+            for (PresetRow row : block.rows) {
+                boolean rowVisible = Pipeline.isAttributeVisible(block.module, row.cfg);
+                if (!rowVisible) {
+                    setPresetRowVisible(row, false);
+                    continue;
+                }
+
+                int ry = y + visibleIndex * rowH;
+                visibleIndex++;
+                boolean visible = ry >= presetListTopY() && ry <= presetViewportBottomY();
+                AttributeWidgetUtil.TooltipFocus rowFocus = scaledPresetRowTooltipFocus(x0,
+                    contentW, ry);
 
                 if (visible) {
-                    ctx.drawTextWithShadow(textRenderer, block.module.translateText(row.cfg.name), x0 + 10,
-                        ry + 6, 0xFFD0D0D0);
+                    Component label = block.module.translateText(row.cfg.name);
+                    ctx.drawString(font, label, x0 + 10, ry + 6, 0xFFD0D0D0);
+                    if (mouseX >= x0 + 10 && mouseX <= x0 + 10 + font.width(label)
+                        && mouseY >= ry + 4 && mouseY <= ry + 18) {
+                        hoveredAttribute = new HoveredPresetAttribute(block.module, row.cfg,
+                            rowFocus);
+                    }
                 }
 
                 layoutPresetRowWidgets(row, x0 + contentW - 10, ry);
@@ -379,9 +414,14 @@ public class RenderPipelineScreen extends Screen {
                 String type = row.cfg.type == null ? "" : row.cfg.type.toLowerCase(Locale.ROOT);
                 boolean doBorder = AttributeWidgetUtil.shouldValidateBorder(type);
 
-                for (ClickableWidget w : row.widgets) {
-                    w.visible = visible;
-                    w.active = visible;
+                AttributeWidgetUtil.syncWidgetVisibility(row.widgets, visible);
+
+                for (AbstractWidget w : row.widgets) {
+                    if (visible && !AttributeWidgetUtil.isResetButton(w)
+                        && w.isMouseOver(mouseX, mouseY)) {
+                        hoveredAttribute = new HoveredPresetAttribute(block.module, row.cfg,
+                            rowFocus);
+                    }
 
                     if (!doBorder) {
                         continue;
@@ -389,17 +429,21 @@ public class RenderPipelineScreen extends Screen {
 
                     boolean ok = true;
                     if (type.equals("vec3")) {
-                        if (w instanceof TextFieldWidget tf) {
-                            ok = AttributeWidgetUtil.isStrictFloat(tf.getText());
+                        if (w instanceof EditBox tf) {
+                            ok = AttributeWidgetUtil.isStrictFloat(tf.getValue());
                         }
                     } else if (type.equals("int")) {
-                        if (w instanceof TextFieldWidget tf) {
-                            ok = AttributeWidgetUtil.isStrictInt(tf.getText());
+                        if (w instanceof EditBox tf) {
+                            ok = AttributeWidgetUtil.isStrictInt(tf.getValue());
                         }
                     } else if (type.equals("float")) {
-                        if (w instanceof TextFieldWidget tf) {
-                            ok = AttributeWidgetUtil.isStrictFloat(tf.getText());
+                        if (w instanceof EditBox tf) {
+                            ok = AttributeWidgetUtil.isStrictFloat(tf.getValue());
                         }
+                    }
+
+                    if (!(w instanceof EditBox)) {
+                        continue;
                     }
 
                     int bx = w.getX() - 1;
@@ -411,11 +455,25 @@ public class RenderPipelineScreen extends Screen {
                 }
             }
 
-            y += block.rows.size() * rowH + 18;
+            y += visibleRowCount * rowH + PRESET_GROUP_BOTTOM_GAP;
         }
+
+        AttributeWidgetUtil.drawVerticalScrollbar(ctx, sw, presetListTopY(),
+            presetViewportHeight(), presetContentHeight(), presetScrollY,
+            presetScrollbarDragging, mouseX, mouseY);
+        return hoveredAttribute;
     }
 
-    private void renderRebuildOverlay(DrawContext context) {
+    private AttributeWidgetUtil.TooltipFocus scaledPresetRowTooltipFocus(int x0, int contentW,
+        int y) {
+        return AttributeWidgetUtil.tooltipFocus(
+            Math.round((x0 + 10) * GLOBAL_SCALE),
+            Math.round(y * GLOBAL_SCALE),
+            Math.round((x0 + contentW - 10) * GLOBAL_SCALE),
+            Math.round((y + PRESET_ROW_HEIGHT) * GLOBAL_SCALE));
+    }
+
+    private void renderRebuildOverlay(GuiGraphics context) {
         context.fill(0, 0, this.width, this.height, 0xE0000000);
 
         int popupWidth = 160;
@@ -429,13 +487,33 @@ public class RenderPipelineScreen extends Screen {
         context.fill(x0, y0, x0 + 1, y0 + popupHeight, 0xFFFFFFFF);
         context.fill(x0 + popupWidth - 1, y0, x0 + popupWidth, y0 + popupHeight, 0xFFFFFFFF);
 
-        context.drawCenteredTextWithShadow(textRenderer,
-            Text.translatable(RENDER_PIPELINE_SCREEN_REBUILDING),
+        context.drawCenteredString(font,
+            Component.translatable(RENDER_PIPELINE_SCREEN_REBUILDING),
             this.width / 2, y0 + 9, 0xFFEAEAEA);
     }
 
     private boolean isRebuilding() {
         return rebuildQueued || rebuildFuture != null;
+    }
+
+    private int countVisibleRows(PresetModuleBlock block) {
+        int count = 0;
+        for (PresetRow row : block.rows) {
+            if (Pipeline.isAttributeVisible(block.module, row.cfg)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    private void clearBlockVisibility(PresetModuleBlock block) {
+        for (PresetRow row : block.rows) {
+            setPresetRowVisible(row, false);
+        }
+    }
+
+    private void setPresetRowVisible(PresetRow row, boolean visible) {
+        AttributeWidgetUtil.syncWidgetVisibility(row.widgets, visible);
     }
 
     private void layoutPresetRowWidgets(PresetRow row, int rightEdge, int y) {
@@ -445,6 +523,31 @@ public class RenderPipelineScreen extends Screen {
         int widgetWidth = AttributeWidgetUtil.totalWidgetWidth(row.widgets, singleWidth, tripleWidth, gap);
         int x = rightEdge - widgetWidth;
         AttributeWidgetUtil.layoutWidgets(row.widgets, x, y, singleWidth, tripleWidth, gap);
+    }
+
+    private int presetListTopY() {
+        return HEADER_HEIGHT + 28;
+    }
+
+    private int presetViewportBottomY() {
+        return scaledH() - PRESET_VIEWPORT_BOTTOM_PADDING;
+    }
+
+    private int presetViewportHeight() {
+        return Math.max(0, presetViewportBottomY() - presetListTopY());
+    }
+
+    private int presetContentHeight() {
+        int contentHeight = 0;
+        for (PresetModuleBlock block : presetBlocks) {
+            int visibleRowCount = countVisibleRows(block);
+            if (visibleRowCount == 0) {
+                continue;
+            }
+            contentHeight += PRESET_GROUP_HEADER_HEIGHT + (visibleRowCount * PRESET_ROW_HEIGHT)
+                + PRESET_GROUP_BOTTOM_GAP;
+        }
+        return contentHeight;
     }
 
     private PortPos getPortPosition(ImageConfig config, boolean isOutput) {
@@ -467,7 +570,7 @@ public class RenderPipelineScreen extends Screen {
         return null;
     }
 
-    private void drawBezier(DrawContext ctx, int x1, int y1, int x2, int y2, int color) {
+    private void drawBezier(GuiGraphics ctx, int x1, int y1, int x2, int y2, int color) {
         int segments = 32;
         float prevX = x1;
         float prevY = y1;
@@ -486,7 +589,7 @@ public class RenderPipelineScreen extends Screen {
             float cx = b0 * x1 + b1 * (x1 + ctrlOffset) + b2 * (x2 - ctrlOffset) + b3 * x2;
             float cy = b0 * y1 + b1 * y1 + b2 * y2 + b3 * y2;
 
-            ((IDrawContextExt) (Object) ctx).radiance$drawOrientedQuad(RenderLayer.getGui(),
+            ((IDrawContextExt) (Object) ctx).radiance$drawOrientedQuad(RenderType.gui(),
                 prevX, prevY, cx, cy, thickness, color);
 
             prevX = cx;
@@ -494,7 +597,7 @@ public class RenderPipelineScreen extends Screen {
         }
     }
 
-    private void drawConnections(DrawContext context) {
+    private void drawConnections(GuiGraphics context) {
         for (ModuleConnection link : moduleConnections) {
             PortPos p1 = getPortPosition(link.src, true);
             PortPos p2 = getPortPosition(link.dst, false);
@@ -502,9 +605,10 @@ public class RenderPipelineScreen extends Screen {
                 drawBezier(context, p1.x, p1.y, p2.x, p2.y, getFormatColor(link.src.format));
             }
         }
+        context.flush();
     }
 
-    private void drawModuleNode(DrawContext context, ModuleNode moduleNode) {
+    private void drawModuleNode(GuiGraphics context, ModuleNode moduleNode) {
         int x = (int) moduleNode.module.x;
         int y = (int) moduleNode.module.y + HEADER_HEIGHT;
         int w = moduleNode.width;
@@ -514,7 +618,7 @@ public class RenderPipelineScreen extends Screen {
 
         context.fill(x, y, x + w, y + moduleNode.headerH, 0xFF2B3240);
 
-        context.drawTextWithShadow(textRenderer, moduleNode.module.translateText(moduleNode.module.name), x + 6,
+        context.drawString(font, moduleNode.module.translateText(moduleNode.module.name), x + 6,
             y + 5, 0xFFEAEAEA);
 
         int btnSize = 12;
@@ -522,10 +626,9 @@ public class RenderPipelineScreen extends Screen {
         int btnY = y + (moduleNode.headerH - btnSize) / 2;
         int gearX = deleteX - btnSize - 2;
 
-        context.drawTexture(RenderLayer::getGuiTextured, GEAR_TEX, gearX, btnY, 0, 0, btnSize,
-            btnSize, btnSize, btnSize);
+        context.blit(GEAR_TEX, gearX, btnY, 0, 0, btnSize, btnSize, btnSize, btnSize);
 
-        context.drawTextWithShadow(textRenderer, "×", deleteX + 3, btnY + 2, 0xFFFF5A5A);
+        context.drawString(font, "×", deleteX + 3, btnY + 2, 0xFFFF5A5A);
 
         for (int i = 0; i < moduleNode.rows(); i++) {
             int ry = y + moduleNode.headerH + moduleNode.pad + i * moduleNode.rowH + 7;
@@ -539,7 +642,7 @@ public class RenderPipelineScreen extends Screen {
                 boolean isConnected = moduleConnections.stream().anyMatch(l -> l.dst == in);
                 drawPortDot(context, dotX, dotY, color, isConnected, false);
 
-                context.drawTextWithShadow(textRenderer, in.name, x + 18, ry + 2, 0xFFD0D0D0);
+                context.drawString(font, in.name, x + 18, ry + 2, 0xFFD0D0D0);
             }
 
             if (i < moduleNode.module.outputImageConfigs.size()) {
@@ -551,14 +654,14 @@ public class RenderPipelineScreen extends Screen {
                 boolean isConnected = moduleConnections.stream().anyMatch(l -> l.src == out);
                 drawPortDot(context, dotX, dotY, color, isConnected, out == localFinalOutput);
 
-                int nameWidth = textRenderer.getWidth(out.name);
-                context.drawTextWithShadow(textRenderer, out.name, (dotX - 8) - nameWidth, ry + 2,
+                int nameWidth = font.width(out.name);
+                context.drawString(font, out.name, (dotX - 8) - nameWidth, ry + 2,
                     0xFFD0D0D0);
             }
         }
     }
 
-    private void drawPortDot(DrawContext ctx, int cx, int cy, int color, boolean filled,
+    private void drawPortDot(GuiGraphics ctx, int cx, int cy, int color, boolean filled,
         boolean isFinal) {
         ctx.fill(cx - 4, cy - 4, cx + 5, cy + 5, isFinal ? 0xFF55FF55 : 0xFF000000);
         ctx.fill(cx - 3, cy - 3, cx + 4, cy + 4, 0xFF000000);
@@ -709,6 +812,16 @@ public class RenderPipelineScreen extends Screen {
                 }
                 activePresetSelector = null;
             }
+            if (button == 0 && AttributeWidgetUtil.isVerticalScrollbarMouseOver(mouseX, mouseY,
+                scaledW(), presetListTopY(), presetViewportHeight(), presetContentHeight())) {
+                presetScrollbarDragging = true;
+                presetScrollbarDragOffsetY = AttributeWidgetUtil.verticalScrollbarDragOffsetY(mouseY,
+                    presetListTopY(), presetViewportHeight(), presetContentHeight(), presetScrollY);
+                presetScrollY = AttributeWidgetUtil.scrollFromVerticalScrollbarDrag(mouseY,
+                    presetScrollbarDragOffsetY, presetListTopY(), presetViewportHeight(),
+                    presetContentHeight());
+                return true;
+            }
             return super.mouseClicked(mouseX, mouseY, button);
         }
 
@@ -719,7 +832,7 @@ public class RenderPipelineScreen extends Screen {
             }
 
             if (button == 0 && isGearClicked(node, mouseX, mouseY)) {
-                MinecraftClient.getInstance()
+                Minecraft.getInstance()
                     .setScreen(new ModuleAttributeScreen(this, node.module));
                 return true;
             }
@@ -795,20 +908,8 @@ public class RenderPipelineScreen extends Screen {
             return super.mouseScrolled(mouseX, mouseY, horizontalAmount, verticalAmount);
         }
 
-        int sh = scaledH();
-        int y0 = HEADER_HEIGHT + 28;
-        int rowH = 22;
-        int contentH = y0 + presetBlocks.stream().filter(b -> !b.rows.isEmpty())
-            .mapToInt(b -> 12 + 8 + (b.rows.size() * rowH) + 18).sum();
-        int minScroll = Math.min(0, sh - contentH - 10);
-
-        presetScrollY += (int) (verticalAmount * 12);
-        if (presetScrollY > 0) {
-            presetScrollY = 0;
-        }
-        if (presetScrollY < minScroll) {
-            presetScrollY = minScroll;
-        }
+        presetScrollY = AttributeWidgetUtil.clampScroll(presetScrollY + (int) (verticalAmount * 12),
+            presetViewportHeight(), presetContentHeight());
         return true;
     }
 
@@ -823,6 +924,12 @@ public class RenderPipelineScreen extends Screen {
         mouseY /= GLOBAL_SCALE;
 
         if (mode == Mode.PRESET) {
+            if (presetScrollbarDragging && button == 0) {
+                presetScrollY = AttributeWidgetUtil.scrollFromVerticalScrollbarDrag(mouseY,
+                    presetScrollbarDragOffsetY, presetListTopY(), presetViewportHeight(),
+                    presetContentHeight());
+                return true;
+            }
             return super.mouseDragged(mouseX, mouseY, button, deltaX / GLOBAL_SCALE,
                 deltaY / GLOBAL_SCALE);
         }
@@ -862,6 +969,11 @@ public class RenderPipelineScreen extends Screen {
         mouseX /= GLOBAL_SCALE;
         mouseY /= GLOBAL_SCALE;
 
+        if (button == 0 && presetScrollbarDragging) {
+            presetScrollbarDragging = false;
+            return true;
+        }
+
         lastMouseX = mouseX;
         lastMouseY = mouseY;
 
@@ -898,6 +1010,11 @@ public class RenderPipelineScreen extends Screen {
 
     }
 
+    private record HoveredPresetAttribute(Module module, AttributeConfig cfg,
+        AttributeWidgetUtil.TooltipFocus focus) {
+
+    }
+
     private class ModuleSelector {
 
         private final int x, y, width;
@@ -919,7 +1036,7 @@ public class RenderPipelineScreen extends Screen {
             this.width = 120;
         }
 
-        public void render(DrawContext ctx, int mouseX, int mouseY) {
+        public void render(GuiGraphics ctx, int mouseX, int mouseY) {
             int currentY = y;
             ctx.fill(x - 1, y - 1, x + width + 1, y + (options.size() * itemHeight) + 1,
                 0xFFFFFFFF);
@@ -929,7 +1046,7 @@ public class RenderPipelineScreen extends Screen {
                     && mouseY <= currentY + itemHeight;
                 ctx.fill(x, currentY, x + width, currentY + itemHeight,
                     hovered ? 0xFF444444 : 0xFF222222);
-                ctx.drawTextWithShadow(textRenderer, Text.translatable(entry.name), x + 5,
+                ctx.drawString(font, Component.translatable(entry.name), x + 5,
                     currentY + 5, 0xFFE0E0E0);
                 currentY += itemHeight;
             }
@@ -975,8 +1092,8 @@ public class RenderPipelineScreen extends Screen {
         if (Pipeline.isPresetAvailable(Presets.RT_DLSSRR.key)) {
             this.presets.add(new PresetEntry(Presets.RT_DLSSRR.key));
         }
-        if (Pipeline.isPresetAvailable(Presets.RT_NRD.key)) {
-            this.presets.add(new PresetEntry(Presets.RT_NRD.key));
+        if (Pipeline.isPresetAvailable(Presets.RT_NRD_DLSS.key)) {
+            this.presets.add(new PresetEntry(Presets.RT_NRD_DLSS.key));
         }
         if (Pipeline.isPresetAvailable(Presets.RT_NRD_FSR.key)) {
             this.presets.add(new PresetEntry(Presets.RT_NRD_FSR.key));
@@ -988,9 +1105,9 @@ public class RenderPipelineScreen extends Screen {
 
     private void applyActivePreset() {
         presetBlocks.clear();
-        for (ClickableWidget w : presetWidgets) {
+        for (AbstractWidget w : presetWidgets) {
             this.children().remove(w);
-            this.drawables.remove(w);
+            this.renderables.remove(w);
         }
         presetWidgets.clear();
 
@@ -1009,23 +1126,25 @@ public class RenderPipelineScreen extends Screen {
                 continue;
             }
             for (AttributeConfig cfg : m.attributeConfigs) {
-                if (Pipeline.isRayTracingShaderPackAttribute(m, cfg)) {
+                if (Pipeline.isMainRenderShaderPackAttribute(m, cfg)) {
                     continue;
                 }
-                List<ClickableWidget> ws = buildPresetWidgets(m, cfg);
-                for (ClickableWidget w : ws) {
-                    presetWidgets.add(addDrawableChild(w));
+                List<AbstractWidget> ws = buildPresetWidgets(m, cfg);
+                PresetRow row = new PresetRow(cfg, ws);
+                setPresetRowVisible(row, Pipeline.isAttributeVisible(m, cfg));
+                for (AbstractWidget w : ws) {
+                    presetWidgets.add(addRenderableWidget(w));
                 }
-                block.rows.add(new PresetRow(cfg, ws));
+                block.rows.add(row);
             }
         }
 
         if (secondaryBtn != null && mode == Mode.PRESET) {
-            Text activePresetText = activePreset != null
-                ? Text.translatable(activePreset.name())
-                : Text.literal("N/A");
-            secondaryBtn.setMessage(Text.translatable(RENDER_PIPELINE_PRESET_NAME)
-                .append(Text.literal(": "))
+            Component activePresetText = activePreset != null
+                ? Component.translatable(activePreset.name())
+                : Component.literal("N/A");
+            secondaryBtn.setMessage(Component.translatable(RENDER_PIPELINE_PRESET_NAME)
+                .append(Component.literal(": "))
                 .append(activePresetText));
         }
     }
@@ -1034,8 +1153,78 @@ public class RenderPipelineScreen extends Screen {
         Pipeline.savePipeline();
     }
 
-    private List<ClickableWidget> buildPresetWidgets(Module module, AttributeConfig cfg) {
-        return AttributeWidgetUtil.buildWidgets(module, cfg, textRenderer, 200, 64);
+    private List<AbstractWidget> buildPresetWidgets(Module module, AttributeConfig cfg) {
+        return AttributeWidgetUtil.buildWidgets(module, cfg, font, 200, 64,
+            this::applyActivePreset);
+    }
+
+    private void resetAllPipelineAttributes() {
+        boolean changed = false;
+        if (mode == Mode.PRESET && !presetBlocks.isEmpty()) {
+            for (PresetModuleBlock block : presetBlocks) {
+                List<AttributeConfig> attributes = new ArrayList<>();
+                for (PresetRow row : block.rows) {
+                    attributes.add(row.cfg);
+                }
+                changed |= AttributeWidgetUtil.resetAttributesToDefaults(block.module, attributes);
+            }
+        } else {
+            for (ModuleNode node : nodes) {
+                if (node == null || node.module == null || node.module.attributeConfigs == null) {
+                    continue;
+                }
+                List<AttributeConfig> attributes = new ArrayList<>();
+                for (AttributeConfig cfg : node.module.attributeConfigs) {
+                    if (!Pipeline.isMainRenderShaderPackAttribute(node.module, cfg)) {
+                        attributes.add(cfg);
+                    }
+                }
+                changed |= AttributeWidgetUtil.resetAttributesToDefaults(node.module, attributes);
+            }
+        }
+
+        if (changed) {
+            if (mode == Mode.PRESET) {
+                applyActivePreset();
+            } else {
+                refreshPipeline();
+            }
+        }
+        syncResetAllButton();
+    }
+
+    private void syncResetAllButton() {
+        if (resetAllBtn == null) {
+            return;
+        }
+        boolean show = AttributeWidgetUtil.hasNonDefaultValue(currentPipelineSettingAttributes());
+        resetAllBtn.visible = show;
+        resetAllBtn.active = show;
+    }
+
+    private List<AttributeConfig> currentPipelineSettingAttributes() {
+        List<AttributeConfig> attributes = new ArrayList<>();
+        if (mode == Mode.PRESET && !presetBlocks.isEmpty()) {
+            for (PresetModuleBlock block : presetBlocks) {
+                for (PresetRow row : block.rows) {
+                    attributes.add(row.cfg);
+                }
+            }
+            return attributes;
+        }
+
+        for (ModuleNode node : nodes) {
+            if (node == null || node.module == null || node.module.attributeConfigs == null) {
+                continue;
+            }
+            for (AttributeConfig cfg : node.module.attributeConfigs) {
+                if (Pipeline.isMainRenderShaderPackAttribute(node.module, cfg)) {
+                    continue;
+                }
+                attributes.add(cfg);
+            }
+        }
+        return attributes;
     }
 
     private class PresetSelector {
@@ -1051,7 +1240,7 @@ public class RenderPipelineScreen extends Screen {
             this.width = 140;
         }
 
-        public void render(DrawContext ctx, int mouseX, int mouseY) {
+        public void render(GuiGraphics ctx, int mouseX, int mouseY) {
             int currentY = y;
             ctx.fill(x - 1, y - 1, x + width + 1, y + (options.size() * itemHeight) + 1,
                 0xFFFFFFFF);
@@ -1061,7 +1250,7 @@ public class RenderPipelineScreen extends Screen {
                     && mouseY <= currentY + itemHeight;
                 ctx.fill(x, currentY, x + width, currentY + itemHeight,
                     hovered ? 0xFF444444 : 0xFF222222);
-                ctx.drawTextWithShadow(textRenderer, Text.translatable(entry.name()), x + 5,
+                ctx.drawString(font, Component.translatable(entry.name()), x + 5,
                     currentY + 5, 0xFFE0E0E0);
                 currentY += itemHeight;
             }
@@ -1093,7 +1282,7 @@ public class RenderPipelineScreen extends Screen {
         }
     }
 
-    private record PresetRow(AttributeConfig cfg, List<ClickableWidget> widgets) {
+    private record PresetRow(AttributeConfig cfg, List<AbstractWidget> widgets) {
 
     }
 }

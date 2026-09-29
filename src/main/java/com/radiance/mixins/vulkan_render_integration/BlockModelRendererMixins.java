@@ -1,15 +1,15 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.radiance.client.vertex.PBRVertexConsumer;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IBlockColorsExt;
-import net.minecraft.block.BlockState;
 import net.minecraft.client.color.block.BlockColors;
-import net.minecraft.client.render.VertexConsumer;
-import net.minecraft.client.render.block.BlockModelRenderer;
-import net.minecraft.client.render.model.BakedQuad;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.BlockRenderView;
+import net.minecraft.client.renderer.block.ModelBlockRenderer;
+import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.core.BlockPos;
+import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.world.level.block.state.BlockState;
 import org.spongepowered.asm.mixin.Final;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
@@ -17,26 +17,22 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(BlockModelRenderer.class)
+@Mixin(ModelBlockRenderer.class)
 public class BlockModelRendererMixins {
 
     @Final
     @Shadow
-    private BlockColors colors;
+    private BlockColors blockColors;
 
     @Inject(method =
-        "renderQuad(Lnet/minecraft/world/BlockRenderView;Lnet/minecraft/block/BlockState;Lnet/minecraft/util/math/BlockPos;"
-            +
-            "Lnet/minecraft/client/render/VertexConsumer;Lnet/minecraft/client/util/math/MatrixStack$Entry;"
-            +
-            "Lnet/minecraft/client/render/model/BakedQuad;FFFFIIIII)V",
+        "putQuadData(Lnet/minecraft/world/level/BlockAndTintGetter;Lnet/minecraft/world/level/block/state/BlockState;Lnet/minecraft/core/BlockPos;Lcom/mojang/blaze3d/vertex/VertexConsumer;Lcom/mojang/blaze3d/vertex/PoseStack$Pose;Lnet/minecraft/client/renderer/block/model/BakedQuad;FFFFIIIII)V",
         at = @At(value = "HEAD"),
         cancellable = true)
-    public void redirectRenderQuad(BlockRenderView world,
+    public void redirectRenderQuad(BlockAndTintGetter world,
         BlockState state,
         BlockPos pos,
         VertexConsumer vertexConsumer,
-        MatrixStack.Entry matrixEntry,
+        PoseStack.Pose matrixEntry,
         BakedQuad quad,
         float brightness0,
         float brightness1,
@@ -52,13 +48,13 @@ public class BlockModelRendererMixins {
         float g;
         float h;
         float emission;
-        if (quad.hasTint()) {
-            int i = this.colors.getColor(state, world, pos, quad.getTintIndex());
+        if (quad.isTinted()) {
+            int i = this.blockColors.getColor(state, world, pos, quad.getTintIndex());
             f = (i >> 16 & 0xFF) / 255.0F;
             g = (i >> 8 & 0xFF) / 255.0F;
             h = (i & 0xFF) / 255.0F;
 
-            emission = ((IBlockColorsExt) this.colors).radiance$getEmission(state, world, pos,
+            emission = ((IBlockColorsExt) this.blockColors).radiance$getEmission(state, world, pos,
                 quad.getTintIndex());
         } else {
             f = 1.0F;
@@ -68,7 +64,7 @@ public class BlockModelRendererMixins {
             emission = 0.0F;
         }
 
-        vertexConsumer.quad(matrixEntry,
+        vertexConsumer.putBulkData(matrixEntry,
             quad,
             new float[]{brightness0, brightness1, brightness2, brightness3},
             f,

@@ -2,47 +2,47 @@ package com.radiance.client.util;
 
 import com.google.common.collect.ImmutableList;
 import java.util.List;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.gui.DrawContext;
-import net.minecraft.client.gui.Element;
-import net.minecraft.client.gui.Selectable;
-import net.minecraft.client.gui.widget.OptionListWidget;
-import net.minecraft.text.Text;
-import net.minecraft.util.Colors;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.OptionsList;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.narration.NarratableEntry;
+import net.minecraft.network.chat.Component;
+import net.minecraft.util.CommonColors;
 
-public class CategoryVideoOptionEntry extends OptionListWidget.WidgetEntry {
+public class CategoryVideoOptionEntry extends OptionsList.Entry {
 
-    private final Text text;
+    private final Component text;
     private final int textWidth;
-    private final MinecraftClient client;
-    private final OptionListWidget parent;
+    private final Minecraft client;
+    private final OptionsList parent;
 
-    public CategoryVideoOptionEntry(Text text, OptionListWidget parent) {
+    public CategoryVideoOptionEntry(Component text, OptionsList parent) {
         super(ImmutableList.of(), null);
 
-        this.client = MinecraftClient.getInstance();
+        this.client = Minecraft.getInstance();
         this.parent = parent;
 
         this.text = text;
-        this.textWidth = this.client.textRenderer.getWidth(this.text);
+        this.textWidth = this.client.font.width(this.text);
     }
 
     @Override
-    public void render(DrawContext context, int index, int y, int x, int entryWidth,
+    public void render(GuiGraphics context, int index, int y, int x, int entryWidth,
         int entryHeight, int mouseX, int mouseY, boolean hovered, float tickDelta) {
-        context.drawTextWithShadow(
-            this.client.textRenderer, this.text, parent.getWidth() / 2 - this.textWidth / 2,
-            y + entryHeight - 9 - 1, Colors.WHITE
+        context.drawString(
+            this.client.font, this.text, parent.getWidth() / 2 - this.textWidth / 2,
+            y + entryHeight - 9 - 1, CommonColors.WHITE
         );
     }
 
     @Override
-    public List<? extends Element> children() {
+    public List<? extends GuiEventListener> children() {
         return ImmutableList.of();
     }
 
     @Override
-    public List<? extends Selectable> selectableChildren() {
+    public List<? extends NarratableEntry> narratables() {
         return ImmutableList.of();
     }
 }

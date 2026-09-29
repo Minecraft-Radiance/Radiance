@@ -1,10 +1,10 @@
 package com.radiance.mixins.vulkan_render_integration;
 
-import net.minecraft.client.render.VertexConsumerProvider;
-import net.minecraft.client.render.entity.EntityRenderDispatcher;
-import net.minecraft.client.render.entity.state.EntityRenderState;
-import net.minecraft.client.util.math.MatrixStack;
-import net.minecraft.world.WorldView;
+import com.mojang.blaze3d.vertex.PoseStack;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+import net.minecraft.world.entity.Entity;
+import net.minecraft.world.level.LevelReader;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
@@ -14,17 +14,15 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 public class EntityRenderDispatcherMixins {
 
     @Inject(method =
-        "renderShadow(Lnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;"
-            +
-            "Lnet/minecraft/client/render/entity/state/EntityRenderState;FFLnet/minecraft/world/WorldView;F)V",
+        "renderShadow(Lcom/mojang/blaze3d/vertex/PoseStack;Lnet/minecraft/client/renderer/MultiBufferSource;Lnet/minecraft/world/entity/Entity;FFLnet/minecraft/world/level/LevelReader;F)V",
         at = @At(value = "HEAD"),
         cancellable = true)
-    private static void cancelRenderShadow(MatrixStack matrices,
-        VertexConsumerProvider vertexConsumers,
-        EntityRenderState renderState,
+    private static void cancelRenderShadow(PoseStack matrices,
+        MultiBufferSource vertexConsumers,
+        Entity entity,
         float opacity,
         float tickDelta,
-        WorldView world,
+        LevelReader world,
         float radius,
         CallbackInfo ci) {
         ci.cancel();
