@@ -1,7 +1,7 @@
 package com.radiance.client.gui;
 
 import com.radiance.client.pipeline.Module;
-import net.minecraft.client.font.TextRenderer;
+import net.minecraft.client.gui.Font;
 
 public class ModuleNode {
 
@@ -26,22 +26,22 @@ public class ModuleNode {
         return headerH + pad + rows() * rowH + pad;
     }
 
-    public void updateWidth(TextRenderer textRenderer) {
+    public void updateWidth(Font textRenderer) {
         int maxInWidth = 0;
         if (module.inputImageConfigs != null) {
             for (var in : module.inputImageConfigs) {
-                maxInWidth = Math.max(maxInWidth, textRenderer.getWidth(in.name));
+                maxInWidth = Math.max(maxInWidth, textRenderer.width(in.name));
             }
         }
 
         int maxOutWidth = 0;
         if (module.outputImageConfigs != null) {
             for (var out : module.outputImageConfigs) {
-                maxOutWidth = Math.max(maxOutWidth, textRenderer.getWidth(out.name));
+                maxOutWidth = Math.max(maxOutWidth, textRenderer.width(out.name));
             }
         }
 
-        int titleWidth = textRenderer.getWidth(module.name) + 30;
+        int titleWidth = textRenderer.width(module.name) + 30;
         int contentWidth = maxInWidth + maxOutWidth + 60;
 
         width = Math.max(220, Math.max(titleWidth, contentWidth));

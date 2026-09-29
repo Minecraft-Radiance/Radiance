@@ -1,40 +1,28 @@
 package com.radiance.mixins.vulkan_render_integration;
 
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IChunkBuilderExt;
-import net.minecraft.client.render.chunk.BlockBufferAllocatorStorage;
-import net.minecraft.client.render.chunk.ChunkBuilder;
-import net.minecraft.client.render.chunk.SectionBuilder;
-import net.minecraft.client.world.ClientWorld;
-import org.spongepowered.asm.mixin.Final;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.LevelRenderer;
+import net.minecraft.client.renderer.chunk.ChunkRenderDispatcher;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 
-@Mixin(ChunkBuilder.class)
+@Mixin(ChunkRenderDispatcher.class)
 public class ChunkBuilderMixins implements IChunkBuilderExt {
 
-    @Final
     @Shadow
-    SectionBuilder sectionBuilder;
-
-    @Final
-    @Shadow
-    BlockBufferAllocatorStorage buffers;
+    ClientLevel level;
 
     @Shadow
-    ClientWorld world;
+    LevelRenderer renderer;
 
     @Override
-    public SectionBuilder radiance$getSectionBuilder() {
-        return sectionBuilder;
+    public ClientLevel radiance$getWorld() {
+        return level;
     }
 
     @Override
-    public ClientWorld radiance$getWorld() {
-        return world;
-    }
-
-    @Override
-    public BlockBufferAllocatorStorage radiance$getBuffers() {
-        return buffers;
+    public LevelRenderer radiance$getWorldRenderer() {
+        return renderer;
     }
 }

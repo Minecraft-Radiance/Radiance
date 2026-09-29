@@ -1,85 +1,94 @@
 package com.radiance.client.proxy.vulkan;
 
-import static com.radiance.client.constant.VulkanConstants.VkBufferUsageFlagBits.VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
-import static com.radiance.client.constant.VulkanConstants.VkBufferUsageFlagBits.VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+import com.radiance.client.vista.Vista;
 import static org.lwjgl.system.MemoryStack.stackPush;
 import static org.lwjgl.system.MemoryUtil.memAddress;
 import static org.lwjgl.system.MemoryUtil.memSet;
 
 import com.mojang.blaze3d.systems.RenderSystem;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import com.radiance.client.constant.Constants;
+import com.radiance.client.profiler.Profiler;
+import com.radiance.client.render.BuiltBuffer;
 import com.radiance.client.texture.TextureTracker;
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
 import java.util.Map;
-import net.minecraft.client.MinecraftClient;
-import net.minecraft.client.render.BuiltBuffer;
-import net.minecraft.client.render.Camera;
-import net.minecraft.client.render.Fog;
-import net.minecraft.client.render.RenderPhase;
-import net.minecraft.client.render.VertexFormat;
-import net.minecraft.client.world.ClientWorld;
+import net.minecraft.client.Camera;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.renderer.RenderStateShard;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import org.lwjgl.system.MemoryStack;
 
 public class BufferProxy {
 
-    public static native int allocateBuffer();
+    private static native long createAndUploadVertexIndexBufferNative(long vertexAddress,
+        int vertexSizeBytes, long sortedIndexAddress, int indexSizeBytes, int indexType,
+        int drawMode, int vertexCount, int indexCount);
 
-    public static native void initializeBuffer(int id, int size, int usageFlags);
+    public static BufferInfo getBufferInfo(ByteBuffer sourceBuffer) {
+        ByteBuffer slicedBuffer = sourceBuffer.slice();
 
-    public static native void buildIndexBuffer(int id, int type, int drawMode, int vertexCount,
-        int expectedIndexCount);
+        assert slicedBuffer.isDirect();
 
-    public static native void queueUpload(long ptr, int dstId);
-
-    public static BufferInfo getBufferInfo(ByteBuffer buf) {
-        ByteBuffer b = buf.slice();
-
-        assert b.isDirect();
-
-        long addr = memAddress(b);
-        int size = b.remaining();
-        return new BufferInfo(buf, addr, size);
+        long bufferAddress = memAddress(slicedBuffer);
+        int sizeBytes = slicedBuffer.remaining();
+        return new BufferInfo(bufferAddress, sizeBytes);
     }
 
-    private static void queueUpload(ByteBuffer buf, int expectedSize, int dstId) {
-        BufferInfo bufferInfo = getBufferInfo(buf);
-        assert bufferInfo.size == expectedSize;
-        queueUpload(bufferInfo.addr, dstId);
-    }
+    private static native void performQueuedUploadNative();
 
-    public static native void performQueuedUpload();
+    public static void performQueuedUpload() {
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.BufferProxy.performQueuedUpload");
+        }
+        try {
+            performQueuedUploadNative();
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
+        }
+    }
 
     public static VertexIndexBufferHandle createAndUploadVertexIndexBuffer(
         BuiltBuffer builtBuffer) {
-        BuiltBuffer.DrawParameters drawParameters = builtBuffer.getDrawParameters();
-        assert builtBuffer.getDrawParameters().mode() == VertexFormat.DrawMode.QUADS;
-
-        int vertexSize = drawParameters.vertexCount() * drawParameters.format().getVertexSizeByte();
-        int vertexId = allocateBuffer();
-        initializeBuffer(vertexId, vertexSize, VK_BUFFER_USAGE_VERTEX_BUFFER_BIT.getValue());
-        queueUpload(builtBuffer.getBuffer(), vertexSize, vertexId);
-
-        int indexSize = drawParameters.indexCount() * drawParameters.indexType().size;
-        int indexId = allocateBuffer();
-        initializeBuffer(indexId, indexSize, VK_BUFFER_USAGE_INDEX_BUFFER_BIT.getValue());
-        if (builtBuffer.getSortedBuffer() != null) {
-            queueUpload(builtBuffer.getSortedBuffer(), indexSize, indexId);
-        } else {
-            int type = Constants.IndexTypes.getValue(drawParameters.indexType());
-            int drawMode = Constants.DrawModes.getValue(drawParameters.mode());
-            buildIndexBuffer(indexId, type, drawMode, drawParameters.vertexCount(),
-                drawParameters.indexCount());
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.BufferProxy.createAndUploadVertexIndexBuffer");
         }
+        try {
+            BuiltBuffer.DrawParameters drawParameters = builtBuffer.getDrawParameters();
+            assert builtBuffer.getDrawParameters().mode() == VertexFormat.Mode.QUADS;
 
-        return new VertexIndexBufferHandle(vertexId, indexId);
+            int vertexSize = drawParameters.vertexCount() * drawParameters.format().getVertexSize();
+            int indexSize = drawParameters.indexCount() * drawParameters.indexType().bytes;
+            BufferInfo vertexBuffer = getBufferInfo(builtBuffer.getBuffer());
+            ByteBuffer sortedIndexBuffer = builtBuffer.getSortedBuffer();
+            BufferInfo sortedIndex = sortedIndexBuffer == null ? null : getBufferInfo(sortedIndexBuffer);
+            assert vertexBuffer.size == vertexSize;
+            assert sortedIndex == null || sortedIndex.size == indexSize;
+
+            long packedIds = createAndUploadVertexIndexBufferNative(vertexBuffer.addr, vertexSize,
+                sortedIndex == null ? 0L : sortedIndex.addr, indexSize,
+                Constants.IndexTypes.getValue(drawParameters.indexType()),
+                Constants.DrawModes.getValue(drawParameters.mode()), drawParameters.vertexCount(),
+                drawParameters.indexCount());
+            return new VertexIndexBufferHandle((int) (packedIds >>> Integer.SIZE), (int) packedIds);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
+        }
     }
 
-    public static native void updateOverlayPostUniform(long ptr);
+    private static native void updateOverlayPostUniformNative(long ptr);
 
     public static void updateOverlayPostUniform(float radius) {
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.BufferProxy.updateOverlayPostUniform");
+        }
         try (MemoryStack stack = stackPush()) {
             int size = 96;
             ByteBuffer bb = stack.malloc(size);
@@ -110,17 +119,25 @@ public class BufferProxy {
             float radiusMultiplier = 1.0f;
             bb.putFloat(baseAddr, radiusMultiplier);
 
-            updateOverlayPostUniform(addr);
+            updateOverlayPostUniformNative(addr);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
         }
     }
 
-    public static native void updateWorldUniform(long ptr);
+    private static native void updateWorldUniformNative(long ptr);
 
     public static void updateWorldUniform(Camera camera, Matrix4f viewMatrix,
-        Matrix4f effectedViewMatrix, Matrix4f projectionMatrix, int overlayTextureID, Fog fog,
-        ClientWorld world, int endSkyTextureID, int endPortalTextureID, int lightMapTextureID) {
+        Matrix4f effectedViewMatrix, Matrix4f projectionMatrix, int overlayTextureID,
+        float fogStart, float fogEnd, float[] fogColor, int fogShape, ClientLevel world,
+        int endSkyTextureID, int endPortalTextureID, int lightMapTextureID) {
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.BufferProxy.updateWorldUniform");
+        }
         try (MemoryStack stack = stackPush()) {
-            int size = 592;
+            int size = 624;
             ByteBuffer bb = stack.malloc(size);
             long addr = memAddress(bb);
             int baseAddr = 0;
@@ -134,16 +151,16 @@ public class BufferProxy {
             projectionMatrix.get(baseAddr, bb);
             baseAddr += Float.BYTES * 16;
 
-            baseAddr += Float.BYTES * 16 * 3; // skip the inverse
-            baseAddr += Float.BYTES * 2; // skip the jitter
+            baseAddr += Float.BYTES * 16 * 3;
+            baseAddr += Float.BYTES * 2;
 
             float gameTime = RenderSystem.getShaderGameTime();
             bb.putFloat(baseAddr, gameTime);
             baseAddr += Float.BYTES;
 
-            baseAddr += Integer.BYTES; // skip seed
+            baseAddr += Integer.BYTES;
 
-            RenderPhase.setupGlintTexturing(0.16F);
+            RenderStateShard.setupGlintTexturing(0.16F);
             Matrix4f textureMat = RenderSystem.getTextureMatrix();
             textureMat.get(baseAddr, bb);
             baseAddr += Float.BYTES * 16;
@@ -151,41 +168,43 @@ public class BufferProxy {
 
             bb.putInt(baseAddr, overlayTextureID);
             baseAddr += Integer.BYTES;
-            bb.putInt(baseAddr, camera.isThirdPerson() ? 0 : 1);
+            bb.putInt(baseAddr, camera.isDetached() ? 0 : 1);
             baseAddr += Integer.BYTES;
-            bb.putFloat(baseAddr, fog.start());
+            bb.putFloat(baseAddr, fogStart);
             baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, fog.end());
+            bb.putFloat(baseAddr, fogEnd);
             baseAddr += Float.BYTES;
 
-            bb.putFloat(baseAddr, fog.red());
+            bb.putFloat(baseAddr, fogColor[0]);
             baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, fog.green());
+            bb.putFloat(baseAddr, fogColor[1]);
             baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, fog.blue());
+            bb.putFloat(baseAddr, fogColor[2]);
             baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, fog.alpha());
+            bb.putFloat(baseAddr, fogColor[3]);
             baseAddr += Float.BYTES;
 
-            bb.putInt(baseAddr, fog.shape().getId());
+            bb.putInt(baseAddr, fogShape);
             baseAddr += Integer.BYTES;
-            bb.putInt(baseAddr, world.getDimensionEffects().getSkyType().ordinal());
+            bb.putInt(baseAddr, world.effects().skyType().ordinal());
             baseAddr += Integer.BYTES;
+            bb.putInt(baseAddr, world.getMinBuildHeight());
             baseAddr += Integer.BYTES;
+            bb.putInt(baseAddr, world.getMinBuildHeight() + world.getHeight());
             baseAddr += Integer.BYTES;
 
-            baseAddr += Double.BYTES; // cameraPos
-            baseAddr += Double.BYTES; // cameraPos
-            baseAddr += Double.BYTES; // cameraPos
-            baseAddr += Double.BYTES; // cameraPos
-            baseAddr += Integer.BYTES; // chunkGridInfo
-            baseAddr += Integer.BYTES; // chunkGridInfo
-            baseAddr += Integer.BYTES; // chunkGridInfo
-            baseAddr += Integer.BYTES; // chunkGridInfo
-            baseAddr += Integer.BYTES; // chunkStorageSectionPos
-            baseAddr += Integer.BYTES; // chunkStorageSectionPos
-            baseAddr += Integer.BYTES; // chunkStorageSectionPos
-            baseAddr += Integer.BYTES; // chunkStorageSectionPos
+            baseAddr += Double.BYTES;
+            baseAddr += Double.BYTES;
+            baseAddr += Double.BYTES;
+            baseAddr += Double.BYTES;
+            baseAddr += Integer.BYTES;
+            baseAddr += Integer.BYTES;
+            baseAddr += Integer.BYTES;
+            baseAddr += Integer.BYTES;
+            baseAddr += Integer.BYTES;
+            baseAddr += Integer.BYTES;
+            baseAddr += Integer.BYTES;
+            baseAddr += Integer.BYTES;
 
             bb.putInt(baseAddr, endSkyTextureID);
             baseAddr += Integer.BYTES;
@@ -193,19 +212,34 @@ public class BufferProxy {
             baseAddr += Integer.BYTES;
             bb.putInt(baseAddr, lightMapTextureID);
             baseAddr += Integer.BYTES;
+            bb.putInt(baseAddr,
+                Math.max(16, Minecraft.getInstance().options.getEffectiveRenderDistance() * 16));
             baseAddr += Integer.BYTES;
 
-            updateWorldUniform(addr);
+            bb.putInt(baseAddr, Vista.distanceBlocks());
+            bb.putInt(baseAddr + 4, 0);
+            bb.putInt(baseAddr + 8, 0);
+            bb.putInt(baseAddr + 12, Vista.textureId());
+            bb.putLong(baseAddr + 16, 0);
+            bb.putLong(baseAddr + 24, 0);
+            updateWorldUniformNative(addr);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
         }
     }
 
-    public static native void updateSkyUniform(long ptr);
+    private static native void updateSkyUniformNative(long ptr);
 
     public static void updateSkyUniform(float baseColorR, float baseColorG, float baseColorB,
-        float horizonColorR, float horizonColorG, float horizonColorB, float horizonColorA,
-        Vector3f sunDirection, int skyType, boolean sunRisingOrSetting, boolean skyDark,
-        boolean hasBlindnessOrDarkness, int submersionType, int moonPhase, float rainGradient,
-        int sunTextureID, int moonTextureID) {
+        float horizontalColorR, float horizontalColorG, float horizontalColorB,
+        float horizontalColorA, Vector3f sunDirection, int skyType, boolean sunRisingOrSetting,
+        boolean skyDark, boolean hasBlindnessOrDarkness, int submersionType, int moonPhase,
+        float rainGradient, int sunTextureID, int moonTextureID) {
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.BufferProxy.updateSkyUniform");
+        }
         try (MemoryStack stack = stackPush()) {
             int size = 80;
             ByteBuffer bb = stack.malloc(size);
@@ -221,13 +255,13 @@ public class BufferProxy {
             bb.putInt(baseAddr, skyType);
             baseAddr += Integer.BYTES;
 
-            bb.putFloat(baseAddr, horizonColorR);
+            bb.putFloat(baseAddr, horizontalColorR);
             baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, horizonColorG);
+            bb.putFloat(baseAddr, horizontalColorG);
             baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, horizonColorB);
+            bb.putFloat(baseAddr, horizontalColorB);
             baseAddr += Float.BYTES;
-            bb.putFloat(baseAddr, horizonColorA);
+            bb.putFloat(baseAddr, horizontalColorA);
             baseAddr += Float.BYTES;
 
             bb.putFloat(baseAddr, sunDirection.x);
@@ -253,15 +287,25 @@ public class BufferProxy {
             baseAddr += Integer.BYTES;
             bb.putInt(baseAddr, moonTextureID);
             baseAddr += Integer.BYTES;
-            bb.putInt(baseAddr, 0);
+            var minecraft = Minecraft.getInstance();
+            var camera = minecraft.gameRenderer.getMainCamera().getPosition();
+            bb.putInt(baseAddr, com.radiance.client.texture.RainExposure.update(
+                minecraft.level, camera.x, camera.z));
 
-            updateSkyUniform(addr);
+            updateSkyUniformNative(addr);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
+            }
         }
     }
 
-    public static native void updateMapping(long ptr);
+    private static native void updateMappingNative(long ptr);
 
     public static void updateMapping() {
+        if (Profiler.ENABLED) {
+            Profiler.enter("java.BufferProxy.updateMapping");
+        }
         try (MemoryStack stack = stackPush()) {
             final int elementCount = 4096;
             int size = elementCount * Integer.BYTES * 3;
@@ -270,51 +314,40 @@ public class BufferProxy {
             memSet(addr, -1, size);
             IntBuffer intView = bb.asIntBuffer();
 
-            for (Map.Entry<Integer, Integer> specularEntry : TextureTracker.GLID2SpecularGLID.entrySet()) {
-                int sourceID = specularEntry.getKey();
-                int targetID = specularEntry.getValue();
-                if (sourceID >= 0 && sourceID < elementCount) {
-                    intView.put(sourceID * 3, targetID);
-                } else {
-                    throw new RuntimeException(
-                        "Specular mapping sourceID " + sourceID + " out of index [0, " + (
-                            elementCount - 1) + "]");
-                }
-            }
+            writeTextureMappings(intView, elementCount, TextureTracker.GLID2SpecularGLID, 0,
+                "Specular");
+            writeTextureMappings(intView, elementCount, TextureTracker.GLID2NormalGLID, 1,
+                "Normal");
+            writeTextureMappings(intView, elementCount, TextureTracker.GLID2FlagGLID, 2,
+                "Flag");
 
-            for (Map.Entry<Integer, Integer> normalEntry : TextureTracker.GLID2NormalGLID.entrySet()) {
-                int sourceID = normalEntry.getKey();
-                int targetID = normalEntry.getValue();
-                if (sourceID >= 0 && sourceID < elementCount) {
-                    intView.put(sourceID * 3 + 1, targetID);
-                } else {
-                    throw new RuntimeException(
-                        "Normal mapping sourceID " + sourceID + " out of index [0, " + (elementCount
-                            - 1) + "]");
-                }
+            updateMappingNative(addr);
+        } finally {
+            if (Profiler.ENABLED) {
+                Profiler.exit();
             }
-
-            for (Map.Entry<Integer, Integer> flagEntry : TextureTracker.GLID2FlagGLID.entrySet()) {
-                int sourceID = flagEntry.getKey();
-                int targetID = flagEntry.getValue();
-                if (sourceID >= 0 && sourceID < elementCount) {
-                    intView.put(sourceID * 3 + 2, targetID);
-                } else {
-                    throw new RuntimeException(
-                        "Flag mapping sourceID " + sourceID + " out of index [0, " + (elementCount
-                            - 1) + "]");
-                }
-            }
-
-            updateMapping(addr);
         }
     }
 
-    public static void updateEmission() {
-        // Emission tiles are uploaded immediately through TextureProxy during texture upload.
+    private static void writeTextureMappings(IntBuffer destination, int elementCount,
+        Map<Integer, TextureTracker.TextureBinding> bindings, int component, String name) {
+        for (Map.Entry<Integer, TextureTracker.TextureBinding> entry : bindings.entrySet()) {
+            int sourceId = entry.getKey();
+            TextureTracker.TextureBinding binding = entry.getValue();
+            if (!TextureTracker.isCurrent(binding)) {
+                bindings.remove(sourceId, binding);
+                continue;
+            }
+            int targetId = binding.auxiliary().id();
+            if (sourceId < 0 || sourceId >= elementCount || targetId < 0 || targetId >= elementCount) {
+                throw new IllegalStateException(name + " mapping " + sourceId + " -> " + targetId
+                    + " out of index [0, " + (elementCount - 1) + "]");
+            }
+            destination.put(sourceId * 3 + component, targetId);
+        }
     }
 
-    public record BufferInfo(ByteBuffer buf, long addr, int size) {
+    public record BufferInfo(long addr, int size) {
 
     }
 

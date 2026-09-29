@@ -1,8 +1,8 @@
 package com.radiance.client.texture;
 
-import net.minecraft.client.texture.NativeImage;
-import net.minecraft.util.Util;
-import net.minecraft.util.math.ColorHelper;
+import com.mojang.blaze3d.platform.NativeImage;
+import net.minecraft.Util;
+import net.minecraft.util.FastColor;
 
 public class MipmapUtil {
 
@@ -16,10 +16,23 @@ public class MipmapUtil {
     private MipmapUtil() {
     }
 
-    // straight forward, need speed up
+    public static int getColorArgb(NativeImage image, int x, int y) {
+        int abgr = image.getPixelRGBA(x, y);
+        return FastColor.ARGB32.color(FastColor.ABGR32.alpha(abgr),
+            FastColor.ABGR32.red(abgr), FastColor.ABGR32.green(abgr),
+            FastColor.ABGR32.blue(abgr));
+    }
+
+    public static void setColorArgb(NativeImage image, int x, int y, int color) {
+        image.setPixelRGBA(x, y, FastColor.ABGR32.color(FastColor.ARGB32.alpha(color),
+            FastColor.ARGB32.blue(color), FastColor.ARGB32.green(color),
+            FastColor.ARGB32.red(color)));
+    }
+
+
     public static NativeImage getSpecificMipmapLevelImage(NativeImage original, int targetLevel) {
         if (targetLevel == 0) {
-            NativeImage ret = new NativeImage(original.getFormat(), original.getWidth(),
+            NativeImage ret = new NativeImage(original.format(), original.getWidth(),
                 original.getHeight(), false);
             ret.copyFrom(original);
             return ret;
@@ -38,15 +51,15 @@ public class MipmapUtil {
                 break;
             }
 
-            NativeImage nextLevel = new NativeImage(currentSource.getFormat(), newWidth, newHeight,
+            NativeImage nextLevel = new NativeImage(currentSource.format(), newWidth, newHeight,
                 false);
 
             for (int x = 0; x < newWidth; x++) {
                 for (int y = 0; y < newHeight; y++) {
-                    nextLevel.setColorArgb(x, y, blend(currentSource.getColorArgb(x * 2, y * 2),
-                        currentSource.getColorArgb(x * 2 + 1, y * 2),
-                        currentSource.getColorArgb(x * 2, y * 2 + 1),
-                        currentSource.getColorArgb(x * 2 + 1, y * 2 + 1), bl));
+                    setColorArgb(nextLevel, x, y, blend(getColorArgb(currentSource, x * 2, y * 2),
+                        getColorArgb(currentSource, x * 2 + 1, y * 2),
+                        getColorArgb(currentSource, x * 2, y * 2 + 1),
+                        getColorArgb(currentSource, x * 2 + 1, y * 2 + 1), bl));
                 }
             }
 
@@ -77,15 +90,15 @@ public class MipmapUtil {
 
         for (int level = 1; level <= maxLevel; level++) {
             NativeImage previous = levels[level - 1];
-            NativeImage next = new NativeImage(previous.getFormat(), previous.getWidth() >> 1,
+            NativeImage next = new NativeImage(previous.format(), previous.getWidth() >> 1,
                 previous.getHeight() >> 1, false);
 
             for (int x = 0; x < next.getWidth(); x++) {
                 for (int y = 0; y < next.getHeight(); y++) {
-                    next.setColorArgb(x, y, blend(previous.getColorArgb(x * 2, y * 2),
-                        previous.getColorArgb(x * 2 + 1, y * 2),
-                        previous.getColorArgb(x * 2, y * 2 + 1),
-                        previous.getColorArgb(x * 2 + 1, y * 2 + 1), hasAlpha));
+                    setColorArgb(next, x, y, blend(getColorArgb(previous, x * 2, y * 2),
+                        getColorArgb(previous, x * 2 + 1, y * 2),
+                        getColorArgb(previous, x * 2, y * 2 + 1),
+                        getColorArgb(previous, x * 2 + 1, y * 2 + 1), hasAlpha));
                 }
             }
 
@@ -115,11 +128,11 @@ public class MipmapUtil {
 
                     for (int l = 0; l < j; l++) {
                         for (int m = 0; m < k; m++) {
-                            nativeImage2.setColorArgb(l, m,
-                                blend(nativeImage.getColorArgb(l * 2, m * 2),
-                                    nativeImage.getColorArgb(l * 2 + 1, m * 2),
-                                    nativeImage.getColorArgb(l * 2, m * 2 + 1),
-                                    nativeImage.getColorArgb(l * 2 + 1, m * 2 + 1), bl));
+                            setColorArgb(nativeImage2, l, m,
+                                blend(getColorArgb(nativeImage, l * 2, m * 2),
+                                    getColorArgb(nativeImage, l * 2 + 1, m * 2),
+                                    getColorArgb(nativeImage, l * 2, m * 2 + 1),
+                                    getColorArgb(nativeImage, l * 2 + 1, m * 2 + 1), bl));
                         }
                     }
 
@@ -134,7 +147,7 @@ public class MipmapUtil {
     public static boolean hasAlpha(NativeImage image) {
         for (int i = 0; i < image.getWidth(); i++) {
             for (int j = 0; j < image.getHeight(); j++) {
-                if (ColorHelper.getAlpha(image.getColorArgb(i, j)) == 0) {
+                if (FastColor.ARGB32.alpha(getColorArgb(image, i, j)) == 0) {
                     return true;
                 }
             }
@@ -174,12 +187,13 @@ public class MipmapUtil {
 
         if (checkAlpha) {
             float alphaCoverage =
-                (ColorHelper.getAlpha(one) + ColorHelper.getAlpha(two) + ColorHelper.getAlpha(three)
-                    + ColorHelper.getAlpha(four)) / (4.0F * 255.0F);
+                (FastColor.ARGB32.alpha(one) + FastColor.ARGB32.alpha(two)
+                    + FastColor.ARGB32.alpha(three)
+                    + FastColor.ARGB32.alpha(four)) / (4.0F * 255.0F);
             resA = alphaCoverage >= CUTOUT_ALPHA_COVERAGE_THRESHOLD ? 255 : 0;
         }
 
-        return ColorHelper.getArgb(resA, resR, resG, resB);
+        return FastColor.ARGB32.color(resA, resR, resG, resB);
     }
 
     public static int getColorComponent(int one, int two, int three, int four, int bits) {

@@ -1,11 +1,14 @@
 package com.radiance.mixins.vulkan_render_integration;
 
+import com.mojang.blaze3d.vertex.BufferBuilder;
 import com.radiance.client.proxy.world.ChunkProxy;
+import com.radiance.client.proxy.world.BlockEntitySectionCache;
 import com.radiance.mixin_related.extensions.vulkan_render_integration.IChunkBuilderBuiltChunkExt;
+import java.util.Collection;
 import java.util.stream.Collector;
 import java.util.stream.Stream;
-import net.minecraft.client.render.chunk.ChunkBuilder;
-import org.spongepowered.asm.mixin.Final;
+import net.minecraft.client.renderer.chunk.ChunkRenderDispatcher;
+import net.minecraft.world.level.block.entity.BlockEntity;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.Unique;
@@ -14,16 +17,30 @@ import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.Redirect;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-@Mixin(ChunkBuilder.BuiltChunk.class)
-public class ChunkBuilderBuiltChunkMixins implements IChunkBuilderBuiltChunkExt {
-
-    @Shadow
-    @Final
-    ChunkBuilder field_20833;
+@Mixin(ChunkRenderDispatcher.RenderChunk.class)
+public abstract class ChunkBuilderBuiltChunkMixins implements IChunkBuilderBuiltChunkExt {
 
     @Unique
-    public ChunkBuilder radiance$getChunkBuilder() {
-        return field_20833;
+    private ChunkRenderDispatcher radiance$chunkBuilder;
+
+    public ChunkRenderDispatcher radiance$getChunkBuilder() {
+        return this.radiance$chunkBuilder;
+    }
+
+    @Shadow
+    abstract void beginLayer(BufferBuilder buffer);
+
+    @Shadow
+    public abstract void updateGlobalBlockEntities(Collection<BlockEntity> blockEntities);
+
+    @Override
+    public void radiance$beginBufferBuilding(BufferBuilder bufferBuilder) {
+        this.beginLayer(bufferBuilder);
+    }
+
+    @Override
+    public void radiance$setNoCullingBlockEntities(Collection<BlockEntity> blockEntities) {
+        this.updateGlobalBlockEntities(blockEntities);
     }
 
     @Redirect(method = "<init>",
@@ -32,28 +49,39 @@ public class ChunkBuilderBuiltChunkMixins implements IChunkBuilderBuiltChunkExt 
         return null;
     }
 
-    @Inject(method = "clear()V", at = @At(value = "TAIL"))
+    @Inject(method = "<init>", at = @At("RETURN"))
+    private void captureChunkBuilder(ChunkRenderDispatcher chunkBuilder, int index, int x, int y, int z,
+                                     CallbackInfo ci) {
+        this.radiance$chunkBuilder = chunkBuilder;
+    }
+
+    @Inject(method = "reset()V", at = @At(value = "TAIL"))
     private void addToRebuildGridClear(CallbackInfo ci) {
-        ChunkBuilder.BuiltChunk self = (ChunkBuilder.BuiltChunk) (Object) this;
+        ChunkRenderDispatcher.RenderChunk self = (ChunkRenderDispatcher.RenderChunk) (Object) this;
+        BlockEntitySectionCache.changed(self);
         ChunkProxy.enqueueRebuild(self);
     }
 
-    @Inject(method = "scheduleRebuild(Z)V", at = @At(value = "TAIL"))
+    @Inject(method = "setDirty(Z)V", at = @At(value = "TAIL"))
     private void addToRebuildGridScheduleRebuild(CallbackInfo ci) {
-        ChunkBuilder.BuiltChunk self = (ChunkBuilder.BuiltChunk) (Object) this;
+        ChunkRenderDispatcher.RenderChunk self = (ChunkRenderDispatcher.RenderChunk) (Object) this;
         ChunkProxy.enqueueRebuild(self);
     }
 
-    @Inject(method = "setSectionPos(J)V", at = @At(value = "TAIL"))
-    private void syncNativeChunkSlot(long sectionPos, CallbackInfo ci) {
-        ChunkBuilder.BuiltChunk self = (ChunkBuilder.BuiltChunk) (Object) this;
-        ChunkProxy.relocateSingle(self.index, self.getOrigin().getX(), self.getOrigin().getY(),
-            self.getOrigin().getZ());
+    @Inject(method = "setOrigin(III)V", at = @At(value = "HEAD"))
+    private void beginNativeChunkRelocation(int x, int y, int z, CallbackInfo ci) {
+        ChunkRenderDispatcher.RenderChunk self = (ChunkRenderDispatcher.RenderChunk) (Object) this;
+        ChunkProxy.beginRelocation(self, x, y, z);
     }
 
-    @Inject(method = "delete()V",
+    @Inject(method = "setOrigin(III)V", at = @At(value = "TAIL"))
+    private void finishNativeChunkRelocation(int x, int y, int z, CallbackInfo ci) {
+        ChunkProxy.finishRelocation((ChunkRenderDispatcher.RenderChunk) (Object) this);
+    }
+
+    @Inject(method = "releaseBuffers()V",
         at = @At(value = "INVOKE",
-            target = "Lnet/minecraft/client/render/chunk/ChunkBuilder$BuiltChunk;clear()V",
+            target = "Lnet/minecraft/client/renderer/chunk/ChunkRenderDispatcher$RenderChunk;reset()V",
             shift = At.Shift.AFTER),
         cancellable = true)
     public void cancelVertexConsumerDelete(CallbackInfo ci) {

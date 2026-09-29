@@ -1,24 +1,24 @@
 package com.radiance.client.util;
 
-import net.minecraft.block.BlockState;
-import net.minecraft.client.color.block.BlockColorProvider;
-import net.minecraft.util.Pair;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.BlockRenderView;
+import net.minecraft.client.color.block.BlockColor;
+import net.minecraft.core.BlockPos;
+import net.minecraft.util.Tuple;
+import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.world.level.block.state.BlockState;
 import org.jetbrains.annotations.Nullable;
 
-public interface BlockColorEmissionProvider extends BlockColorProvider {
+public interface BlockColorEmissionProvider extends BlockColor {
 
-    Pair<Integer, Float> getColorEmission(BlockState state, @Nullable BlockRenderView world,
+    Tuple<Integer, Float> getColorEmission(BlockState state, @Nullable BlockAndTintGetter world,
         @Nullable BlockPos pos, int tintIndex);
 
-    default int getColor(BlockState state, @Nullable BlockRenderView world, @Nullable BlockPos pos,
+    default int getColor(BlockState state, @Nullable BlockAndTintGetter world, @Nullable BlockPos pos,
         int tintIndex) {
-        return getColorEmission(state, world, pos, tintIndex).getLeft();
+        return getColorEmission(state, world, pos, tintIndex).getA();
     }
 
-    default float getEmission(BlockState state, @Nullable BlockRenderView world,
+    default float getEmission(BlockState state, @Nullable BlockAndTintGetter world,
         @Nullable BlockPos pos, int tintIndex) {
-        return getColorEmission(state, world, pos, tintIndex).getRight();
+        return getColorEmission(state, world, pos, tintIndex).getB();
     }
 }

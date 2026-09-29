@@ -4,11 +4,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Queue;
 import net.minecraft.client.particle.Particle;
-import net.minecraft.client.particle.ParticleTextureSheet;
+import net.minecraft.client.particle.ParticleRenderType;
 
 public interface IParticleManagerExt {
 
-    List<ParticleTextureSheet> radiance$getTextureSheets();
+    List<ParticleRenderType> radiance$getTextureSheets();
 
-    Map<ParticleTextureSheet, Queue<Particle>> radiance$getParticles();
+    Map<ParticleRenderType, Queue<Particle>> radiance$getParticles();
 }
