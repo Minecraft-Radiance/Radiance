@@ -31,3 +31,8 @@ attributeConfigs:
     performanceImpact: "high"
     type: "enum:render_pipeline.module.dlss_rr.attribute.mode.performance-render_pipeline.module.dlss_rr.attribute.mode.balanced-render_pipeline.module.dlss_rr.attribute.mode.quality-render_pipeline.module.dlss_rr.attribute.mode.dlaa"
     value: "render_pipeline.module.dlss_rr.attribute.mode.balanced"
+  - name: "render_pipeline.module.dlss_rr.attribute.model_preset"
+    group: "settings.group.upscaling"
+    performanceImpact: "high"
+    type: "enum:render_pipeline.module.dlss_rr.attribute.model_preset.d-render_pipeline.module.dlss_rr.attribute.model_preset.e-render_pipeline.module.dlss_rr.attribute.model_preset.f"
+    value: "render_pipeline.module.dlss_rr.attribute.model_preset.e"
